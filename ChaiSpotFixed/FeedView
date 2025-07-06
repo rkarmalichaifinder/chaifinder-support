@@ -1,0 +1,45 @@
+import SwiftUI
+
+struct FeedView: View {
+    @StateObject private var viewModel = FeedViewModel()
+    @State private var searchText = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+
+                Text("chai finder")
+                    .font(.custom("Konkhmer Sleokchher", size: 26))
+                    .foregroundColor(Color(hex: "#C54E00"))
+
+                TextField("Search for a chai spot, member, etc...", text: $searchText)
+                    .padding()
+                    .background(Color(.systemGray5))
+                    .cornerRadius(10)
+                    .font(.custom("Kodchasan", size: 16))
+
+                Text("YOUR FEED")
+                    .font(.custom("Moul", size: 16))
+                    .padding(.top, 8)
+
+                if viewModel.isLoading {
+                    ProgressView("Loading feed...")
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 20) {
+                            ForEach(viewModel.feedItems) { review in
+                                ReviewCardView(review: review)
+                            }
+                        }
+                        .padding(.bottom, 16)
+                    }
+                }
+            }
+            .padding()
+            .navigationBarHidden(true)
+            .onAppear {
+                viewModel.fetchFeed()
+            }
+        }
+    }
+}
