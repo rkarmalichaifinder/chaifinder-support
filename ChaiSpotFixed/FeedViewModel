@@ -1,0 +1,10 @@
+let feedItem = ReviewFeedItem(
+    id: doc.documentID,
+    username: username,
+    ratingValue: value,
+    comment: comment,
+    timestamp: timestamp,
+    spotName: spotName,
+    spotCity: city,
+    imageURL: nil
+)
