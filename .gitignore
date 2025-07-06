@@ -1,0 +1,15 @@
+# Firebase config
+ChaiSpotFixed/GoogleService-Info.plist
+
+# macOS and Xcode clutter
+.DS_Store
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.idea/
+*.swp
+*.lock
+
+# Build
+build/
+DerivedData/
+
