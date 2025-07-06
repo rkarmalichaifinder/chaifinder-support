@@ -11,4 +11,5 @@ struct Rating: Identifiable, Codable {
     @ServerTimestamp var timestamp: Date?
     var likes: Int?
     var dislikes: Int?
+    var chaiType: String? // e.g. "Karak", "Masala", etc.
 }
