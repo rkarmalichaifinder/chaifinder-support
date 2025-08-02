@@ -78,7 +78,7 @@ struct MapTabView: View {
             regionSpan = $0.span.latitudeDelta
         })
     }
-    @StateObject private var notificationChecker = NotificationChecker()
+    // Fix: Remove duplicate NotificationChecker instance to prevent memory leak
     @State private var chaiFinder: [ChaiFinder] = []
     @State private var ratings: [Rating] = []
     @State private var selectedCoordinate: CLLocationCoordinate2D?

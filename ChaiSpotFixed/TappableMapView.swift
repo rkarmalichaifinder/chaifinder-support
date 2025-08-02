@@ -55,9 +55,13 @@ struct TappableMapView: UIViewRepresentable {
             guard let annotation = view.annotation else { return }
             let tappedCoordinate = annotation.coordinate
 
+            // Fix: Use more reliable coordinate matching with better precision tolerance
+            // Calculate distance-based tolerance that accounts for map zoom level
+            let tolerance = max(0.001, mapView.region.span.latitudeDelta * 0.01)
+            
             if let tappedSpot = parent.chaiFinder.first(where: {
-                abs($0.latitude - tappedCoordinate.latitude) < 0.0001 &&
-                abs($0.longitude - tappedCoordinate.longitude) < 0.0001
+                abs($0.latitude - tappedCoordinate.latitude) < tolerance &&
+                abs($0.longitude - tappedCoordinate.longitude) < tolerance
             }) {
                 parent.onAnnotationTap?(tappedSpot.id ?? "")
             }

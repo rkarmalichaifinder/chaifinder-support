@@ -11,25 +11,23 @@ class NotificationChecker: ObservableObject {
     func checkForNewActivity() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
-        db.collection("users").document(uid).getDocument { snapshot, error in
+        // Fix: Query the friends subcollection instead of looking for a 'friends' field
+        db.collection("users").document(uid).collection("friends").getDocuments { snapshot, error in
             if let error = error {
-                print("❌ Error fetching user for notifications: \(error.localizedDescription)")
+                print("❌ Error fetching friends for notifications: \(error.localizedDescription)")
                 return
             }
 
-            guard let data = snapshot?.data() else {
-                print("⚠️ No data found for user")
-                return
-            }
-
-            let currentFriends = data["friends"] as? [String] ?? []
+            let currentFriends = snapshot?.documents.map { $0.documentID } ?? []
             let previousFriends = UserDefaults.standard.stringArray(forKey: "lastKnownFriends") ?? []
 
             print("👥 Current friends: \(currentFriends.count), Previous friends: \(previousFriends.count)")
 
             if currentFriends.count > previousFriends.count {
-                self.alertMessage = "You have new friends!"
-                self.showAlert = true
+                DispatchQueue.main.async {
+                    self.alertMessage = "You have new friends!"
+                    self.showAlert = true
+                }
             }
 
             // Save the latest friend list for future comparison
