@@ -78,6 +78,7 @@ struct MapTabView: View {
             regionSpan = $0.span.latitudeDelta
         })
     }
+
     @StateObject private var notificationChecker = NotificationChecker()
     @State private var chaiFinder: [ChaiFinder] = []
     @State private var ratings: [Rating] = []
@@ -92,7 +93,6 @@ struct MapTabView: View {
     @State private var allUsers: [UserProfile] = []
     @State private var ratingsLoaded = false
     @State private var usersLoaded = false
-
 
     var body: some View {
         ZStack {
@@ -113,7 +113,6 @@ struct MapTabView: View {
                 tempSearchCoordinate: tempSearchCoordinate
             )
             .ignoresSafeArea(edges: .top)
-
 
             VStack {
                 Spacer()
@@ -145,7 +144,9 @@ struct MapTabView: View {
                         comment: comment,
                         chaiTypes: chaiTypes,
                         at: coord
-                    ) { success in if success { showingAddForm = false } }
+                    ) { success in
+                        if success { showingAddForm = false }
+                    }
                 }
             )
         }
@@ -163,7 +164,7 @@ struct MapTabView: View {
         .onAppear(perform: loadData)
     }
 
-    // MARK: – Helper Methods
+    // MARK: - Firestore Loading + Helpers
 
     private func loadData() {
         region = MKCoordinateRegion(
@@ -176,18 +177,22 @@ struct MapTabView: View {
             guard let docs = snap?.documents, err == nil else { return }
             chaiFinder = docs.compactMap {
                 var s = try? $0.data(as: ChaiFinder.self)
-                s?.id = $0.documentID; return s
+                s?.id = $0.documentID
+                return s
             }
             updateAverageRatings()
         }
+
         db.collection("ratings").addSnapshotListener { snap, err in
             guard let docs = snap?.documents, err == nil else { return }
             ratings = docs.compactMap {
                 var r = try? $0.data(as: Rating.self)
-                r?.id = $0.documentID; return r
+                r?.id = $0.documentID
+                return r
             }
             updateAverageRatings()
         }
+
         db.collection("users").addSnapshotListener { snapshot, error in
             guard let documents = snapshot?.documents, error == nil else { return }
             allUsers = documents.compactMap {
@@ -196,7 +201,6 @@ struct MapTabView: View {
                 return user
             }
         }
-
     }
 
     private func updateAverageRatings() {
@@ -205,26 +209,30 @@ struct MapTabView: View {
         chaiFinder = chaiFinder.map {
             var s = $0
             if let vals = map[$0.id ?? ""] {
-                s.averageRating = Double(vals.reduce(0,+))/Double(vals.count)
+                s.averageRating = Double(vals.reduce(0,+)) / Double(vals.count)
                 s.ratingCount = vals.count
             }
             return s
         }
     }
 
-    private func fetchExistingRating(for spotId:String, completion:@escaping(Rating?)->Void) {
+    private func fetchExistingRating(for spotId: String, completion: @escaping (Rating?) -> Void) {
         guard let uid = Auth.auth().currentUser?.uid else {
-            completion(nil); return
+            completion(nil)
+            return
         }
         db.collection("ratings")
             .whereField("spotId", isEqualTo: spotId)
             .whereField("userId", isEqualTo: uid)
-            .limit(to:1)
+            .limit(to: 1)
             .getDocuments { snap, _ in
                 if let doc = snap?.documents.first,
-                   var r = try? doc.data(as:Rating.self) {
-                    r.id = doc.documentID; completion(r)
-                } else { completion(nil) }
+                   var r = try? doc.data(as: Rating.self) {
+                    r.id = doc.documentID
+                    completion(r)
+                } else {
+                    completion(nil)
+                }
             }
     }
 
@@ -259,15 +267,14 @@ struct MapTabView: View {
                             if let avg = spot.averageRating {
                                 Text("⭐️ \(String(format: "%.1f", avg)) average")
                                 Text("Based on \(spot.ratingCount ?? 0) reviews")
-                                    .font(.footnote).foregroundColor(.gray)
+                                    .font(.footnote)
+                                    .foregroundColor(.gray)
                             }
 
-                            // 🧍 Your Rating
                             if let uid = Auth.auth().currentUser?.uid {
                                 if let userRating = ratings.first(where: { $0.userId == uid && $0.spotId == spot.id }) {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text("⭐️ Your Rating: \(userRating.value)")
-                                            .font(.headline)
+                                        Text("⭐️ Your Rating: \(userRating.value)").font(.headline)
                                         if let comment = userRating.comment, !comment.isEmpty {
                                             Text("📝 \(comment)")
                                                 .font(.subheadline)
@@ -279,21 +286,17 @@ struct MapTabView: View {
                                     .cornerRadius(8)
                                 }
 
-                                // 👥 Friends’ Ratings
                                 let currentUser = allUsers.first(where: { $0.uid == uid })
                                 let friendIds = currentUser?.friends ?? []
-
-                                let filteredRatings = ratings.filter { r in
-                                    r.spotId == spot.id && r.userId != uid
-                                }
-
-                                let friendRatings = filteredRatings.filter { r in
-                                    friendIds.contains(r.userId)
+                                let friendRatings = ratings.filter {
+                                    $0.spotId == spot.id && friendIds.contains($0.userId)
                                 }
 
                                 if !friendRatings.isEmpty {
+                                    let friendAvg = Double(friendRatings.map(\.value).reduce(0, +)) / Double(friendRatings.count)
+
                                     VStack(alignment: .leading, spacing: 8) {
-                                        Text("👥 Friends’ Ratings")
+                                        Text("👥 Friends’ Avg Rating: \(String(format: "%.1f", friendAvg))")
                                             .font(.headline)
 
                                         ForEach(friendRatings, id: \.id) { r in
@@ -313,11 +316,9 @@ struct MapTabView: View {
                                             }
                                         }
                                     }
-                                    .padding(.top)
                                 }
                             }
 
-                            // Buttons
                             Button("Rate this Spot") {
                                 fetchExistingRating(for: spot.id ?? "") { r in
                                     userRating = r
@@ -343,46 +344,53 @@ struct MapTabView: View {
         }
     }
 
-
     private func addSpot(
-        name:String,address:String,ratingValue:Int,
-        comment:String,chaiTypes:[String],
-        at coordinate:CLLocationCoordinate2D,
-        onComplete:@escaping(Bool)->Void
-    ){
+        name: String,
+        address: String,
+        ratingValue: Int,
+        comment: String,
+        chaiTypes: [String],
+        at coordinate: CLLocationCoordinate2D,
+        onComplete: @escaping (Bool) -> Void
+    ) {
         let coll = db.collection("chaiFinder")
-        coll.whereField("name",isEqualTo:name).getDocuments{snap,err in
-            guard err==nil,let docs=snap?.documents else {
-                onComplete(false);return
+        coll.whereField("name", isEqualTo: name).getDocuments { snap, err in
+            guard err == nil, let docs = snap?.documents else {
+                onComplete(false)
+                return
             }
-            let dup = docs.contains{
-                (try? $0.data(as:ChaiFinder.self))?.address==address
+            let dup = docs.contains {
+                (try? $0.data(as: ChaiFinder.self))?.address == address
             }
             if dup {
-                showDuplicateAlert=true; onComplete(false); return
+                showDuplicateAlert = true
+                onComplete(false)
+                return
             }
             let newSpot = ChaiFinder(
-                id:nil,name:name,
-                latitude:coordinate.latitude,
-                longitude:coordinate.longitude,
-                address:address,
-                chaiTypes:chaiTypes,
-                averageRating:nil,
-                ratingCount:nil
+                id: nil,
+                name: name,
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude,
+                address: address,
+                chaiTypes: chaiTypes,
+                averageRating: nil,
+                ratingCount: nil
             )
             do {
-                let ref = try coll.addDocument(from:newSpot)
-                guard let uid=Auth.auth().currentUser?.uid else {
-                    onComplete(false);return
+                let ref = try coll.addDocument(from: newSpot)
+                guard let uid = Auth.auth().currentUser?.uid else {
+                    onComplete(false)
+                    return
                 }
-                let newRating:[String:Any] = [
-                    "spotId":ref.documentID,
-                    "userId":uid,
-                    "value":ratingValue,
-                    "comment":comment,
-                    "timestamp":FieldValue.serverTimestamp()
+                let newRating: [String: Any] = [
+                    "spotId": ref.documentID,
+                    "userId": uid,
+                    "value": ratingValue,
+                    "comment": comment,
+                    "timestamp": FieldValue.serverTimestamp()
                 ]
-                db.collection("ratings").addDocument(data:newRating){ _ in
+                db.collection("ratings").addDocument(data: newRating) { _ in
                     onComplete(true)
                 }
             } catch {
@@ -393,20 +401,22 @@ struct MapTabView: View {
 }
 
 
+
+
 struct ListTabView: View {
     private let db = Firestore.firestore()
-
+    
     @State private var chaiFinder: [ChaiFinder] = []
     @State private var ratings: [Rating] = []
     @State private var selectedSpotForRating: SpotIDWrapper?
     @State private var userRating: Rating?
     @State private var isInRatingMode = false
     @State private var showThankYou = false
-
+    
     @State private var searchText = ""
     @State private var minRating: Double = 0
     @State private var sortMode: SortMode = .nearest
-
+    
     var body: some View {
         NavigationStack {
             VStack {
@@ -415,10 +425,10 @@ struct ListTabView: View {
                     TextField("Search chai spots or type a city…",
                               text: $searchText,
                               onCommit: { searchLocation(named: searchText) })
-                        .submitLabel(.search)
-                        .padding(8)
-                        .background(Color(white: 0.9))
-                        .cornerRadius(8)
+                    .submitLabel(.search)
+                    .padding(8)
+                    .background(Color(white: 0.9))
+                    .cornerRadius(8)
                     if !searchText.isEmpty {
                         Button(action: { searchText = "" }) {
                             Image(systemName: "xmark.circle.fill")
@@ -427,14 +437,14 @@ struct ListTabView: View {
                     }
                 }
                 .padding()
-
+                
                 // Filters
                 HStack {
                     Text("Min ⭐️: \(String(format: "%.1f", minRating))")
                     Slider(value: $minRating, in: 0...5, step: 0.5)
                 }
                 .padding(.horizontal)
-
+                
                 Picker("Sort", selection: $sortMode) {
                     ForEach(SortMode.allCases, id: \.self) {
                         Text($0.rawValue)
@@ -442,7 +452,7 @@ struct ListTabView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
-
+                
                 // List View
                 List(filteredChaiSpots) { spot in
                     Button {
@@ -477,14 +487,14 @@ struct ListTabView: View {
         }
         .onAppear(perform: loadData)
     }
-
+    
     // MARK: – Computed Filtered Spots
-
+    
     private var filteredChaiSpots: [ChaiFinder] {
         var filtered = chaiFinder.filter { spot in
             let matches = searchText.isEmpty
-                || spot.name.localizedCaseInsensitiveContains(searchText)
-                || spot.address.localizedCaseInsensitiveContains(searchText)
+            || spot.name.localizedCaseInsensitiveContains(searchText)
+            || spot.address.localizedCaseInsensitiveContains(searchText)
             return matches && (spot.averageRating ?? 0) >= minRating
         }
         switch sortMode {

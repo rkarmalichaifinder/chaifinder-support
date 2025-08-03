@@ -2,8 +2,6 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseFirestoreSwift
-// import FirebaseStorage  // Temporarily disabled
-// import PhotosUI         // Temporarily disabled
 
 struct ProfileView: View {
     @State private var user: UserProfile?
@@ -13,18 +11,25 @@ struct ProfileView: View {
     @State private var isEditing = false
     @State private var error: String?
     @State private var loading = true
-    // @State private var selectedItem: PhotosPickerItem? = nil
-    // @State private var selectedImage: UIImage? = nil
-    // @State private var uploadingImage = false
     @State private var showNamePrompt = false
     @State private var newName = ""
     @State private var showSuccessAlert = false
+
+    // New for deletion
+    @State private var showDeleteAlert = false
+    @State private var deleteError: String?
+    @State private var isDeleting = false
+    @State private var accountDeleted = false
 
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
                 if loading {
                     ProgressView("Loading profile...")
+                } else if accountDeleted {
+                    Text("Your account has been deleted.")
+                        .font(.title2)
+                        .foregroundColor(.red)
                 } else if let user = user {
                     profileImageView
 
@@ -42,6 +47,13 @@ struct ProfileView: View {
                         .buttonStyle(.borderedProminent)
                     }
 
+                    // Delete account button
+                    Button(role: .destructive) {
+                        showDeleteAlert = true
+                    } label: {
+                        Text("Delete My Account")
+                    }
+
                     Spacer()
                 } else {
                     Text("No user data found.")
@@ -52,7 +64,7 @@ struct ProfileView: View {
             .navigationTitle("My Profile")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if user != nil {
+                    if user != nil && !accountDeleted {
                         Button(isEditing ? "Save" : "Edit") {
                             if isEditing {
                                 saveChanges()
@@ -63,25 +75,17 @@ struct ProfileView: View {
                 }
 
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Log Out") {
-                        logout()
+                    if !accountDeleted {
+                        Button("Log Out") {
+                            logout()
+                        }
+                        .foregroundColor(.red)
                     }
-                    .foregroundColor(.red)
                 }
             }
             .onAppear {
                 loadUserProfile()
             }
-            // .photosPicker(isPresented: $uploadingImage, selection: $selectedItem, matching: .images)
-            // .onChange(of: selectedItem) { newItem in
-            //     Task {
-            //         if let data = try? await newItem?.loadTransferable(type: Data.self),
-            //            let image = UIImage(data: data) {
-            //             self.selectedImage = image
-            //             await uploadProfileImage(image)
-            //         }
-            //     }
-            // }
             .sheet(isPresented: $showNamePrompt) {
                 NavigationStack {
                     Form {
@@ -107,18 +111,19 @@ struct ProfileView: View {
             .alert("Name Updated", isPresented: $showSuccessAlert) {
                 Button("OK", role: .cancel) {}
             }
+            .alert("Confirm Deletion", isPresented: $showDeleteAlert) {
+                Button("Delete Account", role: .destructive) {
+                    deleteAccount()
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Are you sure you want to delete your account? This cannot be undone.")
+            }
         }
     }
 
     private var profileImageView: some View {
         VStack {
-            // if let image = selectedImage {
-            //     Image(uiImage: image)
-            //         .resizable()
-            //         .scaledToFill()
-            //         .frame(width: 120, height: 120)
-            //         .clipShape(Circle())
-            // }
             if let urlString = user?.photoURL,
                let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
@@ -137,9 +142,6 @@ struct ProfileView: View {
                     .frame(width: 120, height: 120)
             }
         }
-        // .onTapGesture {
-        //     uploadingImage = true
-        // }
     }
 
     private var editableFields: some View {
@@ -220,29 +222,6 @@ struct ProfileView: View {
         }
     }
 
-    // Temporarily disabled
-    // private func uploadProfileImage(_ image: UIImage) async {
-    //     guard let uid = Auth.auth().currentUser?.uid else {
-    //         print("❌ No current user found")
-    //         return
-    //     }
-    //     guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-    //         print("❌ Failed to get JPEG data from image")
-    //         return
-    //     }
-    //     let storage = Storage.storage()
-    //     let storageRef = storage.reference().child("profileImages/\(uid).jpg")
-    //     do {
-    //         let _ = try await storageRef.putDataAsync(imageData, metadata: nil)
-    //         let downloadURL = try await storageRef.downloadURL()
-    //         self.user?.photoURL = downloadURL.absoluteString
-    //         saveChanges()
-    //         print("✅ Uploaded profile image and updated photoURL.")
-    //     } catch {
-    //         print("❌ Error uploading profile image: \(error.localizedDescription)")
-    //     }
-    // }
-
     private func updateDisplayName(_ newName: String) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
@@ -268,6 +247,31 @@ struct ProfileView: View {
             bio = ""
         } catch {
             print("❌ Failed to log out: \(error.localizedDescription)")
+        }
+    }
+
+    private func deleteAccount() {
+        guard let user = Auth.auth().currentUser else { return }
+        let db = Firestore.firestore()
+        isDeleting = true
+
+        // Step 1: Delete Firestore doc
+        db.collection("users").document(user.uid).delete { error in
+            if let error = error {
+                print("❌ Firestore delete failed: \(error.localizedDescription)")
+                return
+            }
+
+            // Step 2: Delete Firebase Auth account
+            user.delete { error in
+                isDeleting = false
+                if let error = error {
+                    print("❌ Firebase delete failed: \(error.localizedDescription)")
+                } else {
+                    accountDeleted = true
+                    self.user = nil
+                }
+            }
         }
     }
 

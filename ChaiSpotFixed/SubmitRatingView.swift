@@ -67,13 +67,14 @@ struct SubmitRatingView: View {
         
         // Step 1: Fetch display name from Firestore
         db.collection("users").document(userId).getDocument { document, error in
-            var username = user.email ?? user.uid  // Fallback name
+            var username = user.email ?? user.uid  // Fallback to email or UID
+            
             if let doc = document, doc.exists {
                 username = doc.get("displayName") as? String ?? username
             }
             
             // Step 2: Build rating dictionary
-            let ratingDict: [String: Any] = [
+            var ratingDict: [String: Any] = [
                 "spotId": spotId,
                 "userId": userId,
                 "username": username,
@@ -81,6 +82,12 @@ struct SubmitRatingView: View {
                 "comment": comment,
                 "timestamp": FieldValue.serverTimestamp()
             ]
+            
+            // Only include likes/dislikes if it's a new rating
+            if existingRating == nil {
+                ratingDict["likes"] = 0
+                ratingDict["dislikes"] = 0
+            }
             
             let ratingsCollection = db.collection("ratings")
             
