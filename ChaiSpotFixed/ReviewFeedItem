@@ -1,0 +1,13 @@
+import Foundation
+
+struct ReviewFeedItem: Identifiable {
+    var id: String
+    var username: String
+    var ratingValue: Int
+    var comment: String
+    var chaiType: String
+    var timestamp: Date?
+    var spotName: String
+    var spotCity: String
+    var imageURL: String? // future use
+}

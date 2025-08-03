@@ -1,0 +1,53 @@
+struct ReviewCardView: View {
+    let review: ReviewFeedItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            // Profile icon
+            Image(systemName: "person.crop.circle")
+                .resizable()
+                .frame(width: 36, height: 36)
+                .foregroundColor(.black)
+
+            VStack(alignment: .leading, spacing: 6) {
+                // Reviewer and Spot Name
+                (
+                    Text("\(review.username) ranked ")
+                        .font(.custom("Kodchasan", size: 14)) +
+                    Text(review.spotName)
+                        .font(.custom("Kodchasan-Bold", size: 14))
+                )
+
+                // Location
+                HStack(spacing: 4) {
+                    Image(systemName: "mappin.and.ellipse")
+                    Text(review.spotCity)
+                }
+                .font(.custom("Kodchasan", size: 12))
+                .foregroundColor(.gray)
+
+                // Comment and rating
+                HStack(alignment: .top, spacing: 8) {
+                    Text("\(review.ratingValue)★")
+                        .font(.custom("Kodchasan-Bold", size: 14))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green)
+                        .cornerRadius(4)
+
+                    Text("Notes: \(review.comment)")
+                        .font(.custom("Kodchasan", size: 13))
+                }
+            }
+
+            Spacer()
+
+            // Placeholder image
+            Rectangle()
+                .fill(Color.gray.opacity(0.2))
+                .frame(width: 64, height: 64)
+                .cornerRadius(8)
+        }
+    }
+}
