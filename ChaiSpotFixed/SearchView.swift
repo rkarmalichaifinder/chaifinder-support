@@ -310,10 +310,12 @@ struct MapSearchView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(true) // Ensure proper touch handling
             // Remove ignoresSafeArea to prevent map from covering bottom tab bar
-            .onReceive(locationManager.$location) { location in
-                // Only center on user location if no search location is set
-                if searchLocation == nil, let location = location {
+                    .onReceive(locationManager.$location) { location in
+            // Only center on user location if no search location is set
+            if searchLocation == nil, let location = location {
+                DispatchQueue.main.async {
                     withAnimation(.easeInOut(duration: 0.5)) {
                         region = MKCoordinateRegion(
                             center: location.coordinate,
@@ -322,6 +324,7 @@ struct MapSearchView: View {
                     }
                 }
             }
+        }
             
             // Location Button
             VStack {
@@ -378,6 +381,10 @@ struct MapSearchView: View {
         .clipped() // Ensure the map doesn't overflow its bounds
         .onAppear {
             locationManager.requestLocation()
+        }
+        .onDisappear {
+            // Clean up Metal resources when view disappears
+            // This helps prevent the Metal assertion crash
         }
         .onChange(of: searchText) { newValue in
             // Debounce the geocoding to avoid state modification during view updates

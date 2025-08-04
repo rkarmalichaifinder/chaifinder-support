@@ -97,6 +97,8 @@ class FeedViewModel: ObservableObject {
         let group = DispatchGroup()
         var feedItems: [ReviewFeedItem] = []
         var processedCount = 0
+        let maxConcurrentRequests = 5 // Limit concurrent requests to prevent memory issues
+        let semaphore = DispatchSemaphore(value: maxConcurrentRequests)
         
         for document in documents {
             guard let data = document.data() as? [String: Any],
@@ -112,10 +114,14 @@ class FeedViewModel: ObservableObject {
             let chaiType = data["chaiType"] as? String
             
             group.enter()
+            semaphore.wait() // Limit concurrent requests
             
             // Load spot information from chaiFinder collection
             db.collection("chaiFinder").document(spotId).getDocument { snapshot, error in
-                defer { group.leave() }
+                defer { 
+                    group.leave()
+                    semaphore.signal() // Release semaphore
+                }
                 
                 let spotName: String
                 let spotAddress: String
