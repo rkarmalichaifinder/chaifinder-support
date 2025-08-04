@@ -8,5 +8,9 @@
 	</array>
 	<key>com.apple.developer.associated-domains</key>
 	<array/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.apple.developer.team-identifier</string>
+	</array>
 </dict>
 </plist>

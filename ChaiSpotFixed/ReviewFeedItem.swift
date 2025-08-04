@@ -3,8 +3,8 @@ import Foundation
 struct ReviewFeedItem: Identifiable {
     let id: String
     let spotId: String
-    let spotName: String
-    let spotAddress: String
+    var spotName: String // Made mutable so it can be updated
+    var spotAddress: String // Made mutable so it can be updated
     let userId: String
     let username: String
     let rating: Int

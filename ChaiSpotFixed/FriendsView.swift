@@ -13,6 +13,8 @@ struct FriendsView: View {
     @State private var sendingToUser: String?
     @State private var incomingRequests: [UserProfile] = []
     @State private var outgoingRequests: [UserProfile] = []
+    @State private var showingFriendRatings = false
+    @State private var selectedFriend: UserProfile?
 
     private let db = Firestore.firestore()
 
@@ -81,6 +83,11 @@ struct FriendsView: View {
                                 if !outgoingRequests.isEmpty {
                                     outgoingRequestsSection
                                 }
+                                
+                                // Current Friends
+                                if !(currentUser.friends?.isEmpty ?? true) {
+                                    friendsSection
+                                }
                             }
                             
                             // Invite Friends Section
@@ -98,6 +105,11 @@ struct FriendsView: View {
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.large)
             .onAppear(perform: reloadData)
+            .sheet(isPresented: $showingFriendRatings) {
+                if let friend = selectedFriend {
+                    FriendRatingsView(friend: friend)
+                }
+            }
         }
     }
     
@@ -249,6 +261,64 @@ struct FriendsView: View {
         )
     }
     
+    private var friendsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text("Current Friends")
+                .font(DesignSystem.Typography.headline)
+                .fontWeight(.bold)
+                .foregroundColor(DesignSystem.Colors.textPrimary)
+            
+            let friendProfiles = users.filter { user in
+                currentUser?.friends?.contains(user.uid) ?? false
+            }
+            
+            ForEach(friendProfiles) { friend in
+                friendCard(friend)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .shadow(
+            color: DesignSystem.Shadows.small.color,
+            radius: DesignSystem.Shadows.small.radius,
+            x: DesignSystem.Shadows.small.x,
+            y: DesignSystem.Shadows.small.y
+        )
+    }
+    
+    private func friendCard(_ user: UserProfile) -> some View {
+        HStack {
+            profileImage(for: user)
+                .frame(width: 50, height: 50)
+            
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text(user.displayName)
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.semibold)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                
+                Text(user.email)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+            }
+            
+            Spacer()
+            
+            Button(action: {
+                selectedFriend = user
+                showingFriendRatings = true
+            }) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(DesignSystem.Colors.primary)
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.secondary.opacity(0.05))
+        .cornerRadius(DesignSystem.CornerRadius.small)
+    }
+    
     private var inviteFriendsSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             Text("Invite Friends")
@@ -381,7 +451,7 @@ struct FriendsView: View {
 
             let allUsers = documents.compactMap { doc -> UserProfile? in
                 var user = try? doc.data(as: UserProfile.self)
-                user?.id = doc.documentID
+                // Don't manually set @DocumentID - let Firestore handle it
                 user?.uid = doc.get("uid") as? String ?? doc.documentID
                 return user
             }

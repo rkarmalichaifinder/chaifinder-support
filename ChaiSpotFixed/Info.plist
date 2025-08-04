@@ -12,31 +12,15 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string></string>
+			<string>Google OAuth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.1031321306480-kd7q1l665fgpreapmamb72j5p1ehlnrd</string>
+				<string>com.googleusercontent.apps.587784566464-a20p386bmiuvgaigq61snprnbb0fqios</string>
 			</array>
-		</dict>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string></string>
-		</dict>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>com.googleusercontent.apps.1031321306480-kd7q1l665fgpreapmamb72j5p1ehlnrd
-&lt;!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"&gt;
-&lt;plist version="1.0"&gt;
-&lt;string&gt;com.googleusercontent.apps.1031321306480-kd7q1l665fgpreapmamb72j5p1ehlnrd&lt;/string&gt;
-&lt;/plist&gt;
-</string>
 		</dict>
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>We use your location to show nearby chai spots.
-
-
-</string>
+	<string>We use your location to show nearby chai spots.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 </dict>

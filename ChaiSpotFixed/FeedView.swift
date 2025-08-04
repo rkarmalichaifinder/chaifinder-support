@@ -6,6 +6,7 @@ import FirebaseFirestoreSwift
 struct FeedView: View {
     @StateObject private var viewModel = FeedViewModel()
     @State private var searchText = ""
+    @State private var showingAddReview = false
     
     var body: some View {
         NavigationView {
@@ -21,6 +22,18 @@ struct FeedView: View {
                             .fontWeight(.bold)
                             .foregroundColor(DesignSystem.Colors.textPrimary)
                         
+                        // Feed Type Toggle
+                        Picker("Feed Type", selection: $viewModel.currentFeedType) {
+                            Text("Friends")
+                                .tag(FeedType.friends)
+                            Text("Community")
+                                .tag(FeedType.community)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .onChange(of: viewModel.currentFeedType) { newValue in
+                            viewModel.switchFeedType(to: newValue)
+                        }
+                        
                         // Search Bar
                         HStack {
                             Image(systemName: "magnifyingglass")
@@ -30,14 +43,17 @@ struct FeedView: View {
                             TextField("Search reviews...", text: $searchText)
                                 .font(DesignSystem.Typography.bodyMedium)
                                 .foregroundColor(DesignSystem.Colors.textPrimary)
-                                                            .onChange(of: searchText) { newValue in
-                                // Debounce the search to avoid state modification during view updates
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    if searchText == newValue {
-                                        viewModel.filterReviews(searchText)
+                                .onChange(of: searchText) { newValue in
+                                    // Use proper async handling to avoid state modification during view updates
+                                    Task {
+                                        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+                                        await MainActor.run {
+                                            if searchText == newValue {
+                                                viewModel.filterReviews(searchText)
+                                            }
+                                        }
                                     }
                                 }
-                            }
                             
                             if !searchText.isEmpty {
                                 Button(action: { 
@@ -63,14 +79,17 @@ struct FeedView: View {
                     
                     // Feed Content
                     if viewModel.isLoading {
-                        VStack {
+                        VStack(spacing: DesignSystem.Spacing.lg) {
                             Spacer()
                             ProgressView()
                                 .scaleEffect(1.2)
                             Text("Loading feed...")
                                 .font(DesignSystem.Typography.bodyLarge)
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
-                                .padding(.top, DesignSystem.Spacing.md)
+                            Text("This may take a few seconds")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .opacity(0.7)
                             Spacer()
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -104,6 +123,10 @@ struct FeedView: View {
                             .padding(DesignSystem.Spacing.lg)
                             .padding(.bottom, 100) // Space for FAB
                         }
+                        .refreshable {
+                            // Pull to refresh
+                            viewModel.loadFeed()
+                        }
                     }
                     
                     Spacer(minLength: 0)
@@ -115,7 +138,7 @@ struct FeedView: View {
                     HStack {
                         Spacer()
                         Button(action: {
-                            // Add new review
+                            showingAddReview = true
                         }) {
                             Image(systemName: "plus")
                                 .font(.title2)
@@ -136,7 +159,37 @@ struct FeedView: View {
             }
             .navigationBarHidden(true)
             .onAppear {
-                viewModel.loadFeed()
+                // Only load if not already loading
+                if !viewModel.isLoading && viewModel.reviews.isEmpty {
+                    viewModel.loadFeed()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+                // Clear cache when app goes to background
+                viewModel.clearCache()
+            }
+            .sheet(isPresented: $showingAddReview) {
+                // TODO: Add a view to select a chai spot and add a review
+                // For now, show a placeholder
+                VStack(spacing: DesignSystem.Spacing.lg) {
+                    Text("Add Review")
+                        .font(DesignSystem.Typography.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                    
+                    Text("Select a chai spot to review")
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Button("Go to Search") {
+                        showingAddReview = false
+                        // TODO: Navigate to search tab
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+                .padding(DesignSystem.Spacing.xl)
+                .presentationDetents([.medium])
             }
         }
     }

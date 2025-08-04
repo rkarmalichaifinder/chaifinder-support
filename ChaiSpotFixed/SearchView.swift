@@ -10,6 +10,12 @@ struct SearchView: View {
     @State private var searchText = ""
     @State private var chaiSpots: [ChaiSpot] = []
     @State private var isLoading = false
+    @State private var filteredSpots: [ChaiSpot] = []
+    @State private var searchLocation: CLLocation?
+    @State private var isGeocoding = false
+    @State private var selectedSpot: ChaiSpot?
+    @State private var showingSpotDetail = false
+    @State private var showingAddChaiSpot = false
     @StateObject private var locationManager = LocationManager()
     
     var body: some View {
@@ -95,9 +101,13 @@ struct SearchView: View {
                 // Content
                 VStack(spacing: 0) {
                     if isMapView {
-                        MapSearchView(searchText: $searchText, chaiSpots: $chaiSpots, locationManager: locationManager)
+                        MapSearchView(searchText: $searchText, chaiSpots: $chaiSpots, searchLocation: $searchLocation, locationManager: locationManager, onAddChaiSpot: {
+                            showingAddChaiSpot = true
+                        })
                     } else {
-                        ListSearchView(searchText: $searchText, chaiSpots: $chaiSpots, locationManager: locationManager)
+                        ListSearchView(searchText: $searchText, chaiSpots: $chaiSpots, locationManager: locationManager, onAddChaiSpot: {
+                            showingAddChaiSpot = true
+                        })
                     }
                     Spacer(minLength: 0)
                 }
@@ -106,6 +116,14 @@ struct SearchView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped() // Ensure content doesn't overflow
             .navigationBarHidden(true)
+            .sheet(isPresented: $showingAddChaiSpot) {
+                AddChaiFinderForm(
+                    coordinate: locationManager.location?.coordinate,
+                    onSubmit: { name, address, rating, comments, chaiTypes, coordinate in
+                        handleAddChaiSpot(name: name, address: address, rating: rating, comments: comments, chaiTypes: chaiTypes, coordinate: coordinate)
+                    }
+                )
+            }
             .onAppear {
                 loadAllChaiSpots()
             }
@@ -118,22 +136,39 @@ struct SearchView: View {
             return
         }
         
-        // Check if it's a location-based search (zip code or city)
+        print("🔍 Searching for: '\(searchText)'")
+        
+        // Check if it's a location-based search (zip code, city, or address)
         let isLocationSearch = (searchText.count == 5 && Int(searchText) != nil) || 
-                              searchText.range(of: "^[A-Za-z\\s]+$", options: .regularExpression) != nil
+                              searchText.range(of: "^[A-Za-z\\s]+$", options: .regularExpression) != nil ||
+                              searchText.lowercased().contains("street") ||
+                              searchText.lowercased().contains("avenue") ||
+                              searchText.lowercased().contains("road") ||
+                              searchText.lowercased().contains("drive") ||
+                              searchText.lowercased().contains("lane") ||
+                              searchText.lowercased().contains("blvd") ||
+                              searchText.lowercased().contains("st") ||
+                              searchText.lowercased().contains("ave") ||
+                              searchText.lowercased().contains("rd")
         
         if isLocationSearch {
-            // For location searches, load all spots and let ListSearchView handle filtering
+            print("📍 Detected location search, geocoding and centering map...")
+            // For location searches, geocode the location and center the map
+            geocodeSearchLocation(searchText)
+            // Also load all spots for the list view
             loadAllChaiSpots()
         } else {
-            // For name/address searches, search the database
-            searchByNameAndAddress()
+            print("🔍 Detected content search, searching database...")
+            // For content searches (names, reviews, etc.), search the database
+            searchByNameAddressAndReviews()
         }
     }
     
-    private func searchByNameAndAddress() {
+    private func searchByNameAddressAndReviews() {
         isLoading = true
         let db = Firestore.firestore()
+        
+        print("🔍 Searching database for: '\(searchText)'")
         
         // First, try to search by name
         db.collection("chaiFinder")
@@ -142,7 +177,7 @@ struct SearchView: View {
             .getDocuments { snapshot, error in
                 DispatchQueue.main.async {
                     if let error = error {
-                        print("Error searching by name: \(error.localizedDescription)")
+                        print("❌ Error searching by name: \(error.localizedDescription)")
                         // If name search fails, try address search
                         self.searchByAddress()
                         return
@@ -158,6 +193,7 @@ struct SearchView: View {
                     
                     // If we found results by name, use them
                     if !nameResults.isEmpty {
+                        print("✅ Found \(nameResults.count) results by name")
                         self.chaiSpots = nameResults
                         self.isLoading = false
                     } else {
@@ -171,6 +207,8 @@ struct SearchView: View {
     private func searchByAddress() {
         let db = Firestore.firestore()
         
+        print("🔍 Searching by address: '\(searchText)'")
+        
         // Search by address (case-insensitive)
         db.collection("chaiFinder")
             .whereField("address", isGreaterThanOrEqualTo: searchText)
@@ -180,19 +218,133 @@ struct SearchView: View {
                     self.isLoading = false
                     
                     if let error = error {
-                        print("Error searching by address: \(error.localizedDescription)")
+                        print("❌ Error searching by address: \(error.localizedDescription)")
+                        // If address search fails, try review content search
+                        self.searchByReviewContent()
+                        return
+                    }
+                    
+                    guard let documents = snapshot?.documents else {
+                        // If no address results, try review content search
+                        self.searchByReviewContent()
+                        return
+                    }
+                    
+                    let addressResults = self.processSearchResults(documents)
+                    
+                    if !addressResults.isEmpty {
+                        print("✅ Found \(addressResults.count) results by address")
+                        self.chaiSpots = addressResults
+                    } else {
+                        // If no address results, try review content search
+                        self.searchByReviewContent()
+                    }
+                }
+            }
+    }
+    
+    private func searchByReviewContent() {
+        let db = Firestore.firestore()
+        
+        print("🔍 Searching by review content: '\(searchText)'")
+        
+        // For review content search, we need to search in the ratings collection
+        // This is more complex as we need to find ratings that contain the search text
+        // and then get the corresponding chai spots
+        
+        db.collection("ratings")
+            .whereField("comments", isGreaterThanOrEqualTo: searchText)
+            .whereField("comments", isLessThan: searchText + "\u{f8ff}")
+            .getDocuments { snapshot, error in
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    
+                    if let error = error {
+                        print("❌ Error searching by review content: \(error.localizedDescription)")
                         self.chaiSpots = []
                         return
                     }
                     
                     guard let documents = snapshot?.documents else {
+                        print("❌ No review content found for: '\(self.searchText)'")
                         self.chaiSpots = []
                         return
                     }
                     
-                    self.chaiSpots = self.processSearchResults(documents)
+                    // Extract unique spot IDs from the ratings
+                    let spotIds = Set(documents.compactMap { doc in
+                        doc.data()["spotId"] as? String
+                    })
+                    
+                    print("📝 Found \(spotIds.count) unique spots with matching review content")
+                    
+                    if spotIds.isEmpty {
+                        self.chaiSpots = []
+                        return
+                    }
+                    
+                    // Now fetch the actual chai spots for these IDs
+                    self.fetchChaiSpotsByIds(Array(spotIds))
                 }
             }
+    }
+    
+    private func fetchChaiSpotsByIds(_ spotIds: [String]) {
+        let db = Firestore.firestore()
+        
+        print("🔄 Fetching \(spotIds.count) chai spots by IDs...")
+        
+        var fetchedSpots: [ChaiSpot] = []
+        let group = DispatchGroup()
+        
+        for spotId in spotIds {
+            group.enter()
+            
+            db.collection("chaiFinder").document(spotId).getDocument { snapshot, error in
+                defer { group.leave() }
+                
+                if let error = error {
+                    print("❌ Error fetching spot \(spotId): \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let document = snapshot, document.exists,
+                      let data = document.data() else {
+                    print("⚠️ Spot \(spotId) not found or has no data")
+                    return
+                }
+                
+                guard let name = data["name"] as? String,
+                      let latitude = data["latitude"] as? Double,
+                      let longitude = data["longitude"] as? Double,
+                      let address = data["address"] as? String else {
+                    print("⚠️ Spot \(spotId) missing required fields")
+                    return
+                }
+                
+                let chaiTypes = data["chaiTypes"] as? [String] ?? []
+                let averageRating = data["averageRating"] as? Double ?? 0.0
+                let ratingCount = data["ratingCount"] as? Int ?? 0
+                
+                let spot = ChaiSpot(
+                    id: document.documentID,
+                    name: name,
+                    address: address,
+                    latitude: latitude,
+                    longitude: longitude,
+                    chaiTypes: chaiTypes,
+                    averageRating: averageRating,
+                    ratingCount: ratingCount
+                )
+                
+                fetchedSpots.append(spot)
+            }
+        }
+        
+        group.notify(queue: .main) {
+            print("✅ Fetched \(fetchedSpots.count) spots from review content search")
+            self.chaiSpots = fetchedSpots
+        }
     }
     
     private func loadAllChaiSpots() {
@@ -225,7 +377,9 @@ struct SearchView: View {
     }
     
     private func processSearchResults(_ documents: [QueryDocumentSnapshot]) -> [ChaiSpot] {
-        return documents.compactMap { document in
+        print("🔄 Processing \(documents.count) documents...")
+        
+        let processedSpots: [ChaiSpot] = documents.compactMap { document in
             guard let data = document.data() as? [String: Any],
                   let name = data["name"] as? String,
                   let latitude = data["latitude"] as? Double,
@@ -239,7 +393,7 @@ struct SearchView: View {
             let averageRating = data["averageRating"] as? Double ?? 0.0
             let ratingCount = data["ratingCount"] as? Int ?? 0
             
-            return ChaiSpot(
+            let spot = ChaiSpot(
                 id: document.documentID,
                 name: name,
                 address: address,
@@ -249,6 +403,139 @@ struct SearchView: View {
                 averageRating: averageRating,
                 ratingCount: ratingCount
             )
+            
+            print("✅ Processed spot: \(name) (ID: \(document.documentID))")
+            return spot
+        }
+        
+        print("📊 Final processed spots count: \(processedSpots.count)")
+        return processedSpots
+    }
+    
+    // MARK: - Geocoding Functions
+    private func geocodeSearchLocation(_ searchText: String) {
+        guard !searchText.isEmpty else {
+            searchLocation = nil
+            return
+        }
+        
+        print("🗺️ Geocoding search location: '\(searchText)'")
+        
+        // Check if it looks like a zip code (5 digits)
+        if searchText.count == 5, let _ = Int(searchText) {
+            geocodeZipCode(searchText)
+            return
+        }
+        
+        // Check if it looks like a city name (contains letters and possibly spaces)
+        if searchText.range(of: "^[A-Za-z\\s]+$", options: .regularExpression) != nil {
+            geocodeCity(searchText)
+            return
+        }
+        
+        // For other searches, try general geocoding
+        geocodeGeneral(searchText)
+    }
+    
+    private func geocodeZipCode(_ zipCode: String) {
+        isGeocoding = true
+        let geocoder = CLGeocoder()
+        
+        geocoder.geocodeAddressString(zipCode) { placemarks, error in
+            DispatchQueue.main.async {
+                self.isGeocoding = false
+                
+                if let error = error {
+                    print("❌ Geocoding error for zip code \(zipCode): \(error.localizedDescription)")
+                    return
+                }
+                
+                if let location = placemarks?.first?.location {
+                    self.searchLocation = location
+                    print("✅ Found location for zip code \(zipCode): \(location.coordinate)")
+                }
+            }
+        }
+    }
+    
+    private func geocodeCity(_ cityName: String) {
+        isGeocoding = true
+        let geocoder = CLGeocoder()
+        
+        geocoder.geocodeAddressString(cityName) { placemarks, error in
+            DispatchQueue.main.async {
+                self.isGeocoding = false
+                
+                if let error = error {
+                    print("❌ Geocoding error for city \(cityName): \(error.localizedDescription)")
+                    return
+                }
+                
+                if let location = placemarks?.first?.location {
+                    self.searchLocation = location
+                    print("✅ Found location for city \(cityName): \(location.coordinate)")
+                }
+            }
+        }
+    }
+    
+    private func geocodeGeneral(_ searchText: String) {
+        isGeocoding = true
+        let geocoder = CLGeocoder()
+        
+        geocoder.geocodeAddressString(searchText) { placemarks, error in
+            DispatchQueue.main.async {
+                self.isGeocoding = false
+                
+                if let error = error {
+                    print("❌ Geocoding error for \(searchText): \(error.localizedDescription)")
+                    return
+                }
+                
+                if let location = placemarks?.first?.location {
+                    self.searchLocation = location
+                    print("✅ Found location for \(searchText): \(location.coordinate)")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Add Chai Spot Handler
+    private func handleAddChaiSpot(name: String, address: String, rating: Int, comments: String, chaiTypes: [String], coordinate: CLLocationCoordinate2D) {
+        let db = Firestore.firestore()
+        
+        let newSpotData: [String: Any] = [
+            "name": name,
+            "address": address,
+            "latitude": coordinate.latitude,
+            "longitude": coordinate.longitude,
+            "chaiTypes": chaiTypes,
+            "averageRating": Double(rating),
+            "ratingCount": 1,
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+        
+        print("🔄 Adding new chai spot to database: \(name)")
+        print("📍 Location: \(coordinate.latitude), \(coordinate.longitude)")
+        print("📝 Data: \(newSpotData)")
+        
+        db.collection("chaiFinder").addDocument(data: newSpotData) { error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Failed to add chai spot: \(error.localizedDescription)")
+                } else {
+                    print("✅ Successfully added new chai spot: \(name)")
+                    print("🔄 Current chaiSpots count before reload: \(self.chaiSpots.count)")
+                    
+                    // Reload the chai spots to include the new one
+                    self.loadAllChaiSpots()
+                    
+                    print("🔄 Reloading chai spots...")
+                }
+                
+                // Close the sheet
+                self.showingAddChaiSpot = false
+            }
         }
     }
 } 
@@ -257,15 +544,17 @@ struct SearchView: View {
 struct MapSearchView: View {
     @Binding var searchText: String
     @Binding var chaiSpots: [ChaiSpot]
+    @Binding var searchLocation: CLLocation?
     @ObservedObject var locationManager: LocationManager
+    let onAddChaiSpot: () -> Void
     @State private var region = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194), // Default to San Francisco
         span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
     )
     @State private var selectedSpot: ChaiSpot?
     @State private var showingSpotDetail = false
-    @State private var searchLocation: CLLocation?
     @State private var isGeocoding = false
+    @State private var showingAddChaiSpot = false
     
     var body: some View {
         ZStack {
@@ -358,9 +647,7 @@ struct MapSearchView: View {
                 Spacer()
                 HStack {
                     Spacer()
-                    Button(action: {
-                        // Add new chai spot
-                    }) {
+                    Button(action: onAddChaiSpot) {
                         Image(systemName: "plus")
                             .font(.title2)
                             .foregroundColor(.white)
@@ -386,126 +673,27 @@ struct MapSearchView: View {
             // Clean up Metal resources when view disappears
             // This helps prevent the Metal assertion crash
         }
-        .onChange(of: searchText) { newValue in
-            // Debounce the geocoding to avoid state modification during view updates
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if searchText == newValue {
-                    geocodeSearchLocation(newValue)
+        .onChange(of: searchLocation) { location in
+            // Center map on the searched location
+            if let location = location {
+                print("🗺️ Centering map on searched location: \(location.coordinate)")
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    region = MKCoordinateRegion(
+                        center: location.coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                    )
                 }
             }
         }
         .sheet(isPresented: $showingSpotDetail) {
             if let spot = selectedSpot {
                 ChaiSpotDetailSheet(spot: spot, userLocation: locationManager.location)
-            }
-        }
-    }
-    
-    private func geocodeSearchLocation(_ searchText: String) {
-        guard !searchText.isEmpty else {
-            searchLocation = nil
-            return
-        }
-        
-        // Check if it looks like a zip code (5 digits)
-        if searchText.count == 5, let _ = Int(searchText) {
-            geocodeZipCode(searchText)
-            return
-        }
-        
-        // Check if it looks like a city name (contains letters and possibly spaces)
-        if searchText.range(of: "^[A-Za-z\\s]+$", options: .regularExpression) != nil {
-            geocodeCity(searchText)
-            return
-        }
-        
-        // For other searches, try general geocoding
-        geocodeGeneral(searchText)
-    }
-    
-    private func geocodeZipCode(_ zipCode: String) {
-        isGeocoding = true
-        let geocoder = CLGeocoder()
-        
-        geocoder.geocodeAddressString(zipCode) { placemarks, error in
-            DispatchQueue.main.async {
-                self.isGeocoding = false
-                
-                if let error = error {
-                    print("Geocoding error for zip code \(zipCode): \(error.localizedDescription)")
-                    return
-                }
-                
-                if let location = placemarks?.first?.location {
-                    self.searchLocation = location
-                    print("Map: Found location for zip code \(zipCode): \(location.coordinate)")
-                    
-                    // Center map on the searched location
-                    withAnimation(.easeInOut(duration: 0.5)) {
-                        self.region = MKCoordinateRegion(
-                            center: location.coordinate,
-                            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                        )
+                    .onAppear {
+                        // Small delay to ensure sheet is fully presented before loading data
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            // Data will be loaded in ChaiSpotDetailSheet.onAppear
+                        }
                     }
-                }
-            }
-        }
-    }
-    
-    private func geocodeCity(_ cityName: String) {
-        isGeocoding = true
-        let geocoder = CLGeocoder()
-        
-        geocoder.geocodeAddressString(cityName) { placemarks, error in
-            DispatchQueue.main.async {
-                self.isGeocoding = false
-                
-                if let error = error {
-                    print("Geocoding error for city \(cityName): \(error.localizedDescription)")
-                    return
-                }
-                
-                if let location = placemarks?.first?.location {
-                    self.searchLocation = location
-                    print("Map: Found location for city \(cityName): \(location.coordinate)")
-                    
-                    // Center map on the searched location
-                    withAnimation(.easeInOut(duration: 0.5)) {
-                        self.region = MKCoordinateRegion(
-                            center: location.coordinate,
-                            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                        )
-                    }
-                }
-            }
-        }
-    }
-    
-    private func geocodeGeneral(_ searchText: String) {
-        isGeocoding = true
-        let geocoder = CLGeocoder()
-        
-        geocoder.geocodeAddressString(searchText) { placemarks, error in
-            DispatchQueue.main.async {
-                self.isGeocoding = false
-                
-                if let error = error {
-                    print("Geocoding error for \(searchText): \(error.localizedDescription)")
-                    return
-                }
-                
-                if let location = placemarks?.first?.location {
-                    self.searchLocation = location
-                    print("Map: Found location for \(searchText): \(location.coordinate)")
-                    
-                    // Center map on the searched location
-                    withAnimation(.easeInOut(duration: 0.5)) {
-                        self.region = MKCoordinateRegion(
-                            center: location.coordinate,
-                            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                        )
-                    }
-                }
             }
         }
     }
@@ -556,6 +744,7 @@ struct ListSearchView: View {
     @Binding var searchText: String
     @Binding var chaiSpots: [ChaiSpot]
     @ObservedObject var locationManager: LocationManager
+    let onAddChaiSpot: () -> Void
     @State private var searchLocation: CLLocation?
     @State private var isGeocoding = false
     @State private var filteredSpots: [ChaiSpot] = []
@@ -619,7 +808,7 @@ struct ListSearchView: View {
                 HStack {
                     Spacer()
                     Button(action: {
-                        // Add new chai spot
+                        onAddChaiSpot()
                     }) {
                         Image(systemName: "plus")
                             .font(.title2)
@@ -638,14 +827,6 @@ struct ListSearchView: View {
                 }
             }
         }
-        .onChange(of: searchText) { newValue in
-            // Debounce the geocoding to avoid state modification during view updates
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if searchText == newValue {
-                    geocodeSearchLocation(newValue)
-                }
-            }
-        }
         .onChange(of: chaiSpots) { _ in
             // Debounce the filtering to avoid state modification during view updates
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -654,95 +835,6 @@ struct ListSearchView: View {
         }
         .onAppear {
             filterSpotsByLocation()
-        }
-    }
-    
-    private func geocodeSearchLocation(_ searchText: String) {
-        guard !searchText.isEmpty else {
-            searchLocation = nil
-            filteredSpots = chaiSpots
-            return
-        }
-        
-        // Check if it looks like a zip code (5 digits)
-        if searchText.count == 5, let _ = Int(searchText) {
-            geocodeZipCode(searchText)
-            return
-        }
-        
-        // Check if it looks like a city name (contains letters and possibly spaces)
-        if searchText.range(of: "^[A-Za-z\\s]+$", options: .regularExpression) != nil {
-            geocodeCity(searchText)
-            return
-        }
-        
-        // For other searches, try general geocoding
-        geocodeGeneral(searchText)
-    }
-    
-    private func geocodeZipCode(_ zipCode: String) {
-        isGeocoding = true
-        let geocoder = CLGeocoder()
-        
-        geocoder.geocodeAddressString(zipCode) { placemarks, error in
-            DispatchQueue.main.async {
-                self.isGeocoding = false
-                
-                if let error = error {
-                    print("Geocoding error for zip code \(zipCode): \(error.localizedDescription)")
-                    return
-                }
-                
-                if let location = placemarks?.first?.location {
-                    self.searchLocation = location
-                    print("Found location for zip code \(zipCode): \(location.coordinate)")
-                    self.filterSpotsByLocation()
-                }
-            }
-        }
-    }
-    
-    private func geocodeCity(_ cityName: String) {
-        isGeocoding = true
-        let geocoder = CLGeocoder()
-        
-        geocoder.geocodeAddressString(cityName) { placemarks, error in
-            DispatchQueue.main.async {
-                self.isGeocoding = false
-                
-                if let error = error {
-                    print("Geocoding error for city \(cityName): \(error.localizedDescription)")
-                    return
-                }
-                
-                if let location = placemarks?.first?.location {
-                    self.searchLocation = location
-                    print("Found location for city \(cityName): \(location.coordinate)")
-                    self.filterSpotsByLocation()
-                }
-            }
-        }
-    }
-    
-    private func geocodeGeneral(_ searchText: String) {
-        isGeocoding = true
-        let geocoder = CLGeocoder()
-        
-        geocoder.geocodeAddressString(searchText) { placemarks, error in
-            DispatchQueue.main.async {
-                self.isGeocoding = false
-                
-                if let error = error {
-                    print("Geocoding error for \(searchText): \(error.localizedDescription)")
-                    return
-                }
-                
-                if let location = placemarks?.first?.location {
-                    self.searchLocation = location
-                    print("Found location for \(searchText): \(location.coordinate)")
-                    self.filterSpotsByLocation()
-                }
-            }
         }
     }
     
@@ -770,7 +862,9 @@ struct ChaiSpotCard: View {
     let spot: ChaiSpot
     let userLocation: CLLocation?
     @State private var ratings: [Rating] = []
+    @State private var friendRatings: [Rating] = []
     @State private var isLoadingRatings = false
+    @State private var isLoadingFriendRatings = false
     @State private var showingRatingSheet = false
     @State private var isAddingToList = false
     @State private var showingAddToListAlert = false
@@ -797,6 +891,12 @@ struct ChaiSpotCard: View {
         return Double(totalRating) / Double(ratings.count)
     }
     
+    var calculatedFriendAverageRating: Double {
+        guard !friendRatings.isEmpty else { return 0.0 }
+        let totalRating = friendRatings.reduce(0) { $0 + $1.value }
+        return Double(totalRating) / Double(friendRatings.count)
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             // Header
@@ -814,25 +914,56 @@ struct ChaiSpotCard: View {
                 
                 Spacer()
                 
-                // Rating
-                if calculatedAverageRating > 0 {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("\(String(format: "%.1f", calculatedAverageRating))★")
-                            .font(DesignSystem.Typography.bodyMedium)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
-                            .background(DesignSystem.Colors.ratingGreen)
-                            .cornerRadius(DesignSystem.CornerRadius.small)
-                        
-                        Text("\(ratings.count) reviews")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                // Ratings Section
+                VStack(alignment: .trailing, spacing: 4) {
+                    // Community Rating
+                    if calculatedAverageRating > 0 {
+                        HStack(spacing: 4) {
+                            Text("Community:")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            Text("\(String(format: "%.1f", calculatedAverageRating))★")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(DesignSystem.Colors.ratingGreen)
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                            
+                            Text("(\(ratings.count))")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                        }
                     }
-                } else if isLoadingRatings {
-                    ProgressView()
-                        .scaleEffect(0.6)
+                    
+                    // Friends Rating
+                    if calculatedFriendAverageRating > 0 {
+                        HStack(spacing: 4) {
+                            Text("Friends:")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            Text("\(String(format: "%.1f", calculatedFriendAverageRating))★")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(DesignSystem.Colors.primary)
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                            
+                            Text("(\(friendRatings.count))")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                        }
+                    }
+                    
+                    if isLoadingRatings || isLoadingFriendRatings {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                    }
                 }
             }
             
@@ -863,12 +994,16 @@ struct ChaiSpotCard: View {
                         showingRatingSheet = true
                     }
                     .buttonStyle(SecondaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true)
                     
                     Button(isAddingToList ? "Adding..." : "Add to List") {
                         addToMyList()
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(isAddingToList)
+                    .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -1032,7 +1167,6 @@ struct ChaiSpotCard: View {
                         let dislikes = data["dislikes"] as? Int
                         
                         return Rating(
-                            id: document.documentID,
                             spotId: spotId,
                             userId: userId,
                             username: username,
@@ -1045,26 +1179,84 @@ struct ChaiSpotCard: View {
                     }
                 }
             }
-    }
-}
-
-// MARK: - Chai Spot Model
-struct ChaiSpot: Identifiable, Equatable {
-    let id: String
-    let name: String
-    let address: String
-    let latitude: Double
-    let longitude: Double
-    let chaiTypes: [String]
-    let averageRating: Double
-    let ratingCount: Int
-    
-    var coordinate: CLLocationCoordinate2D {
-        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        
+        // Also load friend ratings
+        loadFriendRatings()
     }
     
-    // Implement Equatable
-    static func == (lhs: ChaiSpot, rhs: ChaiSpot) -> Bool {
-        return lhs.id == rhs.id
+    private func loadFriendRatings() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            return
+        }
+        
+        isLoadingFriendRatings = true
+        let db = Firestore.firestore()
+        
+        // First get the current user's friends
+        db.collection("users").document(currentUserId).getDocument { snapshot, error in
+            if let error = error {
+                print("❌ Error loading user friends: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self.isLoadingFriendRatings = false
+                }
+                return
+            }
+            
+            guard let data = snapshot?.data(),
+                  let friends = data["friends"] as? [String],
+                  !friends.isEmpty else {
+                DispatchQueue.main.async {
+                    self.isLoadingFriendRatings = false
+                }
+                return
+            }
+            
+            // Now get ratings from friends for this spot
+            db.collection("ratings")
+                .whereField("spotId", isEqualTo: self.spot.id)
+                .whereField("userId", in: friends)
+                .getDocuments { snapshot, error in
+                    DispatchQueue.main.async {
+                        self.isLoadingFriendRatings = false
+                        
+                        if let error = error {
+                            print("❌ Error loading friend ratings: \(error.localizedDescription)")
+                            return
+                        }
+                        
+                        guard let documents = snapshot?.documents else {
+                            return
+                        }
+                        
+                        self.friendRatings = documents.compactMap { document -> Rating? in
+                            guard let data = document.data() as? [String: Any],
+                                  let spotId = data["spotId"] as? String,
+                                  let userId = data["userId"] as? String,
+                                  let value = data["value"] as? Int else {
+                                return nil
+                            }
+                            
+                            let username = data["username"] as? String
+                            let comment = data["comment"] as? String
+                            let timestamp = data["timestamp"] as? Timestamp
+                            let likes = data["likes"] as? Int
+                            let dislikes = data["dislikes"] as? Int
+                            
+                            return Rating(
+                                spotId: spotId,
+                                userId: userId,
+                                username: username,
+                                value: value,
+                                comment: comment,
+                                timestamp: timestamp?.dateValue(),
+                                likes: likes,
+                                dislikes: dislikes
+                            )
+                        }
+                        
+                        print("✅ Loaded \(self.friendRatings.count) friend ratings for \(self.spot.name)")
+                    }
+                }
+        }
     }
 } 

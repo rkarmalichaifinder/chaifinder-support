@@ -9,11 +9,14 @@ struct ChaiSpotDetailSheet: View {
     let userLocation: CLLocation?
     @Environment(\.dismiss) private var dismiss
     @State private var ratings: [Rating] = []
+    @State private var friendRatings: [Rating] = []
     @State private var isLoadingRatings = false
+    @State private var isLoadingFriendRatings = false
     @State private var showingRatingSheet = false
     @State private var isAddingToList = false
     @State private var showingAddToListAlert = false
     @State private var addToListMessage = ""
+    @State private var showingFriendRatings = false
     
     var distanceString: String {
         guard let userLocation = userLocation else {
@@ -38,7 +41,11 @@ struct ChaiSpotDetailSheet: View {
                     headerSection
                     
                     // Rating Section
-                    ratingSection
+                    if isLoadingRatings {
+                        loadingSection
+                    } else {
+                        ratingSection
+                    }
                     
                     // Chai Types Section
                     if !spot.chaiTypes.isEmpty {
@@ -64,6 +71,7 @@ struct ChaiSpotDetailSheet: View {
         }
         .onAppear {
             loadRatings()
+            loadFriendRatings()
         }
         .sheet(isPresented: $showingRatingSheet) {
             SubmitRatingView(
@@ -83,6 +91,18 @@ struct ChaiSpotDetailSheet: View {
     }
     
     // MARK: - View Components
+    
+    private var loadingSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("Loading ratings...")
+                .font(DesignSystem.Typography.bodyMedium)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(DesignSystem.Spacing.xl)
+    }
     
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -118,10 +138,36 @@ struct ChaiSpotDetailSheet: View {
     
     private var ratingSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            Text("Rating")
-                .font(DesignSystem.Typography.headline)
-                .fontWeight(.bold)
-                .foregroundColor(DesignSystem.Colors.textPrimary)
+            HStack {
+                Text("Rating")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                
+                Spacer()
+                
+                // Friend Ratings Toggle
+                if !friendRatings.isEmpty {
+                    Button(action: {
+                        showingFriendRatings.toggle()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: showingFriendRatings ? "person.2.fill" : "person.2")
+                                .font(.system(size: 14))
+                            Text(showingFriendRatings ? "Friends" : "All")
+                                .font(DesignSystem.Typography.caption)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(showingFriendRatings ? DesignSystem.Colors.primary : DesignSystem.Colors.textSecondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(showingFriendRatings ? DesignSystem.Colors.primary.opacity(0.1) : Color.clear)
+                        )
+                    }
+                }
+            }
             
             if isLoadingRatings {
                 HStack {
@@ -131,8 +177,8 @@ struct ChaiSpotDetailSheet: View {
                         .font(DesignSystem.Typography.bodyMedium)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
-            } else if ratings.isEmpty {
-                Text("No ratings yet")
+            } else if (showingFriendRatings ? friendRatings : ratings).isEmpty {
+                Text(showingFriendRatings ? "No friend ratings yet" : "No ratings yet")
                     .font(DesignSystem.Typography.bodyMedium)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
             } else {
@@ -147,7 +193,10 @@ struct ChaiSpotDetailSheet: View {
     
     private var averageRatingView: some View {
         HStack {
-            Text("\(String(format: "%.1f", calculatedAverageRating))★")
+            let currentRatings = showingFriendRatings ? friendRatings : ratings
+            let average = currentRatings.isEmpty ? 0.0 : Double(currentRatings.reduce(0) { $0 + $1.value }) / Double(currentRatings.count)
+            
+            Text("\(String(format: "%.1f", average))★")
                 .font(DesignSystem.Typography.titleMedium)
                 .fontWeight(.bold)
                 .foregroundColor(.white)
@@ -156,7 +205,7 @@ struct ChaiSpotDetailSheet: View {
                 .background(DesignSystem.Colors.ratingGreen)
                 .cornerRadius(DesignSystem.CornerRadius.medium)
             
-            Text("\(ratings.count) reviews")
+            Text("\(currentRatings.count) \(showingFriendRatings ? "friend" : "") reviews")
                 .font(DesignSystem.Typography.bodyLarge)
                 .foregroundColor(DesignSystem.Colors.textSecondary)
             
@@ -166,8 +215,14 @@ struct ChaiSpotDetailSheet: View {
     
     private var individualRatingsView: some View {
         LazyVStack(spacing: DesignSystem.Spacing.md) {
-            ForEach(ratings.prefix(5)) { rating in
-                ratingCard(rating)
+            if showingFriendRatings {
+                ForEach(friendRatings) { rating in
+                    ratingCard(rating)
+                }
+            } else {
+                ForEach(ratings.prefix(5)) { rating in
+                    ratingCard(rating)
+                }
             }
         }
     }
@@ -255,12 +310,6 @@ struct ChaiSpotDetailSheet: View {
         .padding(DesignSystem.Spacing.lg)
         .background(DesignSystem.Colors.cardBackground)
         .cornerRadius(DesignSystem.CornerRadius.medium)
-    }
-    
-    private var calculatedAverageRating: Double {
-        guard !ratings.isEmpty else { return 0.0 }
-        let totalRating = ratings.reduce(0) { $0 + $1.value }
-        return Double(totalRating) / Double(ratings.count)
     }
     
     private func addToMyList() {
@@ -405,7 +454,6 @@ struct ChaiSpotDetailSheet: View {
                         print("✅ Loaded rating: \(username ?? "Anonymous") - \(value)★")
                         
                         return Rating(
-                            id: document.documentID,
                             spotId: spotId,
                             userId: userId,
                             username: username,
@@ -418,8 +466,20 @@ struct ChaiSpotDetailSheet: View {
                     }
                     
                     print("✅ Loaded \(self.ratings.count) ratings")
-                    print("📊 Average rating: \(self.calculatedAverageRating)")
+                    print("�� Average rating: \(Double(self.ratings.reduce(0) { $0 + $1.value }) / Double(self.ratings.count))")
                 }
             }
+    }
+    
+    private func loadFriendRatings() {
+        isLoadingFriendRatings = true
+        
+        FriendService.getFriendsRatings(forSpotId: spot.id) { ratings in
+            DispatchQueue.main.async {
+                self.isLoadingFriendRatings = false
+                self.friendRatings = ratings
+                print("✅ Loaded \(ratings.count) friend ratings for spot: \(self.spot.id)")
+            }
+        }
     }
 } 
