@@ -48,7 +48,7 @@ struct FriendService {
         }
     }
 
-    // ✅ Send Friend Request using subcollections
+    // ✅ Send Friend Request using subcollections and arrays
     static func sendFriendRequest(to recipientUID: String, completion: @escaping (Bool) -> Void) {
         guard let senderUID = Auth.auth().currentUser?.uid else {
             completion(false)
@@ -57,28 +57,38 @@ struct FriendService {
 
         let db = Firestore.firestore()
         let timestamp = Timestamp()
+        let batch = db.batch()
 
+        // Add to subcollections
         let incomingRef = db.collection("users").document(recipientUID)
             .collection("incomingFriendRequests").document(senderUID)
-
         let outgoingRef = db.collection("users").document(senderUID)
             .collection("outgoingFriendRequests").document(recipientUID)
 
-        incomingRef.setData(["timestamp": timestamp]) { error in
-            if let error = error {
-                print("❌ Failed to add to recipient's incomingFriendRequests: \(error.localizedDescription)")
-                completion(false)
-                return
-            }
+        batch.setData(["timestamp": timestamp], forDocument: incomingRef)
+        batch.setData(["timestamp": timestamp], forDocument: outgoingRef)
 
-            outgoingRef.setData(["timestamp": timestamp]) { error in
-                if let error = error {
-                    print("❌ Failed to add to sender's outgoingFriendRequests: \(error.localizedDescription)")
-                    completion(false)
-                } else {
-                    print("✅ Friend request sent!")
-                    completion(true)
-                }
+        // Update arrays in user documents
+        let recipientUserRef = db.collection("users").document(recipientUID)
+        let senderUserRef = db.collection("users").document(senderUID)
+
+        // Add sender to recipient's incoming requests array
+        batch.updateData([
+            "incomingRequests": FieldValue.arrayUnion([senderUID])
+        ], forDocument: recipientUserRef)
+
+        // Add recipient to sender's outgoing requests array
+        batch.updateData([
+            "outgoingRequests": FieldValue.arrayUnion([recipientUID])
+        ], forDocument: senderUserRef)
+
+        batch.commit { error in
+            if let error = error {
+                print("❌ Failed to send friend request: \(error.localizedDescription)")
+                completion(false)
+            } else {
+                print("✅ Friend request sent successfully!")
+                completion(true)
             }
         }
     }
@@ -94,11 +104,13 @@ struct FriendService {
         let timestamp = Timestamp()
         let batch = db.batch()
 
+        // Add to friends subcollections
         let currentUserFriendRef = db.collection("users").document(currentUID)
             .collection("friends").document(senderUID)
         let senderUserFriendRef = db.collection("users").document(senderUID)
             .collection("friends").document(currentUID)
 
+        // Remove from requests subcollections
         let incomingRequestRef = db.collection("users").document(currentUID)
             .collection("incomingFriendRequests").document(senderUID)
         let outgoingRequestRef = db.collection("users").document(senderUID)
@@ -108,6 +120,26 @@ struct FriendService {
         batch.setData(["timestamp": timestamp], forDocument: senderUserFriendRef)
         batch.deleteDocument(incomingRequestRef)
         batch.deleteDocument(outgoingRequestRef)
+
+        // Update arrays in user documents
+        let currentUserRef = db.collection("users").document(currentUID)
+        let senderUserRef = db.collection("users").document(senderUID)
+
+        // Add to friends arrays
+        batch.updateData([
+            "friends": FieldValue.arrayUnion([senderUID])
+        ], forDocument: currentUserRef)
+        batch.updateData([
+            "friends": FieldValue.arrayUnion([currentUID])
+        ], forDocument: senderUserRef)
+
+        // Remove from requests arrays
+        batch.updateData([
+            "incomingRequests": FieldValue.arrayRemove([senderUID])
+        ], forDocument: currentUserRef)
+        batch.updateData([
+            "outgoingRequests": FieldValue.arrayRemove([currentUID])
+        ], forDocument: senderUserRef)
 
         batch.commit { error in
             if let error = error {
@@ -128,26 +160,36 @@ struct FriendService {
         }
 
         let db = Firestore.firestore()
+        let batch = db.batch()
+
+        // Remove from requests subcollections
         let incomingRequestRef = db.collection("users").document(currentUID)
             .collection("incomingFriendRequests").document(senderUID)
         let outgoingRequestRef = db.collection("users").document(senderUID)
             .collection("outgoingFriendRequests").document(currentUID)
 
-        incomingRequestRef.delete { error in
-            if let error = error {
-                print("❌ Failed to delete incoming request: \(error.localizedDescription)")
-                completion(false)
-                return
-            }
+        batch.deleteDocument(incomingRequestRef)
+        batch.deleteDocument(outgoingRequestRef)
 
-            outgoingRequestRef.delete { error in
-                if let error = error {
-                    print("❌ Failed to delete outgoing request: \(error.localizedDescription)")
-                    completion(false)
-                } else {
-                    print("✅ Friend request rejected.")
-                    completion(true)
-                }
+        // Update arrays in user documents
+        let currentUserRef = db.collection("users").document(currentUID)
+        let senderUserRef = db.collection("users").document(senderUID)
+
+        // Remove from requests arrays
+        batch.updateData([
+            "incomingRequests": FieldValue.arrayRemove([senderUID])
+        ], forDocument: currentUserRef)
+        batch.updateData([
+            "outgoingRequests": FieldValue.arrayRemove([currentUID])
+        ], forDocument: senderUserRef)
+
+        batch.commit { error in
+            if let error = error {
+                print("❌ Failed to reject friend request: \(error.localizedDescription)")
+                completion(false)
+            } else {
+                print("✅ Friend request rejected.")
+                completion(true)
             }
         }
     }

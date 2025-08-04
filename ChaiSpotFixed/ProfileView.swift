@@ -14,6 +14,8 @@ struct ProfileView: View {
     @State private var showNamePrompt = false
     @State private var newName = ""
     @State private var showSuccessAlert = false
+    @State private var savedSpotsCount = 0
+    @State private var showingSavedSpots = false
 
     // New for deletion
     @State private var showDeleteAlert = false
@@ -23,45 +25,76 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                if loading {
-                    ProgressView("Loading profile...")
-                } else if accountDeleted {
-                    Text("Your account has been deleted.")
-                        .font(.title2)
-                        .foregroundColor(.red)
-                } else if let user = user {
-                    profileImageView
-
-                    if isEditing {
-                        editableFields
-                    } else {
-                        profileFields
-                    }
-
-                    if shouldPromptForName(user.displayName) {
-                        Button("Set Your Name") {
-                            newName = displayName
-                            showNamePrompt = true
+            ScrollView {
+                VStack(spacing: DesignSystem.Spacing.lg) {
+                    if loading {
+                        VStack {
+                            ProgressView()
+                                .scaleEffect(1.2)
+                            Text("Loading profile...")
+                                .font(DesignSystem.Typography.bodyLarge)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .padding(.top, DesignSystem.Spacing.md)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(DesignSystem.Spacing.xl)
+                    } else if accountDeleted {
+                        VStack(spacing: DesignSystem.Spacing.lg) {
+                            Image(systemName: "person.crop.circle.badge.minus")
+                                .font(.system(size: 48))
+                                .foregroundColor(.red)
+                            
+                            Text("Account Deleted")
+                                .font(DesignSystem.Typography.titleMedium)
+                                .fontWeight(.bold)
+                                .foregroundColor(.red)
+                            
+                            Text("Your account has been successfully deleted.")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(DesignSystem.Spacing.xl)
+                    } else if let user = user {
+                        // Profile Header
+                        profileHeaderSection
+                        
+                        // My List Section
+                        myListSection
+                        
+                        // Profile Actions
+                        profileActionsSection
+                        
+                        // Delete Account
+                        deleteAccountSection
+                        
+                        Spacer(minLength: 100)
+                    } else {
+                        VStack(spacing: DesignSystem.Spacing.lg) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 48))
+                                .foregroundColor(DesignSystem.Colors.secondary)
+                            
+                            Text("No User Data")
+                                .font(DesignSystem.Typography.headline)
+                                .fontWeight(.bold)
+                                .foregroundColor(DesignSystem.Colors.textPrimary)
+                            
+                            Text("Unable to load your profile information.")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(DesignSystem.Spacing.xl)
                     }
-
-                    // Delete account button
-                    Button(role: .destructive) {
-                        showDeleteAlert = true
-                    } label: {
-                        Text("Delete My Account")
-                    }
-
-                    Spacer()
-                } else {
-                    Text("No user data found.")
-                        .foregroundColor(.red)
                 }
+                .padding(DesignSystem.Spacing.lg)
             }
-            .padding()
-            .navigationTitle("My Profile")
+            .background(DesignSystem.Colors.background)
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if user != nil && !accountDeleted {
@@ -71,6 +104,7 @@ struct ProfileView: View {
                             }
                             isEditing.toggle()
                         }
+                        .foregroundColor(DesignSystem.Colors.primary)
                     }
                 }
 
@@ -85,28 +119,39 @@ struct ProfileView: View {
             }
             .onAppear {
                 loadUserProfile()
+                loadSavedSpotsCount()
             }
             .sheet(isPresented: $showNamePrompt) {
                 NavigationStack {
-                    Form {
-                        Section(header: Text("Enter your name")) {
-                            TextField("Full Name", text: $newName)
-                        }
-                        Section {
-                            Button("Save") {
-                                updateDisplayName(newName)
-                            }
-                        }
-                    }
-                    .navigationTitle("Update Name")
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
+                    VStack(spacing: DesignSystem.Spacing.lg) {
+                        Text("Update Your Name")
+                            .font(DesignSystem.Typography.headline)
+                            .fontWeight(.bold)
+                            .foregroundColor(DesignSystem.Colors.textPrimary)
+                        
+                        TextField("Full Name", text: $newName)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(DesignSystem.Typography.bodyMedium)
+                        
+                        HStack(spacing: DesignSystem.Spacing.md) {
                             Button("Cancel") {
                                 showNamePrompt = false
                             }
+                            .buttonStyle(SecondaryButtonStyle())
+                            
+                            Button("Save") {
+                                updateDisplayName(newName)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
                         }
                     }
+                    .padding(DesignSystem.Spacing.lg)
+                    .navigationTitle("Update Name")
+                    .navigationBarTitleDisplayMode(.inline)
                 }
+            }
+            .sheet(isPresented: $showingSavedSpots) {
+                SavedSpotsView()
             }
             .alert("Name Updated", isPresented: $showSuccessAlert) {
                 Button("OK", role: .cancel) {}
@@ -122,8 +167,11 @@ struct ProfileView: View {
         }
     }
 
-    private var profileImageView: some View {
-        VStack {
+    // MARK: - View Components
+    
+    private var profileHeaderSection: some View {
+        VStack(spacing: DesignSystem.Spacing.lg) {
+            // Profile Image
             if let urlString = user?.photoURL,
                let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
@@ -131,42 +179,203 @@ struct ProfileView: View {
                     case .success(let image):
                         image.resizable().scaledToFill()
                     default:
-                        Circle().fill(Color.gray)
+                        Circle().fill(DesignSystem.Colors.textSecondary)
                     }
                 }
                 .frame(width: 120, height: 120)
                 .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(DesignSystem.Colors.primary, lineWidth: 3)
+                )
             } else {
                 Circle()
-                    .fill(Color.gray)
+                    .fill(DesignSystem.Colors.textSecondary)
                     .frame(width: 120, height: 120)
+                    .overlay(
+                        Circle()
+                            .stroke(DesignSystem.Colors.primary, lineWidth: 3)
+                    )
+            }
+            
+            // Name Prompt Button
+            if shouldPromptForName(user?.displayName ?? "") {
+                Button("Set Your Name") {
+                    newName = displayName
+                    showNamePrompt = true
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .shadow(
+            color: DesignSystem.Shadows.small.color,
+            radius: DesignSystem.Shadows.small.radius,
+            x: DesignSystem.Shadows.small.x,
+            y: DesignSystem.Shadows.small.y
+        )
+    }
+    
+    private var myListSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text("My List")
+                        .font(DesignSystem.Typography.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                    
+                    Text("\(savedSpotsCount) saved spots")
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+                
+                Spacer()
+                
+                Button("View All") {
+                    showingSavedSpots = true
+                }
+                .buttonStyle(SecondaryButtonStyle())
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .shadow(
+            color: DesignSystem.Shadows.small.color,
+            radius: DesignSystem.Shadows.small.radius,
+            x: DesignSystem.Shadows.small.x,
+            y: DesignSystem.Shadows.small.y
+        )
+    }
+    
+    private var profileActionsSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            if isEditing {
+                editableFields
+            } else {
+                profileFields
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .shadow(
+            color: DesignSystem.Shadows.small.color,
+            radius: DesignSystem.Shadows.small.radius,
+            x: DesignSystem.Shadows.small.x,
+            y: DesignSystem.Shadows.small.y
+        )
+    }
+    
+    private var deleteAccountSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Button(role: .destructive) {
+                showDeleteAlert = true
+            } label: {
+                HStack {
+                    Image(systemName: "trash")
+                        .font(.system(size: 16))
+                    Text("Delete My Account")
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .fontWeight(.medium)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, DesignSystem.Spacing.md)
+                .background(Color.red)
+                .cornerRadius(DesignSystem.CornerRadius.medium)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .shadow(
+            color: DesignSystem.Shadows.small.color,
+            radius: DesignSystem.Shadows.small.radius,
+            x: DesignSystem.Shadows.small.x,
+            y: DesignSystem.Shadows.small.y
+        )
+    }
+
+    private var editableFields: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Display Name")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.medium)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                
+                TextField("Enter your name", text: $displayName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .font(DesignSystem.Typography.bodyMedium)
+            }
+            
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Email")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.medium)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                
+                TextField("Enter your email", text: $email)
+                    .keyboardType(.emailAddress)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .font(DesignSystem.Typography.bodyMedium)
+            }
+            
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Bio")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.medium)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                
+                TextField("Tell us about yourself", text: $bio)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .font(DesignSystem.Typography.bodyMedium)
             }
         }
     }
 
-    private var editableFields: some View {
-        Group {
-            TextField("Display Name", text: $displayName)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-
-            TextField("Email", text: $email)
-                .keyboardType(.emailAddress)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-
-            TextField("Bio", text: $bio)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-        }
-    }
-
     private var profileFields: some View {
-        Group {
-            Text(user?.displayName ?? "")
-                .font(.title)
-            Text(user?.email ?? "")
-                .foregroundColor(.gray)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Name")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.medium)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                Text(user?.displayName ?? "Not set")
+                    .font(DesignSystem.Typography.bodyLarge)
+                    .fontWeight(.semibold)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+            }
+            
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Email")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.medium)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                Text(user?.email ?? "Not set")
+                    .font(DesignSystem.Typography.bodyLarge)
+                    .fontWeight(.semibold)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+            }
+            
             if let bio = user?.bio, !bio.isEmpty {
-                Text(bio)
-                    .italic()
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text("Bio")
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .fontWeight(.medium)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                    
+                    Text(bio)
+                        .font(DesignSystem.Typography.bodyLarge)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                        .italic()
+                }
             }
         }
     }
@@ -180,27 +389,64 @@ struct ProfileView: View {
 
         let db = Firestore.firestore()
         db.collection("users").document(uid).getDocument { snapshot, err in
-            self.loading = false
-            if let err = err {
-                self.error = err.localizedDescription
-                return
-            }
+            DispatchQueue.main.async {
+                self.loading = false
+                if let err = err {
+                    self.error = err.localizedDescription
+                    return
+                }
 
-            guard let doc = snapshot, doc.exists else {
-                self.error = "No user data found"
-                return
-            }
+                guard let doc = snapshot, doc.exists else {
+                    self.error = "No user data found"
+                    return
+                }
 
-            do {
-                let fetchedUser = try doc.data(as: UserProfile.self)
-                self.user = fetchedUser
-                self.displayName = fetchedUser.displayName
-                self.email = fetchedUser.email
-                self.bio = fetchedUser.bio ?? ""
-            } catch {
-                self.error = "Failed to decode user data"
-                print("🧨 Decoding error: \(error)")
-                print("🔥 Document data: \(doc.data() ?? [:])")
+                do {
+                    let fetchedUser = try doc.data(as: UserProfile.self)
+                    self.user = fetchedUser
+                    self.displayName = fetchedUser.displayName
+                    self.email = fetchedUser.email
+                    self.bio = fetchedUser.bio ?? ""
+                } catch {
+                    self.error = "Failed to decode user data"
+                    print("🧨 Decoding error: \(error)")
+                    print("🔥 Document data: \(doc.data() ?? [:])")
+                }
+            }
+        }
+    }
+    
+    private func loadSavedSpotsCount() {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            return
+        }
+        
+        let db = Firestore.firestore()
+        print("🔄 Loading saved spots count for user: \(userId)")
+        
+        db.collection("users").document(userId).getDocument { snapshot, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Error loading saved spots count: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let data = snapshot?.data() else {
+                    print("❌ No user data found for saved spots count")
+                    self.savedSpotsCount = 0
+                    return
+                }
+                
+                print("📄 User document for count: \(data)")
+                
+                guard let savedSpotIds = data["savedSpots"] as? [String] else {
+                    print("❌ No savedSpots field found in user document for count")
+                    self.savedSpotsCount = 0
+                    return
+                }
+                
+                print("📄 Found \(savedSpotIds.count) saved spots for count")
+                self.savedSpotsCount = savedSpotIds.count
             }
         }
     }
@@ -227,13 +473,15 @@ struct ProfileView: View {
 
         let db = Firestore.firestore()
         db.collection("users").document(uid).updateData(["displayName": newName]) { error in
-            if error == nil {
-                self.displayName = newName
-                self.user?.displayName = newName
-                self.showNamePrompt = false
-                self.showSuccessAlert = true
-            } else {
-                print("❌ Failed to update name:", error?.localizedDescription ?? "")
+            DispatchQueue.main.async {
+                if error == nil {
+                    self.displayName = newName
+                    self.user?.displayName = newName
+                    self.showNamePrompt = false
+                    self.showSuccessAlert = true
+                } else {
+                    print("❌ Failed to update name:", error?.localizedDescription ?? "")
+                }
             }
         }
     }
@@ -264,12 +512,14 @@ struct ProfileView: View {
 
             // Step 2: Delete Firebase Auth account
             user.delete { error in
-                isDeleting = false
-                if let error = error {
-                    print("❌ Firebase delete failed: \(error.localizedDescription)")
-                } else {
-                    accountDeleted = true
-                    self.user = nil
+                DispatchQueue.main.async {
+                    self.isDeleting = false
+                    if let error = error {
+                        print("❌ Firebase delete failed: \(error.localizedDescription)")
+                    } else {
+                        self.accountDeleted = true
+                        self.user = nil
+                    }
                 }
             }
         }
