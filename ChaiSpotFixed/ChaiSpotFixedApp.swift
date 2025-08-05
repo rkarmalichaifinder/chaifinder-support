@@ -22,6 +22,8 @@ struct ChaiSpotFixedApp: App {
 
         print("✅ Firebase clientID: \(FirebaseApp.app()?.options.clientID ?? "nil")")
         print("✅ Firebase GOOGLE_APP_ID: \(FirebaseApp.app()?.options.googleAppID ?? "nil")")
+        print("✅ Firebase Bundle ID: \(FirebaseApp.app()?.options.bundleID ?? "nil")")
+        print("✅ App Bundle ID: \(Bundle.main.bundleIdentifier ?? "nil")")
 
         _ = AuthObserver.shared  // Optional: your own observer setup
     }

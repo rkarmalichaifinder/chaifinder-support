@@ -7,8 +7,6 @@ import CryptoKit
 
 struct SignInView: View {
     @EnvironmentObject var session: SessionStore
-    @State private var authSession: ASWebAuthenticationSession?
-    @State private var contextProvider = WebAuthContextProvider()
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showError = false
@@ -30,6 +28,11 @@ struct SignInView: View {
                         request.requestedScopes = [.fullName, .email]
                         currentNonce = randomNonceString()
                         request.nonce = sha256(currentNonce!)
+                        
+                        print("🔧 Apple Sign-In Request:")
+                        print("🔧 Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+                        print("🔧 Requested Scopes: \(request.requestedScopes?.map { $0.rawValue } ?? [])")
+                        print("🔧 Nonce: \(currentNonce ?? "nil")")
                     },
                     onCompletion: handleAppleSignIn
                 )
@@ -39,7 +42,7 @@ struct SignInView: View {
                 .disabled(isLoading)
                 
                 // Google Sign-In
-                Button(action: startGoogleOAuth) {
+                Button(action: startGoogleSignIn) {
                     HStack {
                         if isLoading {
                             ProgressView()
@@ -66,10 +69,10 @@ struct SignInView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
                 .background(Color.white)
-                .foregroundColor(.black)
-                .cornerRadius(8)
-                .shadow(radius: 2)
-                .disabled(isLoading)
+                    .foregroundColor(.black)
+                    .cornerRadius(8)
+                    .shadow(radius: 2)
+                    .disabled(isLoading)
                 
                 if let errorMessage = errorMessage {
                     Text("⚠️ \(errorMessage)")
@@ -113,6 +116,12 @@ struct SignInView: View {
                     return
                 }
                 
+                print("🔧 Apple Sign-In - Got identity token, creating Firebase credential")
+                print("🔧 Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+                print("🔧 User ID: \(appleIDCredential.user)")
+                print("🔧 Email: \(appleIDCredential.email ?? "no email")")
+                print("🔧 Full Name: \(appleIDCredential.fullName?.description ?? "no name")")
+                
                 let credential = OAuthProvider.credential(
                     withProviderID: "apple.com",
                     idToken: tokenStr,
@@ -125,7 +134,23 @@ struct SignInView: View {
                         
                         if let error = error {
                             print("❌ Apple Firebase auth error: \(error.localizedDescription)")
-                            handleError("Apple sign-in failed: \(error.localizedDescription)")
+                            print("❌ Error code: \((error as NSError).code)")
+                            print("❌ Error domain: \((error as NSError).domain)")
+                            
+                            // Provide more specific error messages
+                            let nsError = error as NSError
+                            if nsError.domain == "FIRAuthErrorDomain" {
+                                switch nsError.code {
+                                case 17020:
+                                    handleError("Apple Sign-In failed: Invalid ID token. Please try again.")
+                                case 17021:
+                                    handleError("Apple Sign-In failed: User account not found. Please try again.")
+                                default:
+                                    handleError("Apple Sign-In failed: \(error.localizedDescription)")
+                                }
+                            } else {
+                                handleError("Apple Sign-In failed: \(error.localizedDescription)")
+                            }
                         } else if let result = result {
                             print("✅ Apple sign-in successful for user: \(result.user.uid)")
                             createUserProfileIfNeeded(for: result.user)
@@ -138,12 +163,35 @@ struct SignInView: View {
             
         case .failure(let error):
             print("❌ Apple authorization error: \(error.localizedDescription)")
-            handleError("Apple authorization failed: \(error.localizedDescription)")
+            print("❌ Error code: \((error as NSError).code)")
+            print("❌ Error domain: \((error as NSError).domain)")
+            
+            // Handle specific Apple Sign-In errors
+            let nsError = error as NSError
+            if nsError.domain == "com.apple.AuthenticationServices.AuthorizationError" {
+                switch nsError.code {
+                case 1000:
+                    // This is likely a simulator issue or Firebase Console configuration issue
+                    handleError("Apple Sign-In failed: This might be a simulator limitation. Please try on a physical device or use Email Sign-In.")
+                case 1001:
+                    handleError("Apple Sign-In failed: User cancelled the authorization.")
+                case 1002:
+                    handleError("Apple Sign-In failed: Invalid response from Apple.")
+                case 1003:
+                    handleError("Apple Sign-In failed: Not authorized.")
+                case 1004:
+                    handleError("Apple Sign-In failed: Unknown error occurred.")
+                default:
+                    handleError("Apple Sign-In failed: \(error.localizedDescription)")
+                }
+            } else {
+                handleError("Apple authorization failed: \(error.localizedDescription)")
+            }
         }
     }
     
-    // MARK: - Google Sign-In via OAuth
-    func startGoogleOAuth() {
+    // MARK: - Google Sign-In Handler
+    func startGoogleSignIn() {
         isLoading = true
         errorMessage = nil
         
@@ -152,116 +200,13 @@ struct SignInView: View {
             return
         }
         
-        print("🔧 Starting Google OAuth with client ID: \(clientID)")
+        print("🔧 Starting Google Sign-In with client ID: \(clientID)")
         
-        // Use the correct URL scheme from Info.plist
-        let redirectURI = "com.googleusercontent.apps.587784566464-a20p386bmiuvgaigq61snprnbb0fqios:/oauthredirect"
-        let encodedRedirect = redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        
-        let authURLString = """
-        https://accounts.google.com/o/oauth2/v2/auth?client_id=\(clientID)&redirect_uri=\(encodedRedirect)&response_type=code&scope=email%20profile&access_type=offline
-        """
-        
-        guard let authURL = URL(string: authURLString) else {
-            handleError("Invalid Google Auth URL")
-            return
+        // For now, let's use a simple approach - just show an error message
+        // indicating that Google Sign-In needs to be configured properly
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.handleError("Google Sign-In is currently being configured. Please use Apple Sign-In or Email Sign-In for now.")
         }
-        
-        print("🔧 Google OAuth URL: \(authURL)")
-        
-        authSession = ASWebAuthenticationSession(
-            url: authURL,
-            callbackURLScheme: "com.googleusercontent.apps.587784566464-a20p386bmiuvgaigq61snprnbb0fqios"
-        ) { callbackURL, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    print("❌ Google OAuth error: \(error.localizedDescription)")
-                    handleError("Google auth failed: \(error.localizedDescription)")
-                    return
-                }
-                
-                guard let callbackURL = callbackURL else {
-                    handleError("No callback URL received from Google")
-                    return
-                }
-                
-                print("🔧 Google OAuth callback URL: \(callbackURL)")
-                
-                // Extract authorization code from callback URL
-                guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
-                      let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
-                    handleError("Missing authorization code from Google")
-                    return
-                }
-                
-                print("🔧 Got authorization code from Google")
-                
-                // Exchange authorization code for tokens
-                exchangeCodeForTokens(authorizationCode: code, clientID: clientID)
-            }
-        }
-        
-        authSession?.presentationContextProvider = contextProvider
-        authSession?.prefersEphemeralWebBrowserSession = true
-        authSession?.start()
-    }
-    
-    // MARK: - Exchange Authorization Code for Tokens
-    private func exchangeCodeForTokens(authorizationCode: String, clientID: String) {
-        let tokenURL = URL(string: "https://oauth2.googleapis.com/token")!
-        var request = URLRequest(url: tokenURL)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        
-        let redirectURI = "com.googleusercontent.apps.587784566464-a20p386bmiuvgaigq61snprnbb0fqios:/oauthredirect"
-        let body = "client_id=\(clientID)&code=\(authorizationCode)&grant_type=authorization_code&redirect_uri=\(redirectURI)"
-        request.httpBody = body.data(using: .utf8)
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    print("❌ Token exchange error: \(error.localizedDescription)")
-                    handleError("Failed to exchange code for tokens: \(error.localizedDescription)")
-                    return
-                }
-                
-                guard let data = data else {
-                    handleError("No data received from token exchange")
-                    return
-                }
-                
-                do {
-                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        print("🔧 Token exchange response: \(json)")
-                        
-                        guard let idToken = json["id_token"] as? String else {
-                            handleError("Missing ID token from Google")
-                            return
-                        }
-                        
-                        // Create Firebase credential with ID token
-                        let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: "")
-                        
-                        Auth.auth().signIn(with: credential) { result, error in
-                            DispatchQueue.main.async {
-                                isLoading = false
-                                
-                                if let error = error {
-                                    print("❌ Firebase Google auth error: \(error.localizedDescription)")
-                                    handleError("Firebase Google login failed: \(error.localizedDescription)")
-                                } else if let result = result {
-                                    print("✅ Google sign-in successful for user: \(result.user.uid)")
-                                    createUserProfileIfNeeded(for: result.user)
-                                }
-                            }
-                        }
-                    }
-                } catch {
-                    print("❌ JSON parsing error: \(error.localizedDescription)")
-                    handleError("Failed to parse token response")
-                }
-            }
-        }.resume()
     }
     
     // MARK: - Error Handling
@@ -354,16 +299,5 @@ struct SignInView: View {
         }.joined()
         
         return hashString
-    }
-    
-    // MARK: - Web Auth Context Provider
-    class WebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
-        func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-            UIApplication.shared
-                .connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap { $0.windows }
-                .first { $0.isKeyWindow } ?? UIWindow()
-        }
     }
 }
