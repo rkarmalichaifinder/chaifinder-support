@@ -1,7 +1,7 @@
 import SwiftUI
+import Firebase
 import FirebaseAuth
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 struct SavedSpotsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -107,8 +107,6 @@ struct SavedSpotsView: View {
         
         let db = Firestore.firestore()
         
-        print("🔄 Loading saved spots for user: \(userId)")
-        
         // First, get the user's saved spots IDs
         db.collection("users").document(userId).getDocument { snapshot, error in
             if let error = error {
@@ -116,7 +114,6 @@ struct SavedSpotsView: View {
                     self.errorMessage = "Failed to load saved spots: \(error.localizedDescription)"
                     self.isLoading = false
                 }
-                print("❌ Error loading user document: \(error.localizedDescription)")
                 return
             }
             
@@ -125,29 +122,22 @@ struct SavedSpotsView: View {
                     self.errorMessage = "No user data found"
                     self.isLoading = false
                 }
-                print("❌ No user data found")
                 return
             }
-            
-            print("📄 User document data: \(data)")
             
             guard let savedSpotIds = data["savedSpots"] as? [String] else {
                 DispatchQueue.main.async {
                     self.savedSpots = []
                     self.isLoading = false
                 }
-                print("❌ No savedSpots field found in user document")
                 return
             }
-            
-            print("📄 Found \(savedSpotIds.count) saved spot IDs: \(savedSpotIds)")
             
             if savedSpotIds.isEmpty {
                 DispatchQueue.main.async {
                     self.savedSpots = []
                     self.isLoading = false
                 }
-                print("ℹ️ No saved spots found")
                 return
             }
             
@@ -319,9 +309,8 @@ struct SavedSpotCard: View {
             "savedSpots": FieldValue.arrayRemove([spot.id])
         ]) { error in
             if let error = error {
-                print("❌ Error removing from list: \(error.localizedDescription)")
+                // Handle error silently
             } else {
-                print("✅ Removed \(spot.name) from saved spots")
                 onRemove()
             }
         }

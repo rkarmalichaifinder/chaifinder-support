@@ -1,7 +1,7 @@
 import SwiftUI
+import Firebase
 import FirebaseAuth
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 enum FeedType {
     case friends
@@ -70,7 +70,6 @@ class FeedViewModel: ObservableObject {
     private func checkUserFriends(currentUserId: String, completion: @escaping (Bool) -> Void) {
         db.collection("users").document(currentUserId).getDocument { snapshot, error in
             if let error = error {
-                print("❌ Error checking user friends: \(error.localizedDescription)")
                 completion(false)
                 return
             }
@@ -86,12 +85,9 @@ class FeedViewModel: ObservableObject {
     }
     
     private func loadFriendRatings(currentUserId: String) {
-        print("🔄 Loading friend ratings...")
-        
         // Get user's friends list
         db.collection("users").document(currentUserId).getDocument { snapshot, error in
             if let error = error {
-                print("❌ Error loading user data: \(error.localizedDescription)")
                 self.loadCommunityRatings()
                 return
             }
@@ -99,12 +95,9 @@ class FeedViewModel: ObservableObject {
             guard let data = snapshot?.data(),
                   let friends = data["friends"] as? [String],
                   !friends.isEmpty else {
-                print("📝 No friends found, loading community ratings")
                 self.loadCommunityRatings()
                 return
             }
-            
-            print("👥 Found \(friends.count) friends, loading their ratings")
             
             // Load ratings from friends
             self.db.collection("ratings")
@@ -116,18 +109,15 @@ class FeedViewModel: ObservableObject {
                         self.isLoading = false
                         
                         if let error = error {
-                            print("❌ Error loading friend ratings: \(error.localizedDescription)")
                             self.loadCommunityRatings()
                             return
                         }
                         
                         guard let documents = snapshot?.documents else {
-                            print("📄 No friend ratings found, loading community ratings")
                             self.loadCommunityRatings()
                             return
                         }
                         
-                        print("📄 Found \(documents.count) friend ratings, processing...")
                         self.processFriendRatingDocuments(documents)
                     }
                 }
@@ -135,13 +125,10 @@ class FeedViewModel: ObservableObject {
     }
     
     private func loadCommunityRatings() {
-        print("🔄 Loading community ratings...")
-        
         // Add a timeout to prevent hanging
         let timeoutTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
             DispatchQueue.main.async {
                 if self.isLoading {
-                    print("⚠️ Feed loading timeout - showing empty state")
                     self.isLoading = false
                     self.reviews = []
                     self.filteredReviews = []
@@ -161,7 +148,6 @@ class FeedViewModel: ObservableObject {
                     
                     if let error = error {
                         self.error = error.localizedDescription
-                        print("❌ Error loading community ratings: \(error.localizedDescription)")
                         return
                     }
                     
@@ -171,7 +157,6 @@ class FeedViewModel: ObservableObject {
                         return
                     }
                     
-                    print("📄 Found \(documents.count) ratings, processing...")
                     self.processRatingDocuments(documents)
                 }
             }
@@ -231,7 +216,6 @@ class FeedViewModel: ObservableObject {
             self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
             self.filteredReviews = self.reviews
             self.isLoading = false
-            print("✅ Loaded \(self.reviews.count) ratings (instant)")
         }
         
         return []
@@ -282,7 +266,6 @@ class FeedViewModel: ObservableObject {
             self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
             self.filteredReviews = self.reviews
             self.isLoading = false
-            print("✅ Loaded \(self.reviews.count) friend ratings")
         }
     }
     
@@ -307,8 +290,6 @@ class FeedViewModel: ObservableObject {
                     self.loadingSpots.remove(spotId)
                     
                     if let error = error {
-                        print("❌ Error loading spot details (attempt \(retryCount + 1)): \(error.localizedDescription)")
-                        
                         // Retry once for permission issues
                         if retryCount == 0 && error.localizedDescription.contains("permissions") {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {

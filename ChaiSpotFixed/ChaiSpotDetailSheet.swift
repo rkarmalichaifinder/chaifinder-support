@@ -1,8 +1,8 @@
 import SwiftUI
 import MapKit
+import Firebase
 import FirebaseAuth
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 struct ChaiSpotDetailSheet: View {
     let spot: ChaiSpot
@@ -322,8 +322,6 @@ struct ChaiSpotDetailSheet: View {
         isAddingToList = true
         let db = Firestore.firestore()
         
-        print("🔄 Adding spot '\(spot.name)' (ID: \(spot.id)) to user \(userId)'s saved spots")
-        
         // First check if the user document exists and has savedSpots field
         db.collection("users").document(userId).getDocument { snapshot, error in
             if let error = error {
@@ -331,18 +329,15 @@ struct ChaiSpotDetailSheet: View {
                     self.isAddingToList = false
                     self.addToListMessage = "Failed to add to list: \(error.localizedDescription)"
                     self.showingAddToListAlert = true
-                    print("❌ Error checking user document: \(error.localizedDescription)")
                 }
                 return
             }
             
             if let data = snapshot?.data(), let existingSavedSpots = data["savedSpots"] as? [String] {
                 // User document exists and has savedSpots field
-                print("📄 User has \(existingSavedSpots.count) existing saved spots")
                 self.updateSavedSpots(userId: userId, spotId: self.spot.id, existingSpots: existingSavedSpots)
             } else {
                 // User document exists but no savedSpots field, or document doesn't exist
-                print("📄 User document exists but no savedSpots field, creating new array")
                 self.createSavedSpotsField(userId: userId, spotId: self.spot.id)
             }
         }
@@ -357,7 +352,6 @@ struct ChaiSpotDetailSheet: View {
                 self.isAddingToList = false
                 self.addToListMessage = "✅ \(self.spot.name) is already in your list!"
                 self.showingAddToListAlert = true
-                print("ℹ️ Spot already in saved list")
             }
             return
         }
@@ -375,11 +369,9 @@ struct ChaiSpotDetailSheet: View {
                 if let error = error {
                     self.addToListMessage = "Failed to add to list: \(error.localizedDescription)"
                     self.showingAddToListAlert = true
-                    print("❌ Error updating saved spots: \(error.localizedDescription)")
                 } else {
                     self.addToListMessage = "✅ \(self.spot.name) added to your list!"
                     self.showingAddToListAlert = true
-                    print("✅ Successfully added spot to saved list. Total saved spots: \(updatedSpots.count)")
                 }
             }
         }
@@ -397,11 +389,9 @@ struct ChaiSpotDetailSheet: View {
                 if let error = error {
                     self.addToListMessage = "Failed to add to list: \(error.localizedDescription)"
                     self.showingAddToListAlert = true
-                    print("❌ Error creating savedSpots field: \(error.localizedDescription)")
                 } else {
                     self.addToListMessage = "✅ \(self.spot.name) added to your list!"
                     self.showingAddToListAlert = true
-                    print("✅ Successfully created savedSpots field with first spot")
                 }
             }
         }
@@ -410,8 +400,6 @@ struct ChaiSpotDetailSheet: View {
     private func loadRatings() {
         isLoadingRatings = true
         let db = Firestore.firestore()
-        
-        print("🔄 Loading ratings for spot: \(spot.id)")
         
         db.collection("ratings")
             .whereField("spotId", isEqualTo: spot.id)
@@ -422,25 +410,19 @@ struct ChaiSpotDetailSheet: View {
                     self.isLoadingRatings = false
                     
                     if let error = error {
-                        print("❌ Error loading ratings: \(error.localizedDescription)")
                         return
                     }
                     
                     guard let documents = snapshot?.documents else {
-                        print("❌ No rating documents found")
                         return
                     }
-                    
-                    print("📄 Found \(documents.count) rating documents")
                     
                     self.ratings = documents.compactMap { document -> Rating? in
                         guard let data = document.data() as? [String: Any],
                               let spotId = data["spotId"] as? String,
                               let userId = data["userId"] as? String,
                               let value = data["value"] as? Int else {
-                            print("⚠️ Skipping rating document \(document.documentID) - missing required fields")
                             if let data = document.data() as? [String: Any] {
-                                print("   Data: \(data)")
                             }
                             return nil
                         }
@@ -450,8 +432,6 @@ struct ChaiSpotDetailSheet: View {
                         let timestamp = data["timestamp"] as? Timestamp
                         let likes = data["likes"] as? Int
                         let dislikes = data["dislikes"] as? Int
-                        
-                        print("✅ Loaded rating: \(username ?? "Anonymous") - \(value)★")
                         
                         return Rating(
                             spotId: spotId,
@@ -464,9 +444,6 @@ struct ChaiSpotDetailSheet: View {
                             dislikes: dislikes
                         )
                     }
-                    
-                    print("✅ Loaded \(self.ratings.count) ratings")
-                    print("�� Average rating: \(Double(self.ratings.reduce(0) { $0 + $1.value }) / Double(self.ratings.count))")
                 }
             }
     }
@@ -478,7 +455,6 @@ struct ChaiSpotDetailSheet: View {
             DispatchQueue.main.async {
                 self.isLoadingFriendRatings = false
                 self.friendRatings = ratings
-                print("✅ Loaded \(ratings.count) friend ratings for spot: \(self.spot.id)")
             }
         }
     }

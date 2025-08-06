@@ -1,9 +1,8 @@
 import SwiftUI
 import MapKit
 import Firebase
+import FirebaseAuth
 import FirebaseFirestore
-import FirebaseFirestoreSwift
-import CoreLocation
 
 struct SearchView: View {
     @State private var isMapView = true
@@ -19,7 +18,7 @@ struct SearchView: View {
     @StateObject private var locationManager = LocationManager()
     
     var body: some View {
-        NavigationStack {
+        NavigationView {
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: DesignSystem.Spacing.md) {

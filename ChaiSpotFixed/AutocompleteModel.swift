@@ -17,6 +17,6 @@ final class AutocompleteModel: NSObject, ObservableObject, MKLocalSearchComplete
     }
 
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        print("Autocomplete error:", error)
+        // Handle error silently
     }
 }

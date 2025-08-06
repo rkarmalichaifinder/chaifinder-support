@@ -1,6 +1,7 @@
 import SwiftUI
-import FirebaseFirestore
+import Firebase
 import FirebaseAuth
+import FirebaseFirestore
 
 struct SubmitRatingView: View {
     let spotId: String
@@ -57,13 +58,11 @@ struct SubmitRatingView: View {
     
     func submitRating() {
         guard let user = Auth.auth().currentUser else {
-            print("❌ User not logged in")
             return
         }
         
         let userId = user.uid
         isSubmitting = true
-        print("📝 Submitting comment: \(comment)")
         
         // Step 1: Fetch display name from Firestore
         db.collection("users").document(userId).getDocument { document, error in
@@ -97,9 +96,8 @@ struct SubmitRatingView: View {
                     DispatchQueue.main.async {
                         self.isSubmitting = false
                         if let error = error {
-                            print("❌ Error updating rating: \(error.localizedDescription)")
+                            // Handle error silently
                         } else {
-                            print("✅ Rating updated successfully!")
                             self.onComplete()
                         }
                     }
@@ -109,9 +107,8 @@ struct SubmitRatingView: View {
                     DispatchQueue.main.async {
                         self.isSubmitting = false
                         if let error = error {
-                            print("❌ Firestore error: \(error.localizedDescription)")
+                            // Handle error silently
                         } else {
-                            print("✅ Rating saved successfully!")
                             self.onComplete()
                         }
                     }

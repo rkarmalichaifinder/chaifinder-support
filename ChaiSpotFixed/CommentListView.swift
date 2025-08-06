@@ -1,6 +1,7 @@
 import SwiftUI
-import FirebaseFirestore
+import Firebase
 import FirebaseAuth
+import FirebaseFirestore
 
 struct CommentListView: View {
     let spotId: String
@@ -82,7 +83,6 @@ struct CommentListView: View {
             .order(by: "timestamp", descending: true)
             .getDocuments { snapshot, error in
                 if let error = error {
-                    print("Error loading comments: \(error)")
                     return
                 }
                 self.comments = snapshot?.documents.compactMap {

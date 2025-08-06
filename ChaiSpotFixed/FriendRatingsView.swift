@@ -1,7 +1,6 @@
 import SwiftUI
-import FirebaseAuth
+import Firebase
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 struct FriendRatingsView: View {
     let friend: UserProfile
@@ -140,7 +139,6 @@ struct FriendRatingsView: View {
                     
                     if let error = error {
                         self.error = error.localizedDescription
-                        print("❌ Error loading friend ratings: \(error.localizedDescription)")
                         return
                     }
                     
@@ -174,8 +172,6 @@ struct FriendRatingsView: View {
                             dislikes: dislikes
                         )
                     }
-                    
-                    print("✅ Loaded \(self.friendRatings.count) ratings from \(self.friend.displayName)")
                 }
             }
     }
@@ -213,8 +209,6 @@ struct FriendRatingsView: View {
                     self.loadingSpots.remove(spotId)
                     
                     if let error = error {
-                        print("❌ Error loading spot details (attempt \(retryCount + 1)): \(error.localizedDescription)")
-                        
                         // Retry once for permission issues
                         if retryCount == 0 && error.localizedDescription.contains("permissions") {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -364,8 +358,6 @@ struct FriendRatingCard: View {
                     self.isLoading = false
                     
                     if let error = error {
-                        print("❌ Error loading spot details (attempt \(retryCount + 1)): \(error.localizedDescription)")
-                        
                         // Retry once for permission issues
                         if retryCount == 0 && error.localizedDescription.contains("permissions") {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {

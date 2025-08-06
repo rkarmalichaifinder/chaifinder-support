@@ -1,15 +1,12 @@
 import SwiftUI
-import FirebaseFirestore
 
 struct EditBioView: View {
-    var user: UserProfile
-    var onSave: (String) -> Void
-
+    @EnvironmentObject var sessionStore: SessionStore
     @State private var bioText: String = ""
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             Form {
                 Section(header: Text("Your Bio")) {
                     TextEditor(text: $bioText)
@@ -20,7 +17,7 @@ struct EditBioView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        onSave(bioText)
+                        saveBio()
                         dismiss()
                     }
                 }
@@ -31,8 +28,14 @@ struct EditBioView: View {
                 }
             }
             .onAppear {
-                bioText = user.bio ?? ""
+                bioText = sessionStore.user?.bio ?? ""
             }
         }
+    }
+    
+    private func saveBio() {
+        guard var updatedUser = sessionStore.user else { return }
+        updatedUser.bio = bioText
+        sessionStore.updateUserProfile(updatedUser)
     }
 }

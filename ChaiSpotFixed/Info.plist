@@ -18,6 +18,7 @@
 				<string>com.googleusercontent.apps.587784566464-a20p386bmiuvgaigq61snprnbb0fqios</string>
 			</array>
 		</dict>
+
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We use your location to show nearby chai spots.</string>

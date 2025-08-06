@@ -1,7 +1,8 @@
 import Foundation
+import SwiftUI
 import Firebase
+import FirebaseAuth
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 struct FriendService {
 
@@ -17,7 +18,6 @@ struct FriendService {
 
         usersRef.getDocument { docSnapshot, error in
             if let doc = docSnapshot, doc.exists {
-                print("✅ User document already exists.")
                 completion(true)
                 return
             }
@@ -38,10 +38,8 @@ struct FriendService {
 
             usersRef.setData(newUserData) { error in
                 if let error = error {
-                    print("❌ Failed to create user document: \(error.localizedDescription)")
                     completion(false)
                 } else {
-                    print("✅ Created user document for \(user.uid)")
                     completion(true)
                 }
             }
@@ -84,10 +82,8 @@ struct FriendService {
 
         batch.commit { error in
             if let error = error {
-                print("❌ Failed to send friend request: \(error.localizedDescription)")
                 completion(false)
             } else {
-                print("✅ Friend request sent successfully!")
                 completion(true)
             }
         }
@@ -143,10 +139,8 @@ struct FriendService {
 
         batch.commit { error in
             if let error = error {
-                print("❌ Error accepting friend request: \(error.localizedDescription)")
                 completion(false)
             } else {
-                print("✅ Friend request accepted!")
                 completion(true)
             }
         }
@@ -185,10 +179,8 @@ struct FriendService {
 
         batch.commit { error in
             if let error = error {
-                print("❌ Failed to reject friend request: \(error.localizedDescription)")
                 completion(false)
             } else {
-                print("✅ Friend request rejected.")
                 completion(true)
             }
         }
@@ -206,7 +198,6 @@ struct FriendService {
 
         friendsRef.getDocuments { snapshot, error in
             guard let documents = snapshot?.documents else {
-                print("❌ Failed to fetch friends list: \(error?.localizedDescription ?? "Unknown error")")
                 completion([])
                 return
             }
@@ -223,7 +214,6 @@ struct FriendService {
                 .whereField("userId", in: friendUIDs)
                 .getDocuments { snapshot, error in
                     guard let docs = snapshot?.documents else {
-                        print("❌ Failed to fetch friends' ratings: \(error?.localizedDescription ?? "Unknown error")")
                         completion([])
                         return
                     }

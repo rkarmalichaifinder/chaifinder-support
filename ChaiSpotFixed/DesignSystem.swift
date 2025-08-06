@@ -109,7 +109,6 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(DesignSystem.Typography.bodyMedium)
-            .fontWeight(.semibold)
             .foregroundColor(.white)
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.vertical, DesignSystem.Spacing.md)
@@ -124,7 +123,6 @@ struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(DesignSystem.Typography.bodyMedium)
-            .fontWeight(.medium)
             .foregroundColor(DesignSystem.Colors.primary)
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.vertical, DesignSystem.Spacing.md)

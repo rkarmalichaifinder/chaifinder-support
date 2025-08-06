@@ -1,5 +1,7 @@
 import SwiftUI
+import Firebase
 import FirebaseAuth
+import FirebaseFirestore
 
 struct EmailLoginView: View {
     @State private var email = ""

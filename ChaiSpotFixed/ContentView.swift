@@ -1,51 +1,32 @@
 import SwiftUI
-import MapKit
-import Firebase
-import FirebaseFirestore
-import FirebaseFirestoreSwift
-import CoreLocation
 
 struct ContentView: View {
-    @State private var selectedTab: Int = 0
+    @StateObject private var sessionStore = SessionStore()
     @StateObject private var notificationChecker = NotificationChecker()
-
+    
     var body: some View {
-        TabView(selection: $selectedTab) {
-            FeedView()
-                .tabItem {
-                    Label("Feed", systemImage: "bubble.left.and.bubble.right")
-                }
-                .tag(0)
-
-            SearchView()
-                .tabItem {
-                    Label("Search", systemImage: "magnifyingglass")
-                }
-                .tag(1)
-
-            FriendsView()
-                .tabItem {
-                    Label("Friends", systemImage: "person.2")
-                }
-                .tag(2)
-                
-            ProfileView()
-                .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
-                }
-                .tag(3)
-        }
-        .onAppear {
-            if let uid = Auth.auth().currentUser?.uid {
-                print("Logged in as \(uid)")
-                FriendService.createUserDocumentIfNeeded { success in
-                    if success {
-                        notificationChecker.checkForNewActivity()
-                    } else {
-                        print("❌ Failed to ensure Firestore user document.")
-                    }
-                }
+        Group {
+            if sessionStore.isAuthenticated {
+                MainAppView()
+                    .environmentObject(sessionStore)
+            } else {
+                SignInView()
+                    .environmentObject(sessionStore)
             }
         }
+        .onAppear {
+            // Check for saved user data
+            if let savedUserData = UserDefaults.standard.data(forKey: "currentUser"),
+               let savedUser = try? JSONDecoder().decode(UserProfile.self, from: savedUserData) {
+                sessionStore.user = savedUser
+                sessionStore.isAuthenticated = true
+            }
+        }
+    }
+}
+
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
     }
 }

@@ -1,16 +1,7 @@
-import Foundation
-import FirebaseAuth
+import SwiftUI
 
 extension Notification.Name {
     static let authStateChanged = Notification.Name("authStateChanged")
 }
 
-class AuthObserver {
-    static let shared = AuthObserver()
-
-    private init() {
-        Auth.auth().addStateDidChangeListener { _, _ in
-            NotificationCenter.default.post(name: .authStateChanged, object: nil)
-        }
-    }
-}
+// AuthObserver removed since we're using local authentication

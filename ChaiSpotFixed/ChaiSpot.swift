@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestoreSwift
+import FirebaseFirestore
 import CoreLocation
 
 struct ChaiFinder: Identifiable, Codable {

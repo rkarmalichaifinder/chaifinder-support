@@ -1,7 +1,6 @@
 import SwiftUI
-import FirebaseAuth
+import Firebase
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 struct FeedView: View {
     @StateObject private var viewModel = FeedViewModel()
@@ -100,7 +99,7 @@ struct FeedView: View {
                                 .font(.system(size: 48))
                                 .foregroundColor(DesignSystem.Colors.secondary)
                             
-                            Text("No Reviews Yet")
+                            Text("No reviews yet")
                                 .font(DesignSystem.Typography.headline)
                                 .fontWeight(.bold)
                                 .foregroundColor(DesignSystem.Colors.textPrimary)
@@ -109,10 +108,22 @@ struct FeedView: View {
                                 .font(DesignSystem.Typography.bodyMedium)
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
                                 .multilineTextAlignment(.center)
+                            
+                            Button(action: {
+                                // Navigate to search tab
+                            }) {
+                                Text("Find a Spot")
+                                    .font(DesignSystem.Typography.bodyMedium)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                                    .padding(.vertical, DesignSystem.Spacing.md)
+                                    .background(DesignSystem.Colors.primary)
+                                    .cornerRadius(DesignSystem.CornerRadius.medium)
+                            }
                             Spacer()
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(DesignSystem.Spacing.xl)
                     } else {
                         ScrollView {
                             LazyVStack(spacing: DesignSystem.Spacing.md) {
@@ -189,7 +200,6 @@ struct FeedView: View {
                     .buttonStyle(PrimaryButtonStyle())
                 }
                 .padding(DesignSystem.Spacing.xl)
-                .presentationDetents([.medium])
             }
         }
     }

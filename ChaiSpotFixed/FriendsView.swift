@@ -1,7 +1,7 @@
 import SwiftUI
 import Firebase
+import FirebaseAuth
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 struct FriendsView: View {
     @State private var users: [UserProfile] = []

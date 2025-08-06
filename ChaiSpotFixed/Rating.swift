@@ -1,5 +1,5 @@
 import Foundation
-import FirebaseFirestoreSwift
+import FirebaseFirestore
 
 struct Rating: Identifiable, Codable {
     @DocumentID var id: String?
