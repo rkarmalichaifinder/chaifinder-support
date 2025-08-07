@@ -59,7 +59,22 @@ class FeedViewModel: ObservableObject {
     func switchFeedType(to type: FeedType) {
         currentFeedType = type
         hasLoadedData = false
-        loadFeed()
+        isLoading = true
+        error = nil
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            // If not logged in, load community ratings
+            loadCommunityRatings()
+            return
+        }
+        
+        switch type {
+        case .friends:
+            // Load friend ratings directly without checking if user has friends
+            loadFriendRatingsDirectly(currentUserId: currentUserId)
+        case .community:
+            loadCommunityRatings()
+        }
     }
     
     func clearCache() {
@@ -124,6 +139,66 @@ class FeedViewModel: ObservableObject {
                             
                             guard let documents = snapshot?.documents else {
                                 self.loadCommunityRatings()
+                                return
+                            }
+                            
+                            self.processFriendRatingDocuments(documents)
+                            self.hasLoadedData = true
+                        }
+                    }
+            }
+        }
+    }
+    
+    private func loadFriendRatingsDirectly(currentUserId: String) {
+        // Get user's friends list
+        db.collection("users").document(currentUserId).getDocument { snapshot, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.isLoading = false
+                    self.reviews = []
+                    self.filteredReviews = []
+                    self.error = "Failed to load friends"
+                    return
+                }
+                
+                guard let data = snapshot?.data(),
+                      let friends = data["friends"] as? [String] else {
+                    self.isLoading = false
+                    self.reviews = []
+                    self.filteredReviews = []
+                    self.error = "No friends found"
+                    return
+                }
+                
+                if friends.isEmpty {
+                    self.isLoading = false
+                    self.reviews = []
+                    self.filteredReviews = []
+                    self.error = "No friends found"
+                    return
+                }
+                
+                // Load ratings from friends
+                self.db.collection("ratings")
+                    .whereField("userId", in: friends)
+                    .order(by: "timestamp", descending: true)
+                    .limit(to: 20)
+                    .getDocuments { snapshot, error in
+                        DispatchQueue.main.async {
+                            self.isLoading = false
+                            
+                            if let error = error {
+                                self.reviews = []
+                                self.filteredReviews = []
+                                self.error = "Failed to load friend ratings"
+                                return
+                            }
+                            
+                            guard let documents = snapshot?.documents else {
+                                self.reviews = []
+                                self.filteredReviews = []
+                                self.error = "No friend ratings found"
                                 return
                             }
                             
