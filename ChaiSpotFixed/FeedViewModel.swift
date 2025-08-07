@@ -291,9 +291,16 @@ class FeedViewModel: ObservableObject {
                 for feedItem in feedItems {
                     self.loadSpotDetails(for: feedItem.spotId) { spotName, spotAddress in
                         DispatchQueue.main.async {
+                            // Update both reviews and filteredReviews arrays
                             if let index = self.reviews.firstIndex(where: { $0.id == feedItem.id }) {
                                 self.reviews[index].spotName = spotName
                                 self.reviews[index].spotAddress = spotAddress
+                                
+                                // Also update filteredReviews if this item is still in the filtered list
+                                if let filteredIndex = self.filteredReviews.firstIndex(where: { $0.id == feedItem.id }) {
+                                    self.filteredReviews[filteredIndex].spotName = spotName
+                                    self.filteredReviews[filteredIndex].spotAddress = spotAddress
+                                }
                             }
                         }
                     }
@@ -344,9 +351,16 @@ class FeedViewModel: ObservableObject {
                 for feedItem in feedItems {
                     self.loadSpotDetails(for: feedItem.spotId) { spotName, spotAddress in
                         DispatchQueue.main.async {
+                            // Update both reviews and filteredReviews arrays
                             if let index = self.reviews.firstIndex(where: { $0.id == feedItem.id }) {
                                 self.reviews[index].spotName = spotName
                                 self.reviews[index].spotAddress = spotAddress
+                                
+                                // Also update filteredReviews if this item is still in the filtered list
+                                if let filteredIndex = self.filteredReviews.firstIndex(where: { $0.id == feedItem.id }) {
+                                    self.filteredReviews[filteredIndex].spotName = spotName
+                                    self.filteredReviews[filteredIndex].spotAddress = spotAddress
+                                }
                             }
                         }
                     }
@@ -384,8 +398,9 @@ class FeedViewModel: ObservableObject {
                             return
                         }
                         
-                        let fallbackName = "Chai Spot #\(spotId.prefix(6))"
-                        let fallbackAddress = "Tap to view details"
+                        // Provide a more user-friendly fallback name
+                        let fallbackName = "Chai Spot"
+                        let fallbackAddress = "Location details unavailable"
                         self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
                         completion(fallbackName, fallbackAddress)
                         return
@@ -394,8 +409,9 @@ class FeedViewModel: ObservableObject {
                     guard let data = snapshot?.data(),
                           let name = data["name"] as? String,
                           let address = data["address"] as? String else {
-                        let fallbackName = "Chai Spot #\(spotId.prefix(6))"
-                        let fallbackAddress = "Tap to view details"
+                        // Provide a more user-friendly fallback name
+                        let fallbackName = "Chai Spot"
+                        let fallbackAddress = "Location details unavailable"
                         self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
                         completion(fallbackName, fallbackAddress)
                         return

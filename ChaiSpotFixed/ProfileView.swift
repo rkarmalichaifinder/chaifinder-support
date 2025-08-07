@@ -9,6 +9,7 @@ struct ProfileView: View {
     @State private var showingSavedSpots = false
     @State private var showingFriends = false
     @State private var showingBlockedUsers = false
+    @State private var showingTermsOfService = false
 
     var body: some View {
         NavigationView {
@@ -138,10 +139,7 @@ struct ProfileView: View {
                             .buttonStyle(PlainButtonStyle())
                             
                             Button(action: {
-                                // Open terms of service
-                                if let url = URL(string: "https://chaifinder.app/terms") {
-                                    UIApplication.shared.open(url)
-                                }
+                                showingTermsOfService = true
                             }) {
                                 HStack {
                                     Image(systemName: "doc.text")
@@ -205,6 +203,9 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingBlockedUsers) {
                 UserBlockingView()
+            }
+            .sheet(isPresented: $showingTermsOfService) {
+                TermsOfServiceView(hasAcceptedTerms: .constant(true), isReadOnly: true)
             }
             .alert("Delete Account", isPresented: $showingDeleteAccount) {
                 Button("Cancel", role: .cancel) { }

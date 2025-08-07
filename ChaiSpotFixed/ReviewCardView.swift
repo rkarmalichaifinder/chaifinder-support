@@ -77,17 +77,25 @@ struct ReviewCardView: View {
                 Button(action: {
                     showingComments = true
                 }) {
-                    Text(spotName)
-                        .font(DesignSystem.Typography.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(DesignSystem.Colors.primary)
-                        .multilineTextAlignment(.leading)
+                    HStack {
+                        Text(review.spotName == "Loading..." ? "Loading spot details..." : review.spotName)
+                            .font(DesignSystem.Typography.headline)
+                            .fontWeight(.bold)
+                            .foregroundColor(review.spotName == "Loading..." ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.primary)
+                            .multilineTextAlignment(.leading)
+                        
+                        if review.spotName == "Loading..." {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .padding(.leading, 4)
+                        }
+                    }
                 }
                 .buttonStyle(PlainButtonStyle())
                 
-                Text(spotAddress)
+                Text(review.spotAddress == "Loading..." ? "Loading location..." : review.spotAddress)
                     .font(DesignSystem.Typography.bodyMedium)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .foregroundColor(review.spotAddress == "Loading..." ? DesignSystem.Colors.textSecondary.opacity(0.7) : DesignSystem.Colors.textSecondary)
             }
             
             // Chai Type

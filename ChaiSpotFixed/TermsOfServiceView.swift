@@ -3,6 +3,7 @@ import SwiftUI
 struct TermsOfServiceView: View {
     @Environment(\.dismiss) var dismiss
     @Binding var hasAcceptedTerms: Bool
+    var isReadOnly: Bool = false
     
     var body: some View {
         NavigationView {
@@ -106,10 +107,12 @@ struct TermsOfServiceView: View {
                         .font(.body)
                         .padding(.leading, 20)
                         
-                        Text("By accepting these terms, you acknowledge that you have read, understood, and agree to comply with all the above conditions.")
-                            .font(.body)
-                            .fontWeight(.semibold)
-                            .padding(.top, 20)
+                        if !isReadOnly {
+                            Text("By accepting these terms, you acknowledge that you have read, understood, and agree to comply with all the above conditions.")
+                                .font(.body)
+                                .fontWeight(.semibold)
+                                .padding(.top, 20)
+                        }
                     }
                 }
                 .padding()
@@ -118,17 +121,25 @@ struct TermsOfServiceView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Decline") {
-                        dismiss()
+                    if isReadOnly {
+                        Button("Done") {
+                            dismiss()
+                        }
+                    } else {
+                        Button("Decline") {
+                            dismiss()
+                        }
                     }
                 }
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Accept") {
-                        hasAcceptedTerms = true
-                        dismiss()
+                if !isReadOnly {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Accept") {
+                            hasAcceptedTerms = true
+                            dismiss()
+                        }
+                        .fontWeight(.semibold)
                     }
-                    .fontWeight(.semibold)
                 }
             }
         }
