@@ -36,11 +36,28 @@ class SessionStore: NSObject, ObservableObject {
                 print("❌ Failed to load user profile: \(error.localizedDescription)")
                 return
             }
-            if let data = try? snapshot?.data(as: UserProfile.self) {
-                DispatchQueue.main.async {
-                    self.userProfile = data
-                    print("✅ User profile loaded")
-                }
+            
+            guard let document = snapshot, document.exists else {
+                print("❌ User profile document does not exist")
+                return
+            }
+            
+            let data = document.data() ?? [:]
+            let userProfile = UserProfile(
+                id: document.documentID,
+                uid: data["uid"] as? String ?? uid,
+                displayName: data["displayName"] as? String ?? "Unknown User",
+                email: data["email"] as? String ?? "unknown",
+                photoURL: data["photoURL"] as? String,
+                friends: data["friends"] as? [String] ?? [],
+                incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                bio: data["bio"] as? String
+            )
+            
+            DispatchQueue.main.async {
+                self.userProfile = userProfile
+                print("✅ User profile loaded with bio: \(userProfile.bio ?? "nil")")
             }
         }
     }
@@ -150,8 +167,13 @@ class SessionStore: NSObject, ObservableObject {
     }
 
     func updateBio(to newBio: String) async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { 
+            print("❌ No current user found for bio update")
+            return 
+        }
 
+        print("🔄 Updating bio for user \(uid) to: \(newBio)")
+        
         let db = Firestore.firestore()
         let ref = db.collection("users").document(uid)
 
@@ -159,10 +181,59 @@ class SessionStore: NSObject, ObservableObject {
             try await ref.setData(["bio": newBio], merge: true)
             DispatchQueue.main.async {
                 self.userProfile?.bio = newBio
+                print("✅ Bio updated locally to: \(newBio)")
             }
-            print("✅ Bio updated")
+            print("✅ Bio updated in Firestore")
         } catch {
             print("❌ Failed to update bio: \(error.localizedDescription)")
+        }
+    }
+
+    func updateDisplayName(to newDisplayName: String) async {
+        guard let uid = Auth.auth().currentUser?.uid else { 
+            print("❌ No current user found for display name update")
+            return 
+        }
+
+        print("🔄 Updating display name for user \(uid) to: \(newDisplayName)")
+        
+        let db = Firestore.firestore()
+        let ref = db.collection("users").document(uid)
+
+        do {
+            try await ref.setData(["displayName": newDisplayName], merge: true)
+            DispatchQueue.main.async {
+                self.userProfile?.displayName = newDisplayName
+                print("✅ Display name updated locally to: \(newDisplayName)")
+            }
+            print("✅ Display name updated in Firestore")
+        } catch {
+            print("❌ Failed to update display name: \(error.localizedDescription)")
+        }
+    }
+
+    func loadSavedSpotsCount() async -> Int {
+        guard let uid = Auth.auth().currentUser?.uid else { 
+            print("❌ No current user found for saved spots count")
+            return 0 
+        }
+
+        let db = Firestore.firestore()
+        let ref = db.collection("users").document(uid)
+
+        do {
+            let snapshot = try await ref.getDocument()
+            guard let data = snapshot.data() else {
+                print("❌ No user data found for saved spots count")
+                return 0
+            }
+            
+            let savedSpotIds = data["savedSpots"] as? [String] ?? []
+            print("✅ Loaded saved spots count: \(savedSpotIds.count)")
+            return savedSpotIds.count
+        } catch {
+            print("❌ Failed to load saved spots count: \(error.localizedDescription)")
+            return 0
         }
     }
 

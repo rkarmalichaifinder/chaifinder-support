@@ -83,13 +83,27 @@ struct CommentListView: View {
             .order(by: "timestamp", descending: true)
             .getDocuments { snapshot, error in
                 if let error = error {
+                    print("❌ Error loading comments: \(error.localizedDescription)")
                     return
                 }
-                self.comments = snapshot?.documents.compactMap {
-                    var rating = try? $0.data(as: Rating.self)
-                    rating?.id = $0.documentID
-                    return rating
+                
+                self.comments = snapshot?.documents.compactMap { doc -> Rating? in
+                    let data = doc.data()
+                    return Rating(
+                        id: doc.documentID,
+                        spotId: data["spotId"] as? String ?? "",
+                        userId: data["userId"] as? String ?? "",
+                        username: data["username"] as? String,
+                        spotName: data["spotName"] as? String,
+                        value: data["value"] as? Int ?? 0,
+                        comment: data["comment"] as? String,
+                        timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
+                        likes: data["likes"] as? Int ?? 0,
+                        dislikes: data["dislikes"] as? Int ?? 0
+                    )
                 } ?? []
+                
+                print("✅ Loaded \(self.comments.count) comments for spot \(self.spotId)")
             }
     }
 

@@ -80,7 +80,8 @@ struct SignInView: View {
                     .cornerRadius(8)
                 }
 
-                // Apple Sign-In
+                // Apple Sign-In - Temporarily hidden
+                /*
                 Button(action: {
                     sessionStore.signInWithApple()
                 }) {
@@ -93,6 +94,7 @@ struct SignInView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
                 }
+                */
 
                 Spacer()
             }

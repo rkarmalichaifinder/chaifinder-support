@@ -2,13 +2,29 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var sessionStore: SessionStore
+    @State private var showingSplash = true
 
     var body: some View {
-        Group {
-            if sessionStore.currentUser != nil {
-                MainAppView()
+        ZStack {
+            if showingSplash {
+                SplashScreenView()
+                    .onAppear {
+                        // Show splash screen for 2 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            withAnimation(.easeInOut(duration: 0.5)) {
+                                showingSplash = false
+                            }
+                        }
+                    }
             } else {
-                SignInView()
+                Group {
+                    if sessionStore.currentUser != nil {
+                        MainAppView()
+                    } else {
+                        SignInView()
+                    }
+                }
+                .transition(.opacity)
             }
         }
     }

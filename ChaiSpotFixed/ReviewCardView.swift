@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseFirestore
+import FirebaseAuth
 
 struct ReviewCardView: View {
     let review: ReviewFeedItem
@@ -7,6 +8,10 @@ struct ReviewCardView: View {
     @State private var spotAddress: String
     @State private var isLoadingSpotInfo = false
     @State private var hasLoadedSpotInfo = false
+    @State private var isLiked = false
+    @State private var likeCount = 0
+    @State private var showingComments = false
+    @State private var showingShareSheet = false
     
     init(review: ReviewFeedItem) {
         self.review = review
@@ -56,10 +61,16 @@ struct ReviewCardView: View {
             
             // Spot Information
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text(spotName)
-                    .font(DesignSystem.Typography.headline)
-                    .fontWeight(.bold)
-                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                Button(action: {
+                    showingComments = true
+                }) {
+                    Text(spotName)
+                        .font(DesignSystem.Typography.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(DesignSystem.Colors.primary)
+                        .multilineTextAlignment(.leading)
+                }
+                .buttonStyle(PlainButtonStyle())
                 
                 Text(spotAddress)
                     .font(DesignSystem.Typography.bodyMedium)
@@ -92,24 +103,25 @@ struct ReviewCardView: View {
             // Action Buttons
             HStack(spacing: DesignSystem.Spacing.md) {
                 Button(action: {
-                    // Like action
+                    toggleLike()
                 }) {
                     HStack(spacing: 4) {
-                        Image(systemName: "heart")
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
                             .font(.caption)
-                        Text("Like")
+                            .foregroundColor(isLiked ? .red : DesignSystem.Colors.textSecondary)
+                        Text("\(likeCount)")
                             .font(DesignSystem.Typography.caption)
                     }
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .foregroundColor(isLiked ? .red : DesignSystem.Colors.textSecondary)
                 }
                 
                 Button(action: {
-                    // Comment action
+                    showingComments = true
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "message")
                             .font(.caption)
-                        Text("Comment")
+                        Text("Comments")
                             .font(DesignSystem.Typography.caption)
                     }
                     .foregroundColor(DesignSystem.Colors.textSecondary)
@@ -118,7 +130,7 @@ struct ReviewCardView: View {
                 Spacer()
                 
                 Button(action: {
-                    // Share action
+                    showingShareSheet = true
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up")
@@ -144,6 +156,14 @@ struct ReviewCardView: View {
             if !hasLoadedSpotInfo && (spotName.hasPrefix("Chai Spot #") || spotName == "Loading...") {
                 loadSpotInformation()
             }
+            // Load like status and count
+            loadLikeStatus()
+        }
+        .sheet(isPresented: $showingComments) {
+            CommentListView(spotId: review.spotId)
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareSheet(activityItems: [createShareText()])
         }
     }
     
@@ -195,4 +215,95 @@ struct ReviewCardView: View {
         
         attemptLoad()
     }
+    
+    // MARK: - Helper Functions
+    
+    private func toggleLike() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("❌ User not logged in")
+            return
+        }
+        
+        let db = Firestore.firestore()
+        let likeRef = db.collection("ratings").document(review.id).collection("likes").document(currentUserId)
+        
+        if isLiked {
+            // Unlike
+            likeRef.delete { error in
+                if let error = error {
+                    print("❌ Error unliking: \(error.localizedDescription)")
+                } else {
+                    DispatchQueue.main.async {
+                        self.isLiked = false
+                        self.likeCount = max(0, self.likeCount - 1)
+                    }
+                }
+            }
+        } else {
+            // Like
+            likeRef.setData([
+                "userId": currentUserId,
+                "timestamp": FieldValue.serverTimestamp()
+            ]) { error in
+                if let error = error {
+                    print("❌ Error liking: \(error.localizedDescription)")
+                } else {
+                    DispatchQueue.main.async {
+                        self.isLiked = true
+                        self.likeCount += 1
+                    }
+                }
+            }
+        }
+    }
+    
+    private func loadLikeStatus() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        let db = Firestore.firestore()
+        let likeRef = db.collection("ratings").document(review.id).collection("likes").document(currentUserId)
+        
+        // Check if user has liked this review
+        likeRef.getDocument { snapshot, error in
+            DispatchQueue.main.async {
+                self.isLiked = snapshot?.exists ?? false
+            }
+        }
+        
+        // Get total like count
+        db.collection("ratings").document(review.id).collection("likes").getDocuments { snapshot, error in
+            DispatchQueue.main.async {
+                self.likeCount = snapshot?.documents.count ?? 0
+            }
+        }
+    }
+    
+    private func createShareText() -> String {
+        let shareText = """
+        Check out this chai spot review on Chai Finder!
+        
+        \(spotName)
+        \(spotAddress)
+        
+        Rating: \(review.rating)★
+        \(review.comment ?? "")
+        
+        Reviewed by: \(review.username)
+        
+        Download Chai Finder to discover more great chai spots!
+        """
+        return shareText
+    }
+}
+
+// MARK: - Share Sheet
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 } 

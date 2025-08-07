@@ -2,6 +2,16 @@ import SwiftUI
 import Firebase
 import FirebaseAuth
 import FirebaseFirestore
+import MessageUI // Added for MFMailComposeViewController
+
+// MARK: - Mail Coordinator
+class MailCoordinator: NSObject, MFMailComposeViewControllerDelegate {
+    static let shared = MailCoordinator()
+    
+    func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
+        controller.dismiss(animated: true)
+    }
+}
 
 struct FriendsView: View {
     @State private var users: [UserProfile] = []
@@ -15,6 +25,10 @@ struct FriendsView: View {
     @State private var outgoingRequests: [UserProfile] = []
     @State private var showingFriendRatings = false
     @State private var selectedFriend: UserProfile?
+    @State private var showingRequestConfirmation = false
+    @State private var lastRequestedUser: String = ""
+    @State private var showingIncomingRequestAlert = false
+    @State private var newIncomingRequest: UserProfile?
     
     // Add state to track if data has been loaded
     @State private var hasLoadedData = false
@@ -111,10 +125,28 @@ struct FriendsView: View {
                 if !hasLoadedData {
                     reloadData()
                 }
+                setupIncomingRequestsListener()
             }
             .sheet(isPresented: $showingFriendRatings) {
                 if let friend = selectedFriend {
                     FriendRatingsView(friend: friend)
+                }
+            }
+            .alert("Friend Request Sent", isPresented: $showingRequestConfirmation) {
+                Button("OK") { }
+            } message: {
+                Text("Your friend request to \(lastRequestedUser) has been sent successfully!")
+            }
+            .alert("New Friend Request", isPresented: $showingIncomingRequestAlert) {
+                Button("View Requests") {
+                    // This will take them to the incoming requests section
+                }
+                Button("OK") { }
+            } message: {
+                if let newRequest = newIncomingRequest {
+                    Text("\(newRequest.displayName) sent you a friend request!")
+                } else {
+                    Text("You received a new friend request!")
                 }
             }
         }
@@ -432,6 +464,41 @@ struct FriendsView: View {
 
     // MARK: - Helper Functions
     
+    private func setupIncomingRequestsListener() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        print("🎧 Setting up real-time listener for incoming friend requests...")
+        
+        // Listen for new incoming friend requests
+        db.collection("users").document(currentUserId)
+            .collection("incomingFriendRequests")
+            .addSnapshotListener { snapshot, error in
+                if let error = error {
+                    print("❌ Error listening for incoming requests: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let snapshot = snapshot else { return }
+                
+                // Check for new documents
+                let newDocuments = snapshot.documentChanges.filter { $0.type == .added }
+                
+                for change in newDocuments {
+                    let senderUID = change.document.documentID
+                    print("🎉 New friend request received from: \(senderUID)")
+                    
+                    // Find the user profile for this sender
+                    if let senderUser = self.users.first(where: { $0.uid == senderUID }) {
+                        DispatchQueue.main.async {
+                            self.newIncomingRequest = senderUser
+                            self.showingIncomingRequestAlert = true
+                            print("🎉 New friend request alert shown for: \(senderUser.displayName)")
+                        }
+                    }
+                }
+            }
+    }
+    
     private func reloadData() {
         print("🔄 Reloading FriendsView data...")
         guard let uid = Auth.auth().currentUser?.uid else {
@@ -458,9 +525,27 @@ struct FriendsView: View {
                 }
 
                 let allUsers = documents.compactMap { doc -> UserProfile? in
-                    var user = try? doc.data(as: UserProfile.self)
-                    user?.uid = doc.get("uid") as? String ?? doc.documentID
-                    return user
+                    let data = doc.data()
+                    let uid = data["uid"] as? String ?? doc.documentID
+                    let displayName = data["displayName"] as? String ?? "Unknown User"
+                    let email = data["email"] as? String ?? "unknown"
+                    let photoURL = data["photoURL"] as? String
+                    let friends = data["friends"] as? [String] ?? []
+                    let incomingRequests = data["incomingRequests"] as? [String] ?? []
+                    let outgoingRequests = data["outgoingRequests"] as? [String] ?? []
+                    let bio = data["bio"] as? String
+                    
+                    return UserProfile(
+                        id: doc.documentID,
+                        uid: uid,
+                        displayName: displayName,
+                        email: email,
+                        photoURL: photoURL,
+                        friends: friends,
+                        incomingRequests: incomingRequests,
+                        outgoingRequests: outgoingRequests,
+                        bio: bio
+                    )
                 }
 
                 self.currentUser = allUsers.first(where: { $0.uid == uid })
@@ -550,11 +635,13 @@ struct FriendsView: View {
                 self.sendingToUser = nil
                 if success {
                     self.sentRequests.insert(user.uid)
-                    print("✅ Friend request sent successfully!")
+                    self.lastRequestedUser = user.displayName
+                    self.showingRequestConfirmation = true
+                    print("✅ Friend request sent successfully to \(user.displayName)!")
                     // Reload data to update the UI immediately
                     self.reloadData()
                 } else {
-                    print("❌ Friend request failed")
+                    print("❌ Friend request failed for \(user.displayName)")
                 }
             }
         }
@@ -599,12 +686,62 @@ struct FriendsView: View {
     }
 
     private func inviteFriends() {
-        let inviteText = "🍵 Check out Chai Finder! Download it and add me as a friend."
-        let av = UIActivityViewController(activityItems: [inviteText], applicationActivities: nil)
+        let currentUserName = currentUser?.displayName ?? "Your friend"
+        
+        // Create a more professional invitation
+        let subject = "Find the best Desi chai near you with Chai Finder! 🫖"
+        
+        let body = """
+        Hey!
+        
+        I've been using **Chai Finder**, an app that helps you discover and rate the best Desi chai spots nearby — and I think you'd love it too!
+        
+        🫶 What makes Chai Finder special:
+        • Find authentic chai spots shared by real chai lovers
+        • See friends' reviews and top picks
+        • Share your own chai ratings and comments
+        • Save your favorite spots for next time
+        • Connect over your love of good chai
+        
+        📍 It's perfect for finding a new favorite cup — whether it's cutting chai, kadak chai, or anything in between.
+        
+        👉 Download the app:
+        **iOS App Store:** https://apps.apple.com/us/app/chai-finder/id6747459183
+        
+        Once you're in, add me so we can swap chai spots!
+        
+        Cheers to better chai,
+        \(currentUserName)
+        """
+        
+        // Check if device can send emails
+        if MFMailComposeViewController.canSendMail() {
+            let mailComposer = MFMailComposeViewController()
+            mailComposer.mailComposeDelegate = MailCoordinator.shared
+            mailComposer.setSubject(subject)
+            mailComposer.setMessageBody(body, isHTML: false)
+            
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                rootVC.present(mailComposer, animated: true)
+            }
+        } else {
+            // Fallback to activity view controller if email is not available
+            let emailContent = "Subject: \(subject)\n\n\(body)"
+            let av = UIActivityViewController(activityItems: [emailContent], applicationActivities: nil)
+            
+            // Set the activity type to prefer email
+            av.excludedActivityTypes = [
+                .assignToContact,
+                .addToReadingList,
+                .openInIBooks,
+                .markupAsPDF
+            ]
 
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first?.rootViewController {
-            rootVC.present(av, animated: true)
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                rootVC.present(av, animated: true)
+            }
         }
     }
 } 

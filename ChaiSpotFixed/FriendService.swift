@@ -49,9 +49,12 @@ struct FriendService {
     // ✅ Send Friend Request using subcollections and arrays
     static func sendFriendRequest(to recipientUID: String, completion: @escaping (Bool) -> Void) {
         guard let senderUID = Auth.auth().currentUser?.uid else {
+            print("❌ No current user found for friend request")
             completion(false)
             return
         }
+
+        print("🔄 Sending friend request from \(senderUID) to \(recipientUID)")
 
         let db = Firestore.firestore()
         let timestamp = Timestamp()
@@ -82,8 +85,10 @@ struct FriendService {
 
         batch.commit { error in
             if let error = error {
+                print("❌ Failed to send friend request: \(error.localizedDescription)")
                 completion(false)
             } else {
+                print("✅ Friend request sent successfully in Firestore")
                 completion(true)
             }
         }

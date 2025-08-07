@@ -339,11 +339,18 @@ class FeedViewModel: ObservableObject {
         if searchText.isEmpty {
             filteredReviews = reviews
         } else {
+            let searchLower = searchText.lowercased()
             filteredReviews = reviews.filter { review in
+                // Search through all relevant fields
                 review.spotName.localizedCaseInsensitiveContains(searchText) ||
+                review.spotAddress.localizedCaseInsensitiveContains(searchText) ||
                 review.username.localizedCaseInsensitiveContains(searchText) ||
                 (review.comment?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-                (review.chaiType?.localizedCaseInsensitiveContains(searchText) ?? false)
+                (review.chaiType?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                // Also search for partial matches in comments
+                (review.comment?.lowercased().contains(searchLower) ?? false) ||
+                // Search for rating numbers
+                String(review.rating).contains(searchText)
             }
         }
     }

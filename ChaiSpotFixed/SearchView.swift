@@ -169,77 +169,77 @@ struct SearchView: View {
         
         print("🔍 Searching database for: '\(searchText)'")
         
-        // First, try to search by name
+        // Search both name and address simultaneously for better results
+        let group = DispatchGroup()
+        var nameResults: [ChaiSpot] = []
+        var addressResults: [ChaiSpot] = []
+        
+        // Search by name
+        group.enter()
         db.collection("chaiFinder")
             .whereField("name", isGreaterThanOrEqualTo: searchText)
             .whereField("name", isLessThan: searchText + "\u{f8ff}")
             .getDocuments { snapshot, error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        print("❌ Error searching by name: \(error.localizedDescription)")
-                        // If name search fails, try address search
-                        self.searchByAddress()
-                        return
-                    }
-                    
-                    guard let documents = snapshot?.documents else {
-                        // If no results by name, try address search
-                        self.searchByAddress()
-                        return
-                    }
-                    
-                    let nameResults = self.processSearchResults(documents)
-                    
-                    // If we found results by name, use them
-                    if !nameResults.isEmpty {
-                        print("✅ Found \(nameResults.count) results by name")
-                        self.chaiSpots = nameResults
-                        self.isLoading = false
-                    } else {
-                        // If no name results, try address search
-                        self.searchByAddress()
-                    }
+                defer { group.leave() }
+                
+                if let error = error {
+                    print("❌ Error searching by name: \(error.localizedDescription)")
+                } else if let documents = snapshot?.documents {
+                    nameResults = self.processSearchResults(documents)
+                    print("✅ Found \(nameResults.count) results by name")
                 }
             }
-    }
-    
-    private func searchByAddress() {
-        let db = Firestore.firestore()
         
-        print("🔍 Searching by address: '\(searchText)'")
-        
-        // Search by address (case-insensitive)
+        // Search by address
+        group.enter()
         db.collection("chaiFinder")
             .whereField("address", isGreaterThanOrEqualTo: searchText)
             .whereField("address", isLessThan: searchText + "\u{f8ff}")
             .getDocuments { snapshot, error in
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    
-                    if let error = error {
-                        print("❌ Error searching by address: \(error.localizedDescription)")
-                        // If address search fails, try review content search
-                        self.searchByReviewContent()
-                        return
-                    }
-                    
-                    guard let documents = snapshot?.documents else {
-                        // If no address results, try review content search
-                        self.searchByReviewContent()
-                        return
-                    }
-                    
-                    let addressResults = self.processSearchResults(documents)
-                    
-                    if !addressResults.isEmpty {
-                        print("✅ Found \(addressResults.count) results by address")
-                        self.chaiSpots = addressResults
-                    } else {
-                        // If no address results, try review content search
-                        self.searchByReviewContent()
-                    }
+                defer { group.leave() }
+                
+                if let error = error {
+                    print("❌ Error searching by address: \(error.localizedDescription)")
+                } else if let documents = snapshot?.documents {
+                    addressResults = self.processSearchResults(documents)
+                    print("✅ Found \(addressResults.count) results by address")
                 }
             }
+        
+        // Combine results when both searches complete
+        group.notify(queue: .main) {
+            // Combine results, removing duplicates by ID
+            var combinedResults: [ChaiSpot] = []
+            var seenIds: Set<String> = []
+            
+            // Add name results first (prioritize name matches)
+            for spot in nameResults {
+                if !seenIds.contains(spot.id) {
+                    combinedResults.append(spot)
+                    seenIds.insert(spot.id)
+                }
+            }
+            
+            // Add address results
+            for spot in addressResults {
+                if !seenIds.contains(spot.id) {
+                    combinedResults.append(spot)
+                    seenIds.insert(spot.id)
+                }
+            }
+            
+            if !combinedResults.isEmpty {
+                print("✅ Combined search results: \(combinedResults.count) unique spots")
+                self.chaiSpots = combinedResults
+            } else {
+                // If no results from name/address search, try review content search
+                print("🔍 No name/address results, trying review content search...")
+                self.searchByReviewContent()
+                return
+            }
+            
+            self.isLoading = false
+        }
     }
     
     private func searchByReviewContent() {
@@ -369,8 +369,22 @@ struct SearchView: View {
                 
                 print("📄 Found \(documents.count) documents in chaiFinder collection")
                 
+                // Log all document IDs for debugging
+                let documentIds = documents.map { $0.documentID }
+                print("📋 Document IDs: \(documentIds)")
+                
+                // Log the first few documents' data for debugging
+                for (index, doc) in documents.prefix(3).enumerated() {
+                    let data = doc.data()
+                    print("📝 Document \(index + 1) data: \(data)")
+                }
+                
                 self.chaiSpots = self.processSearchResults(documents)
                 print("✅ Processed \(self.chaiSpots.count) chai spots")
+                
+                // Log the names of all processed spots
+                let spotNames = self.chaiSpots.map { $0.name }
+                print("🏪 Spot names: \(spotNames)")
             }
         }
     }
@@ -379,12 +393,18 @@ struct SearchView: View {
         print("🔄 Processing \(documents.count) documents...")
         
         let processedSpots: [ChaiSpot] = documents.compactMap { document in
-            guard let data = document.data() as? [String: Any],
-                  let name = data["name"] as? String,
+            let data = document.data()
+            print("🔍 Processing document \(document.documentID) with data: \(data)")
+            
+            guard let name = data["name"] as? String,
                   let latitude = data["latitude"] as? Double,
                   let longitude = data["longitude"] as? Double,
                   let address = data["address"] as? String else {
                 print("⚠️ Skipping document \(document.documentID) - missing required fields")
+                print("   name: \(data["name"] ?? "nil")")
+                print("   latitude: \(data["latitude"] ?? "nil")")
+                print("   longitude: \(data["longitude"] ?? "nil")")
+                print("   address: \(data["address"] ?? "nil")")
                 return nil
             }
             
@@ -526,10 +546,31 @@ struct SearchView: View {
                     print("✅ Successfully added new chai spot: \(name)")
                     print("🔄 Current chaiSpots count before reload: \(self.chaiSpots.count)")
                     
-                    // Reload the chai spots to include the new one
-                    self.loadAllChaiSpots()
+                    // Create the new spot object immediately for UI update
+                    let newSpot = ChaiSpot(
+                        id: "", // Will be set after we get the document ID
+                        name: name,
+                        address: address,
+                        latitude: coordinate.latitude,
+                        longitude: coordinate.longitude,
+                        chaiTypes: chaiTypes,
+                        averageRating: Double(rating),
+                        ratingCount: 1
+                    )
                     
-                    print("🔄 Reloading chai spots...")
+                    // Add the new spot to the current list immediately for better UX
+                    self.chaiSpots.append(newSpot)
+                    print("🔄 Added new spot to UI immediately. Total spots: \(self.chaiSpots.count)")
+                    
+                    // Also clear any search location to show all spots including the new one
+                    self.searchLocation = nil
+                    print("🗺️ Cleared search location to show all spots")
+                    
+                    // Reload all spots after a short delay to ensure we get the correct document ID
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.loadAllChaiSpots()
+                        print("🔄 Reloading chai spots after delay to get correct document ID...")
+                    }
                 }
                 
                 // Close the sheet
@@ -868,6 +909,7 @@ struct ChaiSpotCard: View {
     @State private var isAddingToList = false
     @State private var showingAddToListAlert = false
     @State private var addToListMessage = ""
+    @State private var isSpotSaved = false
     
     var distanceString: String {
         guard let userLocation = userLocation else {
@@ -996,11 +1038,13 @@ struct ChaiSpotCard: View {
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
                     
-                    Button(isAddingToList ? "Adding..." : "Add to List") {
-                        addToMyList()
+                    Button(isAddingToList ? "Adding..." : (isSpotSaved ? "Added" : "Add to List")) {
+                        if !isSpotSaved {
+                            addToMyList()
+                        }
                     }
                     .buttonStyle(PrimaryButtonStyle())
-                    .disabled(isAddingToList)
+                    .disabled(isAddingToList || isSpotSaved)
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1017,6 +1061,7 @@ struct ChaiSpotCard: View {
         )
         .onAppear {
             loadRatings()
+            checkIfSpotIsSaved()
         }
         .sheet(isPresented: $showingRatingSheet) {
             SubmitRatingView(
@@ -1080,6 +1125,7 @@ struct ChaiSpotCard: View {
                 self.isAddingToList = false
                 self.addToListMessage = "✅ \(self.spot.name) is already in your list!"
                 self.showingAddToListAlert = true
+                self.isSpotSaved = true // Set the state to true
                 print("ℹ️ Spot already in saved list")
             }
             return
@@ -1102,6 +1148,7 @@ struct ChaiSpotCard: View {
                 } else {
                     self.addToListMessage = "✅ \(self.spot.name) added to your list!"
                     self.showingAddToListAlert = true
+                    self.isSpotSaved = true // Set the state to true
                     print("✅ Successfully added spot to saved list. Total saved spots: \(updatedSpots.count)")
                 }
             }
@@ -1124,6 +1171,7 @@ struct ChaiSpotCard: View {
                 } else {
                     self.addToListMessage = "✅ \(self.spot.name) added to your list!"
                     self.showingAddToListAlert = true
+                    self.isSpotSaved = true // Set the state to true
                     print("✅ Successfully created savedSpots field with first spot")
                 }
             }
@@ -1256,6 +1304,35 @@ struct ChaiSpotCard: View {
                         print("✅ Loaded \(self.friendRatings.count) friend ratings for \(self.spot.name)")
                     }
                 }
+        }
+    }
+    
+    private func checkIfSpotIsSaved() {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            DispatchQueue.main.async {
+                self.isSpotSaved = false // Not logged in
+            }
+            return
+        }
+        
+        let db = Firestore.firestore()
+        
+        db.collection("users").document(userId).getDocument { snapshot, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Error checking if spot is saved: \(error.localizedDescription)")
+                    self.isSpotSaved = false
+                    return
+                }
+                
+                if let data = snapshot?.data(), let savedSpots = data["savedSpots"] as? [String] {
+                    self.isSpotSaved = savedSpots.contains(self.spot.id)
+                    print("✅ Spot \(self.spot.name) (ID: \(self.spot.id)) is saved: \(self.isSpotSaved)")
+                } else {
+                    self.isSpotSaved = false
+                    print("✅ Spot \(self.spot.name) (ID: \(self.spot.id)) is NOT saved.")
+                }
+            }
         }
     }
 } 
