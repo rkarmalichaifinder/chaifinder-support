@@ -18,8 +18,14 @@ class FeedViewModel: ObservableObject {
     private let db = Firestore.firestore()
     private var spotDetailsCache: [String: (name: String, address: String)] = [:]
     private var loadingSpots: Set<String> = []
+    private var hasLoadedData = false
     
     func loadFeed() {
+        // Prevent multiple simultaneous loads
+        if isLoading && hasLoadedData {
+            return
+        }
+        
         isLoading = true
         error = nil
         
@@ -34,12 +40,12 @@ class FeedViewModel: ObservableObject {
         case .friends:
             // Check if user has friends
             checkUserFriends(currentUserId: currentUserId) { hasFriends in
-                if hasFriends {
-                    // Load friend ratings
-                    self.loadFriendRatings(currentUserId: currentUserId)
-                } else {
-                    // No friends, switch to community
-                    DispatchQueue.main.async {
+                DispatchQueue.main.async {
+                    if hasFriends {
+                        // Load friend ratings
+                        self.loadFriendRatings(currentUserId: currentUserId)
+                    } else {
+                        // No friends, switch to community
                         self.currentFeedType = .community
                         self.loadCommunityRatings()
                     }
@@ -52,12 +58,14 @@ class FeedViewModel: ObservableObject {
     
     func switchFeedType(to type: FeedType) {
         currentFeedType = type
+        hasLoadedData = false
         loadFeed()
     }
     
     func clearCache() {
         spotDetailsCache.removeAll()
         loadingSpots.removeAll()
+        hasLoadedData = false
     }
     
     func handleFirebasePermissionError() {
@@ -87,40 +95,43 @@ class FeedViewModel: ObservableObject {
     private func loadFriendRatings(currentUserId: String) {
         // Get user's friends list
         db.collection("users").document(currentUserId).getDocument { snapshot, error in
-            if let error = error {
-                self.loadCommunityRatings()
-                return
-            }
-            
-            guard let data = snapshot?.data(),
-                  let friends = data["friends"] as? [String],
-                  !friends.isEmpty else {
-                self.loadCommunityRatings()
-                return
-            }
-            
-            // Load ratings from friends
-            self.db.collection("ratings")
-                .whereField("userId", in: friends)
-                .order(by: "timestamp", descending: true)
-                .limit(to: 20)
-                .getDocuments { snapshot, error in
-                    DispatchQueue.main.async {
-                        self.isLoading = false
-                        
-                        if let error = error {
-                            self.loadCommunityRatings()
-                            return
-                        }
-                        
-                        guard let documents = snapshot?.documents else {
-                            self.loadCommunityRatings()
-                            return
-                        }
-                        
-                        self.processFriendRatingDocuments(documents)
-                    }
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.loadCommunityRatings()
+                    return
                 }
+                
+                guard let data = snapshot?.data(),
+                      let friends = data["friends"] as? [String],
+                      !friends.isEmpty else {
+                    self.loadCommunityRatings()
+                    return
+                }
+                
+                // Load ratings from friends
+                self.db.collection("ratings")
+                    .whereField("userId", in: friends)
+                    .order(by: "timestamp", descending: true)
+                    .limit(to: 20)
+                    .getDocuments { snapshot, error in
+                        DispatchQueue.main.async {
+                            self.isLoading = false
+                            
+                            if let error = error {
+                                self.loadCommunityRatings()
+                                return
+                            }
+                            
+                            guard let documents = snapshot?.documents else {
+                                self.loadCommunityRatings()
+                                return
+                            }
+                            
+                            self.processFriendRatingDocuments(documents)
+                            self.hasLoadedData = true
+                        }
+                    }
+            }
         }
     }
     
@@ -158,114 +169,114 @@ class FeedViewModel: ObservableObject {
                     }
                     
                     self.processRatingDocuments(documents)
+                    self.hasLoadedData = true
                 }
             }
     }
     
-
-    
     private func processRatingDocuments(_ documents: [QueryDocumentSnapshot]) {
-        // This method is now handled by processRatingDocumentsForFeed
-        // which updates the state asynchronously
-        _ = processRatingDocumentsForFeed(documents)
-    }
-    
-    private func processRatingDocumentsForFeed(_ documents: [QueryDocumentSnapshot]) -> [ReviewFeedItem] {
-        let feedItems = documents.compactMap { document -> ReviewFeedItem? in
-            guard let data = document.data() as? [String: Any],
-                  let spotId = data["spotId"] as? String,
-                  let userId = data["userId"] as? String,
-                  let value = data["value"] as? Int else {
-                return nil
+        // Process documents on background queue to avoid blocking main thread
+        DispatchQueue.global(qos: .userInitiated).async {
+            let feedItems = documents.compactMap { document -> ReviewFeedItem? in
+                guard let data = document.data() as? [String: Any],
+                      let spotId = data["spotId"] as? String,
+                      let userId = data["userId"] as? String,
+                      let value = data["value"] as? Int else {
+                    return nil
+                }
+                
+                let username = data["username"] as? String ?? "Anonymous"
+                let comment = data["comment"] as? String
+                let timestamp = data["timestamp"] as? Timestamp
+                let chaiType = data["chaiType"] as? String
+                
+                // Create initial feed item with placeholder spot info
+                let feedItem = ReviewFeedItem(
+                    id: document.documentID,
+                    spotId: spotId,
+                    spotName: "Loading...",
+                    spotAddress: "Loading...",
+                    userId: userId,
+                    username: username,
+                    rating: value,
+                    comment: comment,
+                    timestamp: timestamp?.dateValue() ?? Date(),
+                    chaiType: chaiType
+                )
+                
+                return feedItem
             }
             
-            let username = data["username"] as? String ?? "Anonymous"
-            let comment = data["comment"] as? String
-            let timestamp = data["timestamp"] as? Timestamp
-            let chaiType = data["chaiType"] as? String
-            
-            // Create initial feed item with placeholder spot info
-            let feedItem = ReviewFeedItem(
-                id: document.documentID,
-                spotId: spotId,
-                spotName: "Loading...",
-                spotAddress: "Loading...",
-                userId: userId,
-                username: username,
-                rating: value,
-                comment: comment,
-                timestamp: timestamp?.dateValue() ?? Date(),
-                chaiType: chaiType
-            )
-            
-            // Load spot details asynchronously
-            loadSpotDetails(for: spotId) { spotName, spotAddress in
-                DispatchQueue.main.async {
-                    if let index = self.reviews.firstIndex(where: { $0.id == document.documentID }) {
-                        self.reviews[index].spotName = spotName
-                        self.reviews[index].spotAddress = spotAddress
+            // Update UI on main thread
+            DispatchQueue.main.async {
+                self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
+                self.filteredReviews = self.reviews
+                
+                // Load spot details asynchronously after initial load
+                for feedItem in feedItems {
+                    self.loadSpotDetails(for: feedItem.spotId) { spotName, spotAddress in
+                        DispatchQueue.main.async {
+                            if let index = self.reviews.firstIndex(where: { $0.id == feedItem.id }) {
+                                self.reviews[index].spotName = spotName
+                                self.reviews[index].spotAddress = spotAddress
+                            }
+                        }
                     }
                 }
             }
-            
-            return feedItem
         }
-        
-        // Update immediately without any async operations
-        DispatchQueue.main.async {
-            self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
-            self.filteredReviews = self.reviews
-            self.isLoading = false
-        }
-        
-        return []
     }
     
     private func processFriendRatingDocuments(_ documents: [QueryDocumentSnapshot]) {
-        let feedItems = documents.compactMap { document -> ReviewFeedItem? in
-            guard let data = document.data() as? [String: Any],
-                  let spotId = data["spotId"] as? String,
-                  let userId = data["userId"] as? String,
-                  let value = data["value"] as? Int else {
-                return nil
+        // Process documents on background queue to avoid blocking main thread
+        DispatchQueue.global(qos: .userInitiated).async {
+            let feedItems = documents.compactMap { document -> ReviewFeedItem? in
+                guard let data = document.data() as? [String: Any],
+                      let spotId = data["spotId"] as? String,
+                      let userId = data["userId"] as? String,
+                      let value = data["value"] as? Int else {
+                    return nil
+                }
+                
+                let username = data["username"] as? String ?? "Anonymous"
+                let comment = data["comment"] as? String
+                let timestamp = data["timestamp"] as? Timestamp
+                let chaiType = data["chaiType"] as? String
+                
+                // Create initial feed item with placeholder spot info
+                let feedItem = ReviewFeedItem(
+                    id: document.documentID,
+                    spotId: spotId,
+                    spotName: "Loading...",
+                    spotAddress: "Loading...",
+                    userId: userId,
+                    username: username,
+                    rating: value,
+                    comment: comment,
+                    timestamp: timestamp?.dateValue() ?? Date(),
+                    chaiType: chaiType
+                )
+                
+                return feedItem
             }
             
-            let username = data["username"] as? String ?? "Anonymous"
-            let comment = data["comment"] as? String
-            let timestamp = data["timestamp"] as? Timestamp
-            let chaiType = data["chaiType"] as? String
-            
-            // Create initial feed item with placeholder spot info
-            let feedItem = ReviewFeedItem(
-                id: document.documentID,
-                spotId: spotId,
-                spotName: "Loading...",
-                spotAddress: "Loading...",
-                userId: userId,
-                username: username,
-                rating: value,
-                comment: comment,
-                timestamp: timestamp?.dateValue() ?? Date(),
-                chaiType: chaiType
-            )
-            
-            // Load spot details asynchronously
-            loadSpotDetails(for: spotId) { spotName, spotAddress in
-                DispatchQueue.main.async {
-                    if let index = self.reviews.firstIndex(where: { $0.id == document.documentID }) {
-                        self.reviews[index].spotName = spotName
-                        self.reviews[index].spotAddress = spotAddress
+            // Update UI on main thread
+            DispatchQueue.main.async {
+                self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
+                self.filteredReviews = self.reviews
+                
+                // Load spot details asynchronously after initial load
+                for feedItem in feedItems {
+                    self.loadSpotDetails(for: feedItem.spotId) { spotName, spotAddress in
+                        DispatchQueue.main.async {
+                            if let index = self.reviews.firstIndex(where: { $0.id == feedItem.id }) {
+                                self.reviews[index].spotName = spotName
+                                self.reviews[index].spotAddress = spotAddress
+                            }
+                        }
                     }
                 }
             }
-            
-            return feedItem
-        }
-        
-        DispatchQueue.main.async {
-            self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
-            self.filteredReviews = self.reviews
-            self.isLoading = false
         }
     }
     

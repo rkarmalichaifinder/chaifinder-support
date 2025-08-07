@@ -15,6 +15,9 @@ struct FriendsView: View {
     @State private var outgoingRequests: [UserProfile] = []
     @State private var showingFriendRatings = false
     @State private var selectedFriend: UserProfile?
+    
+    // Add state to track if data has been loaded
+    @State private var hasLoadedData = false
 
     private let db = Firestore.firestore()
 
@@ -104,7 +107,11 @@ struct FriendsView: View {
             }
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.large)
-            .onAppear(perform: reloadData)
+            .onAppear {
+                if !hasLoadedData {
+                    reloadData()
+                }
+            }
             .sheet(isPresented: $showingFriendRatings) {
                 if let friend = selectedFriend {
                     FriendRatingsView(friend: friend)
@@ -433,39 +440,41 @@ struct FriendsView: View {
             return
         }
 
-        // Load all users
-        db.collection("users").addSnapshotListener { snapshot, error in
-            if let error = error {
-                print("❌ Error loading users: \(error.localizedDescription)")
-                self.errorMessage = error.localizedDescription
-                self.loading = false
-                return
-            }
-            
-            guard let documents = snapshot?.documents else {
-                print("❌ No user documents found")
-                self.errorMessage = "No users found"
-                self.loading = false
-                return
-            }
+        // Use getDocuments instead of addSnapshotListener to avoid continuous updates
+        db.collection("users").getDocuments { snapshot, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Error loading users: \(error.localizedDescription)")
+                    self.errorMessage = error.localizedDescription
+                    self.loading = false
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    print("❌ No user documents found")
+                    self.errorMessage = "No users found"
+                    self.loading = false
+                    return
+                }
 
-            let allUsers = documents.compactMap { doc -> UserProfile? in
-                var user = try? doc.data(as: UserProfile.self)
-                // Don't manually set @DocumentID - let Firestore handle it
-                user?.uid = doc.get("uid") as? String ?? doc.documentID
-                return user
-            }
+                let allUsers = documents.compactMap { doc -> UserProfile? in
+                    var user = try? doc.data(as: UserProfile.self)
+                    user?.uid = doc.get("uid") as? String ?? doc.documentID
+                    return user
+                }
 
-            self.currentUser = allUsers.first(where: { $0.uid == uid })
-            self.users = allUsers.filter { $0.uid != uid }
-            
-            print("📄 Loaded \(self.users.count) users (excluding current user)")
-            print("👤 Current user: \(self.currentUser?.displayName ?? "Unknown")")
-            
-            // Load friend requests
-            self.loadFriendRequests()
-            
-            self.loading = false
+                self.currentUser = allUsers.first(where: { $0.uid == uid })
+                self.users = allUsers.filter { $0.uid != uid }
+                
+                print("📄 Loaded \(self.users.count) users (excluding current user)")
+                print("👤 Current user: \(self.currentUser?.displayName ?? "Unknown")")
+                
+                // Load friend requests
+                self.loadFriendRequests()
+                
+                self.loading = false
+                self.hasLoadedData = true
+            }
         }
     }
     
@@ -474,48 +483,45 @@ struct FriendsView: View {
         
         print("🔄 Loading friend requests for user: \(currentUserId)")
         
-        // Load incoming requests from subcollection
+        // Use getDocuments instead of addSnapshotListener for better performance
+        let group = DispatchGroup()
+        
+        // Load incoming requests
+        group.enter()
         db.collection("users").document(currentUserId)
             .collection("incomingFriendRequests")
-            .addSnapshotListener { snapshot, error in
-                if let error = error {
-                    print("❌ Error loading incoming requests: \(error.localizedDescription)")
-                    return
+            .getDocuments { snapshot, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("❌ Error loading incoming requests: \(error.localizedDescription)")
+                    } else {
+                        let documents = snapshot?.documents ?? []
+                        let requestIds = documents.map { $0.documentID }
+                        print("📄 Found \(requestIds.count) incoming requests: \(requestIds)")
+                        self.incomingRequests = self.users.filter { requestIds.contains($0.uid) }
+                        print("✅ Loaded \(self.incomingRequests.count) incoming request profiles")
+                    }
+                    group.leave()
                 }
-                
-                guard let documents = snapshot?.documents else { 
-                    print("📄 No incoming requests found")
-                    self.incomingRequests = []
-                    return 
-                }
-                
-                let requestIds = documents.map { $0.documentID }
-                print("📄 Found \(requestIds.count) incoming requests: \(requestIds)")
-                
-                self.incomingRequests = self.users.filter { requestIds.contains($0.uid) }
-                print("✅ Loaded \(self.incomingRequests.count) incoming request profiles")
             }
         
-        // Load outgoing requests from subcollection
+        // Load outgoing requests
+        group.enter()
         db.collection("users").document(currentUserId)
             .collection("outgoingFriendRequests")
-            .addSnapshotListener { snapshot, error in
-                if let error = error {
-                    print("❌ Error loading outgoing requests: \(error.localizedDescription)")
-                    return
+            .getDocuments { snapshot, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("❌ Error loading outgoing requests: \(error.localizedDescription)")
+                    } else {
+                        let documents = snapshot?.documents ?? []
+                        let requestIds = documents.map { $0.documentID }
+                        print("📄 Found \(requestIds.count) outgoing requests: \(requestIds)")
+                        self.outgoingRequests = self.users.filter { requestIds.contains($0.uid) }
+                        print("✅ Loaded \(self.outgoingRequests.count) outgoing request profiles")
+                    }
+                    group.leave()
                 }
-                
-                guard let documents = snapshot?.documents else { 
-                    print("📄 No outgoing requests found")
-                    self.outgoingRequests = []
-                    return 
-                }
-                
-                let requestIds = documents.map { $0.documentID }
-                print("📄 Found \(requestIds.count) outgoing requests: \(requestIds)")
-                
-                self.outgoingRequests = self.users.filter { requestIds.contains($0.uid) }
-                print("✅ Loaded \(self.outgoingRequests.count) outgoing request profiles")
             }
     }
 

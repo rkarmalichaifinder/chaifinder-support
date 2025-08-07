@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>GIDClientID</key>
+	<string>587784566464-a20p386bmiuvgaigq61snprnbb0fqios.apps.googleusercontent.com</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -18,7 +20,6 @@
 				<string>com.googleusercontent.apps.587784566464-a20p386bmiuvgaigq61snprnbb0fqios</string>
 			</array>
 		</dict>
-
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We use your location to show nearby chai spots.</string>

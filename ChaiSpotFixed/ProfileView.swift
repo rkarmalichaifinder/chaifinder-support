@@ -4,7 +4,7 @@ struct ProfileView: View {
     @EnvironmentObject var sessionStore: SessionStore
     @State private var showingEditBio = false
     @State private var showingDeleteAccount = false
-    
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -14,19 +14,19 @@ struct ProfileView: View {
                         Image(systemName: "person.circle.fill")
                             .font(.system(size: 80))
                             .foregroundColor(.orange)
-                        
+
                         VStack(spacing: 8) {
-                            Text(sessionStore.user?.displayName ?? "User")
+                            Text(sessionStore.userProfile?.displayName ?? "User")
                                 .font(.title2)
                                 .fontWeight(.semibold)
-                            
-                            Text(sessionStore.user?.email ?? "")
+
+                            Text(sessionStore.userProfile?.email ?? "")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
                     }
                     .padding(.top, 20)
-                    
+
                     // Stats
                     HStack(spacing: 40) {
                         VStack {
@@ -37,9 +37,9 @@ struct ProfileView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         VStack {
-                            Text("\(sessionStore.user?.friends?.count ?? 0)")
+                            Text("\(sessionStore.userProfile?.friends?.count ?? 0)")
                                 .font(.title2)
                                 .fontWeight(.bold)
                             Text("Friends")
@@ -48,7 +48,7 @@ struct ProfileView: View {
                         }
                     }
                     .padding(.vertical, 20)
-                    
+
                     // Bio Section
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
@@ -60,8 +60,8 @@ struct ProfileView: View {
                             }
                             .foregroundColor(.orange)
                         }
-                        
-                        Text(sessionStore.user?.bio ?? "No bio yet")
+
+                        Text(sessionStore.userProfile?.bio ?? "No bio yet")
                             .foregroundColor(.secondary)
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -69,7 +69,7 @@ struct ProfileView: View {
                             .cornerRadius(8)
                     }
                     .padding(.horizontal)
-                    
+
                     // Actions
                     VStack(spacing: 12) {
                         Button("Sign Out") {
@@ -80,7 +80,7 @@ struct ProfileView: View {
                         .background(Color.red)
                         .foregroundColor(.white)
                         .cornerRadius(10)
-                        
+
                         Button("Delete Account") {
                             showingDeleteAccount = true
                         }
@@ -91,7 +91,7 @@ struct ProfileView: View {
                         .cornerRadius(10)
                     }
                     .padding(.horizontal)
-                    
+
                     Spacer()
                 }
             }

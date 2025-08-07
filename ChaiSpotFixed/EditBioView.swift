@@ -1,41 +1,38 @@
 import SwiftUI
+import FirebaseAuth
 
 struct EditBioView: View {
     @EnvironmentObject var sessionStore: SessionStore
-    @State private var bioText: String = ""
-    @Environment(\.dismiss) var dismiss
+    @State private var bio: String = ""
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Your Bio")) {
-                    TextEditor(text: $bioText)
-                        .frame(height: 150)
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Edit Bio")
+                .font(.title)
+                .bold()
+
+            TextField("Your bio", text: $bio)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding()
+
+            Button("Save") {
+                Task {
+                    await sessionStore.updateBio(to: bio)
+                    dismiss()
                 }
             }
-            .navigationTitle("Edit Bio")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        saveBio()
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-            .onAppear {
-                bioText = sessionStore.user?.bio ?? ""
-            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color.orange)
+            .foregroundColor(.white)
+            .cornerRadius(10)
+
+            Spacer()
         }
-    }
-    
-    private func saveBio() {
-        guard var updatedUser = sessionStore.user else { return }
-        updatedUser.bio = bioText
-        sessionStore.updateUserProfile(updatedUser)
+        .padding()
+        .onAppear {
+            bio = sessionStore.userProfile?.bio ?? ""
+        }
     }
 }

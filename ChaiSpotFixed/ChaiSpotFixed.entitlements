@@ -11,6 +11,7 @@
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)*</string>
+		<string>$(AppIdentifierPrefix)rfk.ChaiSpotFixed</string>
 	</array>
 </dict>
 </plist>
