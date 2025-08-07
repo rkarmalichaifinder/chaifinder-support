@@ -982,6 +982,7 @@ struct ChaiSpotCard: View {
     @State private var showingAddToListAlert = false
     @State private var addToListMessage = ""
     @State private var isSpotSaved = false
+    @State private var showingDetailSheet = false
     
     var distanceString: String {
         guard let userLocation = userLocation else {
@@ -1011,114 +1012,143 @@ struct ChaiSpotCard: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text(spot.name)
-                        .font(DesignSystem.Typography.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(DesignSystem.Colors.textPrimary)
-                    
-                    Text(spot.address)
-                        .font(DesignSystem.Typography.bodyMedium)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
+        ZStack {
+            // Background tap area
+            Rectangle()
+                .fill(Color.clear)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    showingDetailSheet = true
                 }
-                
-                Spacer()
-                
-                // Ratings Section
-                VStack(alignment: .trailing, spacing: 4) {
-                    // Community Rating
-                    if calculatedAverageRating > 0 {
+            
+            // Card content
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        Text(spot.name)
+                            .font(DesignSystem.Typography.headline)
+                            .fontWeight(.bold)
+                            .foregroundColor(DesignSystem.Colors.textPrimary)
+                        
+                        Text(spot.address)
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    }
+                    
+                    Spacer()
+                    
+                    // Ratings Section
+                    VStack(alignment: .trailing, spacing: 4) {
+                        // Community Rating
                         HStack(spacing: 4) {
                             Text("Community:")
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
                             
-                            Text("\(String(format: "%.1f", calculatedAverageRating))★")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(DesignSystem.Colors.ratingGreen)
-                                .cornerRadius(DesignSystem.CornerRadius.small)
-                            
-                            Text("(\(ratings.count))")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            if calculatedAverageRating > 0 {
+                                Text("\(String(format: "%.1f", calculatedAverageRating))★")
+                                    .font(DesignSystem.Typography.bodyMedium)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(DesignSystem.Colors.ratingGreen)
+                                    .cornerRadius(DesignSystem.CornerRadius.small)
+                                
+                                Text("(\(ratings.count))")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                            } else {
+                                Text("No ratings")
+                                    .font(DesignSystem.Typography.bodySmall)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(DesignSystem.Colors.secondary.opacity(0.3))
+                                    .cornerRadius(DesignSystem.CornerRadius.small)
+                            }
                         }
-                    }
-                    
-                    // Friends Rating
-                    if calculatedFriendAverageRating > 0 {
+                        
+                        // Friends Rating
                         HStack(spacing: 4) {
                             Text("Friends:")
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
                             
-                            Text("\(String(format: "%.1f", calculatedFriendAverageRating))★")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(DesignSystem.Colors.primary)
-                                .cornerRadius(DesignSystem.CornerRadius.small)
-                            
-                            Text("(\(friendRatings.count))")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            if calculatedFriendAverageRating > 0 {
+                                Text("\(String(format: "%.1f", calculatedFriendAverageRating))★")
+                                    .font(DesignSystem.Typography.bodyMedium)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(DesignSystem.Colors.primary)
+                                    .cornerRadius(DesignSystem.CornerRadius.small)
+                                
+                                Text("(\(friendRatings.count))")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                            } else {
+                                Text("No ratings")
+                                    .font(DesignSystem.Typography.bodySmall)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(DesignSystem.Colors.secondary.opacity(0.3))
+                                    .cornerRadius(DesignSystem.CornerRadius.small)
+                            }
+                        }
+                        
+                        if isLoadingRatings || isLoadingFriendRatings {
+                            ProgressView()
+                                .scaleEffect(0.6)
                         }
                     }
-                    
-                    if isLoadingRatings || isLoadingFriendRatings {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                    }
                 }
-            }
-            
-            // Chai Types
-            if !spot.chaiTypes.isEmpty {
-                Text("Chai Types: \(spot.chaiTypes.joined(separator: ", "))")
-                    .font(DesignSystem.Typography.bodyMedium)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-            }
-            
-            // Details
-            HStack {
-                HStack(spacing: 4) {
-                    Image(systemName: "location.fill")
-                        .font(.caption)
-                        .foregroundColor(DesignSystem.Colors.primary)
-                    
-                    Text(distanceString)
-                        .font(DesignSystem.Typography.bodySmall)
+                
+                // Chai Types
+                if !spot.chaiTypes.isEmpty {
+                    Text("Chai Types: \(spot.chaiTypes.joined(separator: ", "))")
+                        .font(DesignSystem.Typography.bodyMedium)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
                 
-                Spacer()
-                
-                // Action Buttons
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Button("Rank") {
-                        showingRatingSheet = true
+                // Details
+                HStack {
+                    HStack(spacing: 4) {
+                        Image(systemName: "location.fill")
+                            .font(.caption)
+                            .foregroundColor(DesignSystem.Colors.primary)
+                        
+                        Text(distanceString)
+                            .font(DesignSystem.Typography.bodySmall)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
                     }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .frame(maxWidth: .infinity)
-                    .fixedSize(horizontal: false, vertical: true)
                     
-                    Button(isAddingToList ? "Adding..." : (isSpotSaved ? "Added" : "Add to List")) {
-                        if !isSpotSaved {
-                            addToMyList()
+                    Spacer()
+                    
+                    // Action Buttons
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Button("Rank") {
+                            showingRatingSheet = true
                         }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .frame(maxWidth: .infinity)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .allowsHitTesting(true)
+                        
+                        Button(isAddingToList ? "Adding..." : (isSpotSaved ? "Added" : "Add to List")) {
+                            if !isSpotSaved {
+                                addToMyList()
+                            }
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(isAddingToList || isSpotSaved)
+                        .frame(maxWidth: .infinity)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .allowsHitTesting(true)
                     }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(isAddingToList || isSpotSaved)
-                    .frame(maxWidth: .infinity)
-                    .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -1144,6 +1174,9 @@ struct ChaiSpotCard: View {
                     loadRatings() // Refresh ratings after submission
                 }
             )
+        }
+        .sheet(isPresented: $showingDetailSheet) {
+            ChaiSpotDetailSheet(spot: spot, userLocation: userLocation)
         }
         .alert("Add to List", isPresented: $showingAddToListAlert) {
             Button("OK") { }

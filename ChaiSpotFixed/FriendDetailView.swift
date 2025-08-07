@@ -27,6 +27,31 @@ struct FriendDetailView: View {
                         // Bio Section
                         if let bio = friend.bio, !bio.isEmpty {
                             bioSection(bio)
+                        } else {
+                            // Show placeholder when bio is missing
+                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                                Text("Bio")
+                                    .font(DesignSystem.Typography.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                                
+                                Text("No bio available")
+                                    .font(DesignSystem.Typography.bodyMedium)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                                    .padding(DesignSystem.Spacing.md)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(DesignSystem.Colors.secondary.opacity(0.05))
+                                    .cornerRadius(DesignSystem.CornerRadius.small)
+                            }
+                            .padding(DesignSystem.Spacing.lg)
+                            .background(DesignSystem.Colors.cardBackground)
+                            .cornerRadius(DesignSystem.CornerRadius.medium)
+                            .shadow(
+                                color: DesignSystem.Shadows.small.color,
+                                radius: DesignSystem.Shadows.small.radius,
+                                x: DesignSystem.Shadows.small.x,
+                                y: DesignSystem.Shadows.small.y
+                            )
                         }
                         
                         // Friends Section
