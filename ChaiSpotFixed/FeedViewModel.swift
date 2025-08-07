@@ -38,19 +38,8 @@ class FeedViewModel: ObservableObject {
         
         switch currentFeedType {
         case .friends:
-            // Check if user has friends
-            checkUserFriends(currentUserId: currentUserId) { hasFriends in
-                DispatchQueue.main.async {
-                    if hasFriends {
-                        // Load friend ratings
-                        self.loadFriendRatings(currentUserId: currentUserId)
-                    } else {
-                        // No friends, switch to community
-                        self.currentFeedType = .community
-                        self.loadCommunityRatings()
-                    }
-                }
-            }
+            // Always attempt to load friend ratings, let the function handle no friends case
+            loadFriendRatings(currentUserId: currentUserId)
         case .community:
             loadCommunityRatings()
         }
@@ -61,6 +50,8 @@ class FeedViewModel: ObservableObject {
         hasLoadedData = false
         isLoading = true
         error = nil
+        reviews = []
+        filteredReviews = []
         
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             // If not logged in, load community ratings
@@ -112,14 +103,20 @@ class FeedViewModel: ObservableObject {
         db.collection("users").document(currentUserId).getDocument { snapshot, error in
             DispatchQueue.main.async {
                 if let error = error {
-                    self.loadCommunityRatings()
+                    self.isLoading = false
+                    self.reviews = []
+                    self.filteredReviews = []
+                    self.error = "Unable to load friends list. Please check your connection."
                     return
                 }
                 
                 guard let data = snapshot?.data(),
                       let friends = data["friends"] as? [String],
                       !friends.isEmpty else {
-                    self.loadCommunityRatings()
+                    self.isLoading = false
+                    self.reviews = []
+                    self.filteredReviews = []
+                    self.error = "You don't have any friends yet. Add friends to see their reviews here!"
                     return
                 }
                 
@@ -133,12 +130,23 @@ class FeedViewModel: ObservableObject {
                             self.isLoading = false
                             
                             if let error = error {
-                                self.loadCommunityRatings()
+                                self.reviews = []
+                                self.filteredReviews = []
+                                self.error = "Unable to load friend reviews. Please try again."
                                 return
                             }
                             
                             guard let documents = snapshot?.documents else {
-                                self.loadCommunityRatings()
+                                self.reviews = []
+                                self.filteredReviews = []
+                                self.error = "Your friends haven't posted any reviews yet."
+                                return
+                            }
+                            
+                            if documents.isEmpty {
+                                self.reviews = []
+                                self.filteredReviews = []
+                                self.error = "Your friends haven't posted any reviews yet."
                                 return
                             }
                             

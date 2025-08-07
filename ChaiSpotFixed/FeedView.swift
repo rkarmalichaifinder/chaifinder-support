@@ -92,6 +92,49 @@ struct FeedView: View {
                             Spacer()
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let error = viewModel.error {
+                        VStack(spacing: DesignSystem.Spacing.lg) {
+                            Spacer()
+                            Image(systemName: viewModel.currentFeedType == .friends ? "person.2.slash" : "exclamationmark.triangle")
+                                .font(.system(size: 48))
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            Text(error)
+                                .font(DesignSystem.Typography.bodyLarge)
+                                .foregroundColor(DesignSystem.Colors.textPrimary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, DesignSystem.Spacing.lg)
+                            
+                            if viewModel.currentFeedType == .friends {
+                                Button(action: {
+                                    viewModel.switchFeedType(to: .community)
+                                }) {
+                                    Text("View Community Feed")
+                                        .font(DesignSystem.Typography.bodyMedium)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, DesignSystem.Spacing.lg)
+                                        .padding(.vertical, DesignSystem.Spacing.md)
+                                        .background(DesignSystem.Colors.primary)
+                                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                                }
+                            } else {
+                                Button(action: {
+                                    viewModel.loadFeed()
+                                }) {
+                                    Text("Try Again")
+                                        .font(DesignSystem.Typography.bodyMedium)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, DesignSystem.Spacing.lg)
+                                        .padding(.vertical, DesignSystem.Spacing.md)
+                                        .background(DesignSystem.Colors.primary)
+                                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                                }
+                            }
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if viewModel.filteredReviews.isEmpty {
                         VStack(spacing: DesignSystem.Spacing.lg) {
                             Spacer()
