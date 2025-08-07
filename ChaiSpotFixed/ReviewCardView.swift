@@ -157,7 +157,7 @@ struct ReviewCardView: View {
         .background(DesignSystem.Colors.cardBackground)
         .cornerRadius(DesignSystem.CornerRadius.medium)
         .sheet(isPresented: $showingComments) {
-            CommentListView(spotId: review.spotId, spotName: spotName)
+            CommentListView(spotId: review.spotId)
         }
         .sheet(isPresented: $showingReportSheet) {
             ReportContentView(

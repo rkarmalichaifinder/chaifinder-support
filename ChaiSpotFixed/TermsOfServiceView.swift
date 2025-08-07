@@ -50,41 +50,61 @@ struct TermsOfServiceView: View {
                         Text("3. Content Moderation")
                             .font(.headline)
                         
-                        Text("• All user-generated content is subject to review")
-                        • Users can report inappropriate content")
-                        • We will remove objectionable content within 24 hours")
-                        • Users who violate these terms will be banned")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("• All user-generated content is subject to review")
+                            Text("• Users can report inappropriate content")
+                            Text("• We will remove objectionable content within 24 hours")
+                            Text("• Users who violate these terms will be banned")
+                        }
+                        .font(.body)
+                        .padding(.leading, 20)
                         
                         Text("4. User Responsibilities")
                             .font(.headline)
                         
-                        Text("• You are responsible for all content you submit")
-                        • You must be 13 years or older to use this app")
-                        • You must provide accurate and truthful information")
-                        • You must respect other users and their privacy")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("• You are responsible for all content you submit")
+                            Text("• You must be 13 years or older to use this app")
+                            Text("• You must provide accurate and truthful information")
+                            Text("• You must respect other users and their privacy")
+                        }
+                        .font(.body)
+                        .padding(.leading, 20)
                         
                         Text("5. Reporting and Blocking")
                             .font(.headline)
                         
-                        Text("• You can report inappropriate content or users")
-                        • You can block users who are harassing you")
-                        • All reports are reviewed within 24 hours")
-                        • False reports may result in account suspension")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("• You can report inappropriate content or users")
+                            Text("• You can block users who are harassing you")
+                            Text("• All reports are reviewed within 24 hours")
+                            Text("• False reports may result in account suspension")
+                        }
+                        .font(.body)
+                        .padding(.leading, 20)
                         
                         Text("6. Consequences of Violations")
                             .font(.headline)
                         
-                        Text("• First violation: Warning and content removal")
-                        • Second violation: Temporary suspension (7 days)")
-                        • Third violation: Permanent ban")
-                        • Severe violations: Immediate permanent ban")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("• First violation: Warning and content removal")
+                            Text("• Second violation: Temporary suspension (7 days)")
+                            Text("• Third violation: Permanent ban")
+                            Text("• Severe violations: Immediate permanent ban")
+                        }
+                        .font(.body)
+                        .padding(.leading, 20)
                         
                         Text("7. Contact Information")
                             .font(.headline)
                         
-                        Text("To report violations or appeal decisions:")
-                        Text("Email: support@chaifinder.app")
-                        Text("Instagram: @chaifinderapp")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("To report violations or appeal decisions:")
+                            Text("Email: support@chaifinder.app")
+                            Text("Instagram: @chaifinderapp")
+                        }
+                        .font(.body)
+                        .padding(.leading, 20)
                         
                         Text("By accepting these terms, you acknowledge that you have read, understood, and agree to comply with all the above conditions.")
                             .font(.body)
