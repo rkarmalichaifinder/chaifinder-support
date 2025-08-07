@@ -68,11 +68,11 @@ struct SearchView: View {
                             .font(DesignSystem.Typography.bodyMedium)
                             .foregroundColor(DesignSystem.Colors.textPrimary)
                             .onChange(of: searchText) { newValue in
-                                // Debounce the search to avoid state modification during view updates
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    if searchText == newValue {
-                                        searchChaiSpots()
-                                    }
+                                // Use a more appropriate approach to avoid state modification during view updates
+                                if !newValue.isEmpty {
+                                    searchChaiSpots()
+                                } else {
+                                    loadAllChaiSpots()
                                 }
                             }
                         

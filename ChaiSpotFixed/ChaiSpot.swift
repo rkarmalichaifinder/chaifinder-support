@@ -3,7 +3,7 @@ import FirebaseFirestore
 import CoreLocation
 
 struct ChaiFinder: Identifiable, Codable {
-    @DocumentID var id: String?
+    var id: String?
     var name: String
     var latitude: Double
     var longitude: Double

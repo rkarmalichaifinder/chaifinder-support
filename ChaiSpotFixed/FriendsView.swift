@@ -131,7 +131,22 @@ struct FriendsView: View {
                 if let friend = selectedFriend {
                     FriendDetailView(friend: friend)
                 } else {
-                    Text("No friend selected")
+                    VStack {
+                        Text("No friend selected")
+                            .font(DesignSystem.Typography.bodyLarge)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        Button("Close") {
+                            showingFriendDetails = false
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .padding()
+                    }
+                }
+            }
+            .onChange(of: showingFriendDetails) { newValue in
+                if !newValue {
+                    // Reset selectedFriend when sheet is dismissed
+                    selectedFriend = nil
                 }
             }
             .alert("Friend Request Sent", isPresented: $showingRequestConfirmation) {
@@ -315,8 +330,12 @@ struct FriendsView: View {
             
             ForEach(friendProfiles) { friend in
                 Button(action: {
+                    print("🔄 Friend tapped: \(friend.displayName)")
+                    print("🔄 Current selectedFriend before: \(selectedFriend?.displayName ?? "nil")")
                     selectedFriend = friend
+                    print("🔄 Set selectedFriend to: \(selectedFriend?.displayName ?? "nil")")
                     showingFriendDetails = true
+                    print("✅ Set showingFriendDetails = true")
                 }) {
                     friendCard(friend)
                 }
@@ -423,52 +442,77 @@ struct FriendsView: View {
     }
     
     private func peopleCard(_ user: UserProfile) -> some View {
-        HStack {
-            profileImage(for: user)
-                .frame(width: 50, height: 50)
-            
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text(user.displayName)
-                    .font(DesignSystem.Typography.bodyMedium)
-                    .fontWeight(.semibold)
-                    .foregroundColor(DesignSystem.Colors.textPrimary)
+        Button(action: {
+            print("🔄 Person tapped: \(user.displayName)")
+            print("🔄 Current selectedFriend before: \(selectedFriend?.displayName ?? "nil")")
+            selectedFriend = user
+            print("🔄 Set selectedFriend to: \(selectedFriend?.displayName ?? "nil")")
+            showingFriendDetails = true
+            print("✅ Set showingFriendDetails = true")
+        }) {
+            HStack {
+                profileImage(for: user)
+                    .frame(width: 50, height: 50)
                 
-                Text(user.email)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-            }
-            
-            Spacer()
-            
-            if isFriend(user) {
-                Button("Remove") {
-                    removeFriend(user)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text(user.displayName)
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .fontWeight(.semibold)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                    
+                    Text(user.email)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
-                .buttonStyle(SecondaryButtonStyle())
-            } else {
-                Button(action: {
-                    sendFriendRequest(to: user)
-                }) {
-                    if sendingToUser == user.uid {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    } else if sentRequests.contains(user.uid) || isRequestSent(to: user) {
-                        Text("Requested")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                Spacer()
+                
+                // Add a chevron to indicate it's clickable
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                // Action buttons in a separate HStack to prevent tap interference
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    if isFriend(user) {
+                        Button("Remove") {
+                            removeFriend(user)
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
                     } else {
-                        Text("Send Request")
-                            .font(DesignSystem.Typography.bodySmall)
-                            .fontWeight(.medium)
+                        Button(action: {
+                            sendFriendRequest(to: user)
+                        }) {
+                            if sendingToUser == user.uid {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else if sentRequests.contains(user.uid) || isRequestSent(to: user) {
+                                Text("Requested")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                            } else {
+                                Text("Send Request")
+                                    .font(DesignSystem.Typography.bodySmall)
+                                    .fontWeight(.medium)
+                            }
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(sendingToUser != nil)
                     }
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(sendingToUser != nil)
+                .allowsHitTesting(true) // Ensure buttons are tappable
             }
+            .padding(DesignSystem.Spacing.md)
+            .background(DesignSystem.Colors.secondary.opacity(0.05))
+            .cornerRadius(DesignSystem.CornerRadius.small)
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                    .stroke(Color(.systemGray4), lineWidth: 1)
+            )
+            .contentShape(Rectangle()) // Make the entire card tappable
         }
-        .padding(DesignSystem.Spacing.md)
-        .background(DesignSystem.Colors.secondary.opacity(0.05))
-        .cornerRadius(DesignSystem.CornerRadius.small)
+        .buttonStyle(PlainButtonStyle())
+        .allowsHitTesting(true) // Ensure the main button is tappable
     }
 
     // MARK: - Helper Functions
