@@ -11,6 +11,8 @@ struct SignInView: View {
     @State private var password = ""
     @State private var errorMessage: String?
     @State private var showingSignUp = false
+    @State private var showingTerms = false
+    @State private var hasAcceptedTerms = false
 
     var body: some View {
         NavigationView {
@@ -59,7 +61,7 @@ struct SignInView: View {
                 }
 
                 Button("Don't have an account? Sign Up") {
-                    showingSignUp = true
+                    showingTerms = true
                 }
                 .padding(.top, 10)
 
@@ -100,6 +102,15 @@ struct SignInView: View {
             }
             .padding()
             .navigationTitle("Welcome")
+            .sheet(isPresented: $showingTerms) {
+                TermsOfServiceView(hasAcceptedTerms: $hasAcceptedTerms)
+            }
+            .onChange(of: hasAcceptedTerms) { accepted in
+                if accepted {
+                    showingSignUp = true
+                    hasAcceptedTerms = false // Reset for next time
+                }
+            }
             .sheet(isPresented: $showingSignUp) {
                 SignUpView()
                     .environmentObject(sessionStore)

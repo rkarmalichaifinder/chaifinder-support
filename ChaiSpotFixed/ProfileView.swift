@@ -8,6 +8,7 @@ struct ProfileView: View {
     @State private var savedSpotsCount = 0
     @State private var showingSavedSpots = false
     @State private var showingFriends = false
+    @State private var showingBlockedUsers = false
 
     var body: some View {
         NavigationView {
@@ -110,6 +111,57 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal)
 
+                    // Safety & Privacy Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Safety & Privacy")
+                            .font(.headline)
+                            .padding(.horizontal)
+                        
+                        VStack(spacing: 8) {
+                            Button(action: {
+                                showingBlockedUsers = true
+                            }) {
+                                HStack {
+                                    Image(systemName: "person.slash")
+                                        .foregroundColor(.red)
+                                    Text("Blocked Users")
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.secondary)
+                                        .font(.caption)
+                                }
+                                .padding()
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            Button(action: {
+                                // Open terms of service
+                                if let url = URL(string: "https://chaifinder.app/terms") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "doc.text")
+                                        .foregroundColor(.blue)
+                                    Text("Terms of Service")
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.secondary)
+                                        .font(.caption)
+                                }
+                                .padding()
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(.horizontal)
+                    }
+
                     // Actions
                     VStack(spacing: 12) {
                         Button("Sign Out") {
@@ -150,6 +202,9 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingFriends) {
                 FriendsListView()
+            }
+            .sheet(isPresented: $showingBlockedUsers) {
+                UserBlockingView()
             }
             .alert("Delete Account", isPresented: $showingDeleteAccount) {
                 Button("Cancel", role: .cancel) { }

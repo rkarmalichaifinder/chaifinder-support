@@ -11,6 +11,9 @@ struct SubmitRatingView: View {
     @State private var ratingValue: Int = 3
     @State private var comment: String = ""
     @State private var isSubmitting = false
+    @State private var showContentWarning = false
+    @State private var contentWarningMessage = ""
+    @StateObject private var moderationService = ContentModerationService()
     
     private let db = Firestore.firestore()
     
@@ -23,6 +26,9 @@ struct SubmitRatingView: View {
                 
                 Section(header: Text("Comment (Optional)")) {
                     TextField("Write something...", text: $comment)
+                        .onChange(of: comment) { newValue in
+                            validateContent(newValue)
+                        }
                 }
                 
                 Section {
@@ -47,6 +53,14 @@ struct SubmitRatingView: View {
                     }
                 }
             }
+            .alert("Content Warning", isPresented: $showContentWarning) {
+                Button("Edit Comment", role: .cancel) { }
+                Button("Submit Anyway", role: .destructive) {
+                    submitRating(forceSubmit: true)
+                }
+            } message: {
+                Text(contentWarningMessage)
+            }
         }
         .onAppear {
             if let existing = existingRating {
@@ -56,9 +70,29 @@ struct SubmitRatingView: View {
         }
     }
     
-    func submitRating() {
+    private func validateContent(_ text: String) {
+        if !text.isEmpty {
+            let (isAppropriate, _) = moderationService.filterContent(text)
+            if !isAppropriate {
+                contentWarningMessage = "Your comment may contain inappropriate content. Please review and edit if necessary."
+                showContentWarning = true
+            }
+        }
+    }
+    
+    func submitRating(forceSubmit: Bool = false) {
         guard let user = Auth.auth().currentUser else {
             return
+        }
+        
+        // Final content validation
+        if !forceSubmit && !comment.isEmpty {
+            let (isAppropriate, _) = moderationService.filterContent(comment)
+            if !isAppropriate {
+                contentWarningMessage = "Your comment contains inappropriate content. Please edit it before submitting."
+                showContentWarning = true
+                return
+            }
         }
         
         let userId = user.uid
