@@ -253,14 +253,26 @@ struct FriendsView: View {
                         reloadData()
                     }
                 }
-                .buttonStyle(PrimaryButtonStyle())
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.vertical, DesignSystem.Spacing.sm)
+                .background(DesignSystem.Colors.primary)
+                .cornerRadius(DesignSystem.CornerRadius.small)
                 
                 Button("Reject") {
                     FriendService.rejectFriendRequest(from: user.uid) { _ in
                         reloadData()
                     }
                 }
-                .buttonStyle(SecondaryButtonStyle())
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.medium)
+                .foregroundColor(DesignSystem.Colors.primary)
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.vertical, DesignSystem.Spacing.sm)
+                .background(DesignSystem.Colors.primary.opacity(0.1))
+                .cornerRadius(DesignSystem.CornerRadius.small)
             }
         }
         .padding(DesignSystem.Spacing.md)
