@@ -80,16 +80,14 @@ struct FriendsListView: View {
             }
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
+            .navigationBarItems(trailing: Button("Done") {
+                dismiss()
+            })
             .sheet(isPresented: $showingFriendDetails) {
                 if let selectedFriend = selectedFriend {
                     FriendDetailView(friend: selectedFriend)
+                } else {
+                    Text("No friend selected")
                 }
             }
         }
@@ -127,16 +125,26 @@ struct FriendsListView: View {
             }
             
             Spacer()
+            
+            // Add a chevron to indicate it's clickable
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(DesignSystem.Colors.textSecondary)
         }
         .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.cardBackground)
         .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(Color(.systemGray4), lineWidth: 1)
+        )
         .shadow(
             color: DesignSystem.Shadows.small.color,
             radius: DesignSystem.Shadows.small.radius,
             x: DesignSystem.Shadows.small.x,
             y: DesignSystem.Shadows.small.y
         )
+        .contentShape(Rectangle()) // Make the entire card tappable
     }
     
     private func loadFriends() {

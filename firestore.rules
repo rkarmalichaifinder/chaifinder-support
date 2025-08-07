@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow authenticated users to read their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null; // Allow reading other users for friend functionality
+    }
+    
+    // Allow authenticated users to read/write friend requests
+    match /friendRequests/{requestId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow authenticated users to read/write ratings
+    match /ratings/{ratingId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow authenticated users to read/write chai spots
+    match /chaiFinder/{spotId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+} 

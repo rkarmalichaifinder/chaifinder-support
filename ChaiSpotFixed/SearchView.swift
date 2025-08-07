@@ -15,6 +15,9 @@ struct SearchView: View {
     @State private var selectedSpot: ChaiSpot?
     @State private var showingSpotDetail = false
     @State private var showingAddChaiSpot = false
+    @State private var showingAddConfirmation = false
+    @State private var addConfirmationMessage = ""
+    @State private var isAddingSpot = false
     @StateObject private var locationManager = LocationManager()
     
     var body: some View {
@@ -123,9 +126,25 @@ struct SearchView: View {
                     }
                 )
             }
+            .onChange(of: showingAddChaiSpot) { newValue in
+                if !newValue {
+                    // Reset any loading states when the sheet is dismissed
+                    isAddingSpot = false
+                }
+            }
             .onAppear {
                 loadAllChaiSpots()
             }
+        }
+        .alert("Add Confirmation", isPresented: $showingAddConfirmation) {
+            Button("OK", role: .cancel) {
+                if showingAddConfirmation {
+                    showingAddConfirmation = false
+                    addConfirmationMessage = ""
+                }
+            }
+        } message: {
+            Text(addConfirmationMessage)
         }
     }
     
@@ -523,6 +542,49 @@ struct SearchView: View {
     private func handleAddChaiSpot(name: String, address: String, rating: Int, comments: String, chaiTypes: [String], coordinate: CLLocationCoordinate2D) {
         let db = Firestore.firestore()
         
+        // Check if user is authenticated
+        guard let currentUser = Auth.auth().currentUser else {
+            print("❌ User not authenticated")
+            DispatchQueue.main.async {
+                self.addConfirmationMessage = "Please sign in to add locations"
+                self.showingAddConfirmation = true
+            }
+            return
+        }
+        
+        // Check for duplicate spots (same name and address)
+        let normalizedName = name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedAddress = address.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Check if a spot with the same name and address already exists
+        db.collection("chaiFinder")
+            .whereField("name", isEqualTo: name)
+            .whereField("address", isEqualTo: address)
+            .getDocuments { snapshot, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("❌ Error checking for duplicates: \(error.localizedDescription)")
+                        self.addConfirmationMessage = "Error checking for duplicates. Please try again."
+                        self.showingAddConfirmation = true
+                        return
+                    }
+                    
+                    if let documents = snapshot?.documents, !documents.isEmpty {
+                        print("⚠️ Duplicate spot found: \(name) at \(address)")
+                        self.addConfirmationMessage = "A spot with this name and address already exists!"
+                        self.showingAddConfirmation = true
+                        return
+                    }
+                    
+                    // No duplicates found, proceed with adding the spot
+                    self.addSpotToDatabase(name: name, address: address, rating: rating, comments: comments, chaiTypes: chaiTypes, coordinate: coordinate)
+                }
+            }
+    }
+    
+    private func addSpotToDatabase(name: String, address: String, rating: Int, comments: String, chaiTypes: [String], coordinate: CLLocationCoordinate2D) {
+        let db = Firestore.firestore()
+        
         let newSpotData: [String: Any] = [
             "name": name,
             "address": address,
@@ -536,19 +598,28 @@ struct SearchView: View {
         
         print("🔄 Adding new chai spot to database: \(name)")
         print("📍 Location: \(coordinate.latitude), \(coordinate.longitude)")
-        print("📝 Data: \(newSpotData)")
+        
+        isAddingSpot = true
         
         db.collection("chaiFinder").addDocument(data: newSpotData) { error in
             DispatchQueue.main.async {
+                self.isAddingSpot = false
+                
                 if let error = error {
                     print("❌ Failed to add chai spot: \(error.localizedDescription)")
-                } else {
-                    print("✅ Successfully added new chai spot: \(name)")
-                    print("🔄 Current chaiSpots count before reload: \(self.chaiSpots.count)")
                     
-                    // Create the new spot object immediately for UI update
+                    if error.localizedDescription.contains("permission") || error.localizedDescription.contains("Permission denied") {
+                        self.addConfirmationMessage = "Unable to add location due to permissions. Please contact support."
+                    } else {
+                        self.addConfirmationMessage = "Failed to add location: \(error.localizedDescription)"
+                    }
+                    self.showingAddConfirmation = true
+                } else {
+                    print("✅ Successfully added chai spot to database")
+                    
+                    // Create a new ChaiSpot object with the data
                     let newSpot = ChaiSpot(
-                        id: "", // Will be set after we get the document ID
+                        id: UUID().uuidString, // Temporary ID for UI
                         name: name,
                         address: address,
                         latitude: coordinate.latitude,
@@ -558,23 +629,24 @@ struct SearchView: View {
                         ratingCount: 1
                     )
                     
-                    // Add the new spot to the current list immediately for better UX
-                    self.chaiSpots.append(newSpot)
-                    print("🔄 Added new spot to UI immediately. Total spots: \(self.chaiSpots.count)")
+                    // Add to the current list immediately for better UX
+                    self.chaiSpots.insert(newSpot, at: 0)
                     
-                    // Also clear any search location to show all spots including the new one
-                    self.searchLocation = nil
-                    print("🗺️ Cleared search location to show all spots")
+                    // Clear any active search to show all spots including the new one
+                    self.searchText = ""
                     
-                    // Reload all spots after a short delay to ensure we get the correct document ID
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    // Show success confirmation
+                    self.addConfirmationMessage = "✅ Successfully added '\(name)' to your chai spots!"
+                    self.showingAddConfirmation = true
+                    
+                    // Close the add form
+                    self.showingAddChaiSpot = false
+                    
+                    // Reload all spots after a short delay to ensure consistency
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         self.loadAllChaiSpots()
-                        print("🔄 Reloading chai spots after delay to get correct document ID...")
                     }
                 }
-                
-                // Close the sheet
-                self.showingAddChaiSpot = false
             }
         }
     }

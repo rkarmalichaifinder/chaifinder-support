@@ -14,6 +14,7 @@ struct AddChaiFinderForm: View {
     @State private var isLoadingAddress = false
     @State private var showingNoCoordinateAlert = false
     @State private var resolvedCoordinate: CLLocationCoordinate2D? = nil
+    @State private var isSubmitting = false
 
     @StateObject private var autoModel = AutocompleteModel()
     @State private var showNameDropdown = false
@@ -117,16 +118,18 @@ struct AddChaiFinderForm: View {
                     TextField("Custom chai type", text: $customChaiType)
                 }
 
-                Button("Submit") {
-                    guard !name.isEmpty else { return }
+                Button(isSubmitting ? "Adding..." : "Submit") {
+                    guard !name.isEmpty && !isSubmitting else { return }
+                    isSubmitting = true
                     let types = Array(selectedChaiTypes) + (customChaiType.isEmpty ? [] : [customChaiType])
                     if let coord = resolvedCoordinate ?? coordinate {
                         onSubmit(name, address, rating, comments, types, coord)
                     } else {
                         showingNoCoordinateAlert = true
+                        isSubmitting = false
                     }
                 }
-                .disabled(name.isEmpty)
+                .disabled(name.isEmpty || isSubmitting)
             }
             .navigationTitle("Add Chai Spot")
             .alert("No Location", isPresented: $showingNoCoordinateAlert) {

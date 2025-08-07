@@ -16,6 +16,7 @@ struct ContentView: View {
                             }
                         }
                     }
+                    .transition(.opacity)
             } else {
                 Group {
                     if sessionStore.currentUser != nil {
@@ -27,5 +28,6 @@ struct ContentView: View {
                 .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.5), value: showingSplash)
     }
 }

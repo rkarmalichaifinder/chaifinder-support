@@ -23,7 +23,7 @@ struct FriendsView: View {
     @State private var sendingToUser: String?
     @State private var incomingRequests: [UserProfile] = []
     @State private var outgoingRequests: [UserProfile] = []
-    @State private var showingFriendRatings = false
+    @State private var showingFriendDetails = false
     @State private var selectedFriend: UserProfile?
     @State private var showingRequestConfirmation = false
     @State private var lastRequestedUser: String = ""
@@ -127,9 +127,11 @@ struct FriendsView: View {
                 }
                 setupIncomingRequestsListener()
             }
-            .sheet(isPresented: $showingFriendRatings) {
+            .sheet(isPresented: $showingFriendDetails) {
                 if let friend = selectedFriend {
-                    FriendRatingsView(friend: friend)
+                    FriendDetailView(friend: friend)
+                } else {
+                    Text("No friend selected")
                 }
             }
             .alert("Friend Request Sent", isPresented: $showingRequestConfirmation) {
@@ -312,7 +314,13 @@ struct FriendsView: View {
             }
             
             ForEach(friendProfiles) { friend in
-                friendCard(friend)
+                Button(action: {
+                    selectedFriend = friend
+                    showingFriendDetails = true
+                }) {
+                    friendCard(friend)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(DesignSystem.Spacing.lg)
@@ -344,18 +352,19 @@ struct FriendsView: View {
             
             Spacer()
             
-            Button(action: {
-                selectedFriend = user
-                showingFriendRatings = true
-            }) {
-                Image(systemName: "star.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(DesignSystem.Colors.primary)
-            }
+            // Add a chevron to indicate it's clickable
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(DesignSystem.Colors.textSecondary)
         }
         .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.secondary.opacity(0.05))
         .cornerRadius(DesignSystem.CornerRadius.small)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                .stroke(Color(.systemGray4), lineWidth: 1)
+        )
+        .contentShape(Rectangle()) // Make the entire card tappable
     }
     
     private var inviteFriendsSection: some View {
