@@ -8,22 +8,36 @@ import GoogleSignIn
 class SessionStore: NSObject, ObservableObject {
     @Published var currentUser: User?
     @Published var userProfile: UserProfile?  // ✅ Add this
+    @Published var isLoading = true // Add loading state
     private var authStateListener: AuthStateDidChangeListenerHandle?
     fileprivate var currentNonce: String?
 
     override init() {
         super.init()
-        listen()
+        // Delay the Firebase Auth listener setup to prevent hangs
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.setupAuthListener()
+        }
+        
+        // Add timeout to prevent infinite loading
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            if self.isLoading {
+                print("⚠️ Firebase Auth timeout, setting loading to false")
+                self.isLoading = false
+            }
+        }
     }
-
-    func listen() {
-        authStateListener = Auth.auth().addStateDidChangeListener { auth, user in
+    
+    private func setupAuthListener() {
+        // Add error handling for Firebase Auth initialization
+        authStateListener = Auth.auth().addStateDidChangeListener { [weak self] auth, user in
             DispatchQueue.main.async {
-                self.currentUser = user
+                self?.isLoading = false
+                self?.currentUser = user
                 if let user = user {
-                    self.loadUserProfile(uid: user.uid)
+                    self?.loadUserProfile(uid: user.uid)
                 } else {
-                    self.userProfile = nil
+                    self?.userProfile = nil
                 }
             }
         }

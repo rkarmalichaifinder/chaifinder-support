@@ -14,17 +14,17 @@ struct ProfileView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: DesignSystem.Spacing.lg) {
                     // Profile Header
-                    VStack(spacing: 16) {
+                    VStack(spacing: DesignSystem.Spacing.md) {
                         Image(systemName: "person.circle.fill")
-                            .font(.system(size: 80))
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 120 : 80))
                             .foregroundColor(.orange)
 
-                        VStack(spacing: 8) {
+                        VStack(spacing: DesignSystem.Spacing.sm) {
                             HStack {
                                 Text(sessionStore.userProfile?.displayName ?? "User")
-                                    .font(.title2)
+                                    .font(DesignSystem.Typography.headline)
                                     .fontWeight(.semibold)
                                 
                                 Button(action: {
@@ -37,31 +37,32 @@ struct ProfileView: View {
                             }
 
                             Text(sessionStore.userProfile?.email ?? "")
-                                .font(.subheadline)
+                                .font(DesignSystem.Typography.bodyMedium)
                                 .foregroundColor(.secondary)
                         }
                     }
-                    .padding(.top, 20)
+                    .padding(.top, DesignSystem.Spacing.lg)
+                    .iPadCardStyle()
 
                     // Stats
-                    HStack(spacing: 40) {
+                    HStack(spacing: DesignSystem.Spacing.xl) {
                         Button(action: {
                             showingSavedSpots = true
                         }) {
-                            VStack {
+                            VStack(spacing: DesignSystem.Spacing.sm) {
                                 Text("\(savedSpotsCount)")
-                                    .font(.title2)
+                                    .font(DesignSystem.Typography.headline)
                                     .fontWeight(.bold)
                                 Text("Saved Spots")
-                                    .font(.caption)
+                                    .font(DesignSystem.Typography.bodySmall)
                                     .foregroundColor(.secondary)
                             }
-                            .padding()
+                            .padding(DesignSystem.Spacing.lg)
                             .frame(maxWidth: .infinity)
                             .background(Color(.systemGray6))
-                            .cornerRadius(10)
+                            .cornerRadius(DesignSystem.CornerRadius.medium)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 10)
+                                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
                                     .stroke(Color(.systemGray4), lineWidth: 1)
                             )
                         }
@@ -70,32 +71,32 @@ struct ProfileView: View {
                         Button(action: {
                             showingFriends = true
                         }) {
-                            VStack {
+                            VStack(spacing: DesignSystem.Spacing.sm) {
                                 Text("\(sessionStore.userProfile?.friends?.count ?? 0)")
-                                    .font(.title2)
+                                    .font(DesignSystem.Typography.headline)
                                     .fontWeight(.bold)
                                 Text("Friends")
-                                    .font(.caption)
+                                    .font(DesignSystem.Typography.bodySmall)
                                     .foregroundColor(.secondary)
                             }
-                            .padding()
+                            .padding(DesignSystem.Spacing.lg)
                             .frame(maxWidth: .infinity)
                             .background(Color(.systemGray6))
-                            .cornerRadius(10)
+                            .cornerRadius(DesignSystem.CornerRadius.medium)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 10)
+                                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
                                     .stroke(Color(.systemGray4), lineWidth: 1)
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
-                    .padding(.vertical, 20)
+                    .padding(.vertical, DesignSystem.Spacing.lg)
 
                     // Bio Section
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                         HStack {
                             Text("Bio")
-                                .font(.headline)
+                                .font(DesignSystem.Typography.headline)
                             Spacer()
                             Button("Edit") {
                                 showingEditBio = true
@@ -105,20 +106,21 @@ struct ProfileView: View {
 
                         Text(sessionStore.userProfile?.bio ?? "No bio yet")
                             .foregroundColor(.secondary)
-                            .padding()
+                            .padding(DesignSystem.Spacing.lg)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(.systemGray6))
-                            .cornerRadius(8)
+                            .cornerRadius(DesignSystem.CornerRadius.medium)
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .iPadCardStyle()
 
                     // Safety & Privacy Section
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                         Text("Safety & Privacy")
-                            .font(.headline)
-                            .padding(.horizontal)
+                            .font(DesignSystem.Typography.headline)
+                            .padding(.horizontal, DesignSystem.Spacing.lg)
                         
-                        VStack(spacing: 8) {
+                        VStack(spacing: DesignSystem.Spacing.sm) {
                             Button(action: {
                                 showingBlockedUsers = true
                             }) {
@@ -132,9 +134,9 @@ struct ProfileView: View {
                                         .foregroundColor(.secondary)
                                         .font(.caption)
                                 }
-                                .padding()
+                                .padding(DesignSystem.Spacing.lg)
                                 .background(Color(.systemGray6))
-                                .cornerRadius(8)
+                                .cornerRadius(DesignSystem.CornerRadius.medium)
                             }
                             .buttonStyle(PlainButtonStyle())
                             
@@ -151,14 +153,14 @@ struct ProfileView: View {
                                         .foregroundColor(.secondary)
                                         .font(.caption)
                                 }
-                                .padding()
+                                .padding(DesignSystem.Spacing.lg)
                                 .background(Color(.systemGray6))
-                                .cornerRadius(8)
+                                .cornerRadius(DesignSystem.CornerRadius.medium)
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
-                        .padding(.horizontal)
                     }
+                    .iPadCardStyle()
 
                     // Actions
                     VStack(spacing: 12) {

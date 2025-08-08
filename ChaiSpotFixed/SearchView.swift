@@ -62,7 +62,7 @@ struct SearchView: View {
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .font(.system(size: 16))
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
                         
                         TextField("Search for a chai spot, type, etc.", text: $searchText)
                             .font(DesignSystem.Typography.bodyMedium)
@@ -85,7 +85,7 @@ struct SearchView: View {
                             }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(DesignSystem.Colors.textSecondary)
-                                    .font(.system(size: 16))
+                                    .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
                             }
                         }
                     }
@@ -99,6 +99,7 @@ struct SearchView: View {
                 }
                 .padding(DesignSystem.Spacing.lg)
                 .background(DesignSystem.Colors.background)
+                .iPadOptimized()
                 
                 // Content
                 VStack(spacing: 0) {
@@ -1022,7 +1023,7 @@ struct ChaiSpotCard: View {
                 }
             
             // Card content
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) { // Reduced from md to sm
                 // Header
                 HStack {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
@@ -1129,16 +1130,16 @@ struct ChaiSpotCard: View {
                     Spacer()
                     
                     // Action Buttons
-                    HStack(spacing: DesignSystem.Spacing.sm) {
-                        Button("Rank") {
+                    HStack(spacing: DesignSystem.Spacing.xs) { // Reduced spacing from sm to xs
+                        Button("Rate") {
                             showingRatingSheet = true
                         }
                         .buttonStyle(SecondaryButtonStyle())
                         .frame(maxWidth: .infinity)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 44) // Minimum height instead of fixed height
                         .allowsHitTesting(true)
                         
-                        Button(isAddingToList ? "Adding..." : (isSpotSaved ? "Added" : "Add to List")) {
+                        Button(isAddingToList ? "Adding..." : (isSpotSaved ? "Saved" : "Save")) {
                             if !isSpotSaved {
                                 addToMyList()
                             }
@@ -1146,13 +1147,14 @@ struct ChaiSpotCard: View {
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(isAddingToList || isSpotSaved)
                         .frame(maxWidth: .infinity)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 44) // Minimum height instead of fixed height
                         .allowsHitTesting(true)
                     }
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
-        .padding(DesignSystem.Spacing.lg)
+        .padding(DesignSystem.Spacing.md) // Reduced from lg to md for more content space
         .background(DesignSystem.Colors.cardBackground)
         .cornerRadius(DesignSystem.CornerRadius.medium)
         .shadow(

@@ -16,57 +16,68 @@ struct SignInView: View {
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
+            VStack(spacing: DesignSystem.Spacing.xl) {
                 Spacer()
 
                 Text("Chai Finder")
-                    .font(.largeTitle)
+                    .font(DesignSystem.Typography.titleLarge)
                     .bold()
 
-                TextField("Email", text: $email)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
+                VStack(spacing: DesignSystem.Spacing.lg) {
+                    TextField("Email", text: $email)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        .padding(DesignSystem.Spacing.lg)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .font(DesignSystem.Typography.bodyMedium)
 
-                SecureField("Password", text: $password)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
+                    SecureField("Password", text: $password)
+                        .padding(DesignSystem.Spacing.lg)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .font(DesignSystem.Typography.bodyMedium)
+                }
+                .iPadOptimized()
 
                 if let errorMessage = errorMessage {
                     Text(errorMessage)
                         .foregroundColor(.red)
-                        .font(.footnote)
+                        .font(DesignSystem.Typography.bodySmall)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                        .padding(.horizontal, DesignSystem.Spacing.lg)
                 }
 
-                Button(action: {
-                    Task {
-                        errorMessage = nil
-                        await sessionStore.signInWithEmail(email: email, password: password)
+                VStack(spacing: DesignSystem.Spacing.md) {
+                    Button(action: {
+                        Task {
+                            errorMessage = nil
+                            await sessionStore.signInWithEmail(email: email, password: password)
+                        }
+                    }) {
+                        HStack {
+                            Text("Sign In")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(DesignSystem.Spacing.lg)
+                        .background(Color.orange)
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
                     }
-                }) {
-                    HStack {
-                        Text("Sign In")
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.orange)
-                    .cornerRadius(8)
-                }
 
-                Button("Don't have an account? Sign Up") {
-                    showingTerms = true
+                    Button("Don't have an account? Sign Up") {
+                        showingTerms = true
+                    }
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .padding(.top, DesignSystem.Spacing.sm)
                 }
-                .padding(.top, 10)
+                .iPadOptimized()
 
                 Divider()
-                    .padding(.vertical)
+                    .padding(.vertical, DesignSystem.Spacing.lg)
 
                 // Google Sign-In
                 Button(action: {
@@ -74,13 +85,17 @@ struct SignInView: View {
                 }) {
                     HStack {
                         Image(systemName: "globe")
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
                         Text("Sign in with Google")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .padding(DesignSystem.Spacing.lg)
                     .background(Color(.systemGray5))
-                    .cornerRadius(8)
+                    .cornerRadius(DesignSystem.CornerRadius.medium)
                 }
+                .iPadOptimized()
 
                 // Apple Sign-In - Temporarily hidden
                 /*
@@ -100,8 +115,9 @@ struct SignInView: View {
 
                 Spacer()
             }
-            .padding()
+            .padding(DesignSystem.Spacing.xl)
             .navigationTitle("Welcome")
+            .navigationBarTitleDisplayMode(.large)
             .sheet(isPresented: $showingTerms) {
                 TermsOfServiceView(hasAcceptedTerms: $hasAcceptedTerms)
             }

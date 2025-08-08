@@ -44,7 +44,7 @@ struct FriendsView: View {
                 if notLoggedIn {
                     VStack(spacing: DesignSystem.Spacing.lg) {
                         Image(systemName: "person.2")
-                            .font(.system(size: 48))
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 64 : 48))
                             .foregroundColor(DesignSystem.Colors.secondary)
                         
                         Text("Please Log In")
@@ -58,19 +58,20 @@ struct FriendsView: View {
                             .multilineTextAlignment(.center)
                     }
                     .padding(DesignSystem.Spacing.xl)
+                    .iPadOptimized()
                 } else if loading {
-                    VStack {
+                    VStack(spacing: DesignSystem.Spacing.md) {
                         ProgressView()
-                            .scaleEffect(1.2)
+                            .scaleEffect(UIDevice.current.userInterfaceIdiom == .pad ? 1.5 : 1.2)
                         Text("Loading friends...")
                             .font(DesignSystem.Typography.bodyLarge)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .padding(.top, DesignSystem.Spacing.md)
                     }
+                    .iPadOptimized()
                 } else if let errorMessage = errorMessage {
                     VStack(spacing: DesignSystem.Spacing.lg) {
                         Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 48))
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 64 : 48))
                             .foregroundColor(DesignSystem.Colors.secondary)
                         
                         Text("Error")
@@ -84,6 +85,7 @@ struct FriendsView: View {
                             .multilineTextAlignment(.center)
                     }
                     .padding(DesignSystem.Spacing.xl)
+                    .iPadOptimized()
                 } else {
                     ScrollView {
                         VStack(spacing: DesignSystem.Spacing.lg) {
@@ -116,6 +118,7 @@ struct FriendsView: View {
                             }
                         }
                         .padding(DesignSystem.Spacing.lg)
+                        .iPadOptimized()
                     }
                 }
             }

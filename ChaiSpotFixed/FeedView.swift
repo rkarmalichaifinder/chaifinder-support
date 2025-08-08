@@ -16,11 +16,6 @@ struct FeedView: View {
                 VStack(spacing: 0) {
                     // Header
                     VStack(spacing: DesignSystem.Spacing.md) {
-                        Text("Feed")
-                            .font(DesignSystem.Typography.titleMedium)
-                            .fontWeight(.bold)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
-                        
                         // Feed Type Toggle
                         Picker("Feed Type", selection: $viewModel.currentFeedType) {
                             Text("Friends")
@@ -37,7 +32,7 @@ struct FeedView: View {
                         HStack {
                             Image(systemName: "magnifyingglass")
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
-                                .font(.system(size: 16))
+                                .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
                             
                             TextField("Search reviews...", text: $searchText)
                                 .font(DesignSystem.Typography.bodyMedium)
@@ -61,7 +56,7 @@ struct FeedView: View {
                                 }) {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundColor(DesignSystem.Colors.textSecondary)
-                                        .font(.system(size: 16))
+                                        .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
                                 }
                             }
                         }
@@ -75,13 +70,14 @@ struct FeedView: View {
                     }
                     .padding(DesignSystem.Spacing.lg)
                     .background(DesignSystem.Colors.background)
+                    .iPadOptimized()
                     
                     // Feed Content
                     if viewModel.isLoading {
                         VStack(spacing: DesignSystem.Spacing.lg) {
                             Spacer()
                             ProgressView()
-                                .scaleEffect(1.2)
+                                .scaleEffect(UIDevice.current.userInterfaceIdiom == .pad ? 1.5 : 1.2)
                             Text("Loading feed...")
                                 .font(DesignSystem.Typography.bodyLarge)
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
@@ -96,7 +92,7 @@ struct FeedView: View {
                         VStack(spacing: DesignSystem.Spacing.lg) {
                             Spacer()
                             Image(systemName: viewModel.currentFeedType == .friends ? "person.2.slash" : "exclamationmark.triangle")
-                                .font(.system(size: 48))
+                                .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 64 : 48))
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
                             
                             Text(error)
@@ -139,7 +135,7 @@ struct FeedView: View {
                         VStack(spacing: DesignSystem.Spacing.lg) {
                             Spacer()
                             Image(systemName: "cup.and.saucer")
-                                .font(.system(size: 48))
+                                .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 64 : 48))
                                 .foregroundColor(DesignSystem.Colors.secondary)
                             
                             Text("No reviews yet")
@@ -153,9 +149,9 @@ struct FeedView: View {
                                 .multilineTextAlignment(.center)
                             
                             Button(action: {
-                                // Navigate to search tab
+                                showingAddReview = true
                             }) {
-                                Text("Find a Spot")
+                                Text("Add Review")
                                     .font(DesignSystem.Typography.bodyMedium)
                                     .fontWeight(.semibold)
                                     .foregroundColor(.white)
@@ -169,80 +165,59 @@ struct FeedView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ScrollView {
-                            LazyVStack(spacing: DesignSystem.Spacing.md) {
+                            LazyVStack(spacing: DesignSystem.Spacing.lg) {
                                 ForEach(viewModel.filteredReviews) { review in
                                     ReviewCardView(review: review)
+                                        .iPadCardStyle()
                                 }
                             }
                             .padding(DesignSystem.Spacing.lg)
-                            .padding(.bottom, 100) // Space for FAB
                         }
-                        .refreshable {
-                            // Pull to refresh
-                            viewModel.loadFeed()
-                        }
-                    }
-                    
-                    Spacer(minLength: 0)
-                }
-                
-                // Floating Action Button - Positioned absolutely
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Button(action: {
-                            showingAddReview = true
-                        }) {
-                            Image(systemName: "plus")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .frame(width: 56, height: 56)
-                                .background(DesignSystem.Colors.primary)
-                                .clipShape(Circle())
-                                .shadow(
-                                    color: DesignSystem.Shadows.medium.color,
-                                    radius: DesignSystem.Shadows.medium.radius,
-                                    x: DesignSystem.Shadows.medium.x,
-                                    y: DesignSystem.Shadows.medium.y
-                                )
-                        }
-                        .padding(DesignSystem.Spacing.lg)
                     }
                 }
             }
-            .navigationBarHidden(true)
-            .onAppear {
-                // Only load if not already loading
-                if !viewModel.isLoading && viewModel.reviews.isEmpty {
-                    viewModel.loadFeed()
+            .navigationTitle("Feed")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        showingAddReview = true
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
+                    }
                 }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
-                // Clear cache when app goes to background
-                viewModel.clearCache()
             }
             .sheet(isPresented: $showingAddReview) {
-                // TODO: Add a view to select a chai spot and add a review
-                // For now, show a placeholder
-                VStack(spacing: DesignSystem.Spacing.lg) {
-                    Text("Add Review")
-                        .font(DesignSystem.Typography.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(DesignSystem.Colors.textPrimary)
-                    
-                    Text("Select a chai spot to review")
-                        .font(DesignSystem.Typography.bodyMedium)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .multilineTextAlignment(.center)
-                    
-                    Button("Go to Search") {
-                        showingAddReview = false
-                        // TODO: Navigate to search tab
+                NavigationView {
+                    VStack(spacing: DesignSystem.Spacing.lg) {
+                        Text("Add Review")
+                            .font(DesignSystem.Typography.headline)
+                            .fontWeight(.bold)
+                            .foregroundColor(DesignSystem.Colors.textPrimary)
+                        
+                        Text("Select a chai spot to review")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .multilineTextAlignment(.center)
+                        
+                        Button("Go to Search") {
+                            showingAddReview = false
+                            // TODO: Navigate to search tab
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
                     }
-                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(DesignSystem.Spacing.xl)
+                    .navigationTitle("Add Review")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Cancel") {
+                                showingAddReview = false
+                            }
+                        }
+                    }
                 }
-                .padding(DesignSystem.Spacing.xl)
             }
         }
     }
