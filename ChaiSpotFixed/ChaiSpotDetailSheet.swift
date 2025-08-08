@@ -68,6 +68,7 @@ struct ChaiSpotDetailSheet: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .onAppear {
             loadRatings()
             loadFriendRatings()

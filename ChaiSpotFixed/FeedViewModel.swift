@@ -1,5 +1,6 @@
 import SwiftUI
 import Firebase
+import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
 
@@ -15,7 +16,11 @@ class FeedViewModel: ObservableObject {
     @Published var error: String?
     @Published var currentFeedType: FeedType = .friends
     
-    private let db = Firestore.firestore()
+    private lazy var db: Firestore = {
+        // Only create Firestore instance when actually needed
+        // Firebase should be configured by SessionStore before this is called
+        return Firestore.firestore()
+    }()
     private var spotDetailsCache: [String: (name: String, address: String)] = [:]
     private var loadingSpots: Set<String> = []
     private var hasLoadedData = false
@@ -28,6 +33,14 @@ class FeedViewModel: ObservableObject {
         
         isLoading = true
         error = nil
+        
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            // Firebase not initialized, load community ratings
+            currentFeedType = .community
+            loadCommunityRatings()
+            return
+        }
         
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             // If not logged in, load community ratings
@@ -52,6 +65,13 @@ class FeedViewModel: ObservableObject {
         error = nil
         reviews = []
         filteredReviews = []
+        
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            // Firebase not initialized, load community ratings
+            loadCommunityRatings()
+            return
+        }
         
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             // If not logged in, load community ratings

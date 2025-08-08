@@ -132,6 +132,7 @@ struct SignInView: View {
                     .environmentObject(sessionStore)
             }
         }
+        .navigationViewStyle(.stack)
     }
 }
 
@@ -193,5 +194,6 @@ struct SignUpView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
 }

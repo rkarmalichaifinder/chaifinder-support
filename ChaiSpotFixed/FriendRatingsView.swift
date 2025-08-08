@@ -9,7 +9,6 @@ struct FriendRatingsView: View {
     @State private var isLoading = false
     @State private var error: String?
     @State private var selectedSpot: ChaiSpot?
-    @State private var showingSpotDetail = false
     @State private var spotDetailsCache: [String: (name: String, address: String)] = [:]
     @State private var loadingSpots: Set<String> = []
     
@@ -96,7 +95,6 @@ struct FriendRatingsView: View {
                                         onTap: {
                                             loadSpotDetails(for: rating.spotId) { spot in
                                                 selectedSpot = spot
-                                                showingSpotDetail = true
                                             }
                                         }
                                     )
@@ -116,10 +114,8 @@ struct FriendRatingsView: View {
             .onAppear {
                 loadFriendRatings()
             }
-            .sheet(isPresented: $showingSpotDetail) {
-                if let spot = selectedSpot {
-                    ChaiSpotDetailSheet(spot: spot, userLocation: nil)
-                }
+            .sheet(item: $selectedSpot) { spot in
+                ChaiSpotDetailSheet(spot: spot, userLocation: nil)
             }
         }
     }

@@ -59,6 +59,7 @@ struct AdminModerationView: View {
         .onAppear {
             loadReports()
         }
+        .navigationViewStyle(.stack)
     }
     
     private func loadReports() {
@@ -230,6 +231,7 @@ struct ReportDetailView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
     
     private var statusColor: Color {

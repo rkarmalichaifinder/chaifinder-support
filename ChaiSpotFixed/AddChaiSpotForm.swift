@@ -138,6 +138,7 @@ struct AddChaiFinderForm: View {
                 Text("Please select a suggestion or enter an address.")
             }
         }
+        .navigationViewStyle(.stack)
         .onAppear { autoModel.completer.delegate = autoModel }
     }
 

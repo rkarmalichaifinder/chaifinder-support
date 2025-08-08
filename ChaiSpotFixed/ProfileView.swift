@@ -221,6 +221,7 @@ struct ProfileView: View {
                 loadSavedSpotsCount()
             }
         }
+        .navigationViewStyle(.stack)
     }
     
     private func loadSavedSpotsCount() {

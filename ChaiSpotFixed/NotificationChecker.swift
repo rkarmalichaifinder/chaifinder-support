@@ -2,12 +2,17 @@ import SwiftUI
 import Firebase
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseCore
 
 class NotificationChecker: ObservableObject {
     @Published var showAlert = false
     @Published var alertMessage = ""
 
-    private let db = Firestore.firestore()
+    private lazy var db: Firestore = {
+        // Only create Firestore instance when actually needed
+        // Firebase should be configured by SessionStore before this is called
+        return Firestore.firestore()
+    }()
 
     func checkForNewActivity() {
         guard let uid = Auth.auth().currentUser?.uid else { return }

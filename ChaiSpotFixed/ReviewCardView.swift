@@ -127,7 +127,7 @@ struct ReviewCardView: View {
             // Action Buttons
             HStack(spacing: DesignSystem.Spacing.lg) {
                 Button(action: {
-                    // Like functionality
+                    toggleLike()
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: isLiked ? "heart.fill" : "heart")
@@ -167,6 +167,13 @@ struct ReviewCardView: View {
         .sheet(isPresented: $showingComments) {
             CommentListView(spotId: review.spotId)
         }
+        .sheet(isPresented: $showingShareSheet) {
+            let place = (spotName == "Loading..." ? review.spotName : spotName)
+            let location = (spotAddress == "Loading..." ? review.spotAddress : spotAddress)
+            let commentText = (review.comment?.isEmpty == false) ? "\"\(review.comment!)\"" : "No comment"
+            let message = "Check out this Chai Finder review of \(place) (\(location)) — \(review.rating)★ by \(review.username). \(commentText)"
+            ShareSheet(activityItems: [message])
+        }
         .sheet(isPresented: $showingReportSheet) {
             ReportContentView(
                 contentId: review.id,
@@ -198,6 +205,7 @@ struct ReviewCardView: View {
         }
         .onAppear {
             loadSpotInfo()
+            checkLikeState()
         }
     }
     
@@ -207,7 +215,7 @@ struct ReviewCardView: View {
         isLoadingSpotInfo = true
         let db = Firestore.firestore()
         
-        db.collection("spots").document(review.spotId).getDocument { document, error in
+        db.collection("chaiFinder").document(review.spotId).getDocument { document, error in
             DispatchQueue.main.async {
                 isLoadingSpotInfo = false
                 hasLoadedSpotInfo = true
@@ -223,6 +231,81 @@ struct ReviewCardView: View {
     
     private func blockUser() {
         moderationService.blockUser(userIdToBlock: review.userId)
+    }
+    
+    private func toggleLike() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("❌ User not authenticated, cannot like review")
+            return
+        }
+        
+        let db = Firestore.firestore()
+        let likeRef = db.collection("reviews").document(review.id).collection("likes").document(currentUserId)
+        
+        if isLiked {
+            // Unlike
+            likeRef.delete { error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("❌ Error unliking review: \(error.localizedDescription)")
+                    } else {
+                        self.isLiked = false
+                        self.likeCount = max(0, self.likeCount - 1)
+                        print("✅ Review unliked successfully")
+                        // Also remove from user's saved spots list
+                        let userRef = db.collection("users").document(currentUserId)
+                        userRef.setData(["savedSpots": FieldValue.arrayRemove([self.review.spotId])], merge: true)
+                    }
+                }
+            }
+        } else {
+            // Like
+            likeRef.setData([
+                "userId": currentUserId,
+                "timestamp": FieldValue.serverTimestamp()
+            ]) { error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("❌ Error liking review: \(error.localizedDescription)")
+                    } else {
+                        self.isLiked = true
+                        self.likeCount += 1
+                        print("✅ Review liked successfully")
+                        // Also add to user's saved spots list
+                        let userRef = db.collection("users").document(currentUserId)
+                        userRef.setData(["savedSpots": FieldValue.arrayUnion([self.review.spotId])], merge: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func checkLikeState() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            return
+        }
+        
+        let db = Firestore.firestore()
+        let likeRef = db.collection("reviews").document(review.id).collection("likes").document(currentUserId)
+        
+        likeRef.getDocument { document, error in
+            DispatchQueue.main.async {
+                if let document = document, document.exists {
+                    self.isLiked = true
+                } else {
+                    self.isLiked = false
+                }
+            }
+        }
+        
+        // Get total like count
+        db.collection("reviews").document(review.id).collection("likes").getDocuments { snapshot, error in
+            DispatchQueue.main.async {
+                if let snapshot = snapshot {
+                    self.likeCount = snapshot.documents.count
+                }
+            }
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import Firebase
+import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
 import MessageUI // Added for MFMailComposeViewController
@@ -16,6 +17,7 @@ class MailCoordinator: NSObject, MFMailComposeViewControllerDelegate {
 struct FriendsView: View {
     @State private var users: [UserProfile] = []
     @State private var currentUser: UserProfile?
+    @State private var friends: [UserProfile] = []
     @State private var loading = true
     @State private var errorMessage: String?
     @State private var notLoggedIn = false
@@ -33,7 +35,11 @@ struct FriendsView: View {
     // Add state to track if data has been loaded
     @State private var hasLoadedData = false
 
-    private let db = Firestore.firestore()
+    private lazy var db: Firestore = {
+        // Only create Firestore instance when actually needed
+        // Firebase should be configured by SessionStore before this is called
+        return Firestore.firestore()
+    }()
 
     var body: some View {
         NavigationView {
@@ -170,6 +176,7 @@ struct FriendsView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
     
     // MARK: - View Components
@@ -533,12 +540,18 @@ struct FriendsView: View {
     // MARK: - Helper Functions
     
     private func setupIncomingRequestsListener() {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized, skipping incoming requests listener")
+            return
+        }
+        
         guard let currentUserId = Auth.auth().currentUser?.uid else { return }
         
         print("🎧 Setting up real-time listener for incoming friend requests...")
         
         // Listen for new incoming friend requests
-        db.collection("users").document(currentUserId)
+        Firestore.firestore().collection("users").document(currentUserId)
             .collection("incomingFriendRequests")
             .addSnapshotListener { snapshot, error in
                 if let error = error {
@@ -546,87 +559,90 @@ struct FriendsView: View {
                     return
                 }
                 
-                guard let snapshot = snapshot else { return }
+                guard let documents = snapshot?.documents else { return }
                 
-                // Check for new documents
-                let newDocuments = snapshot.documentChanges.filter { $0.type == .added }
-                
-                for change in newDocuments {
-                    let senderUID = change.document.documentID
-                    print("🎉 New friend request received from: \(senderUID)")
-                    
-                    // Find the user profile for this sender
-                    if let senderUser = self.users.first(where: { $0.uid == senderUID }) {
-                        DispatchQueue.main.async {
-                            self.newIncomingRequest = senderUser
-                            self.showingIncomingRequestAlert = true
-                            print("🎉 New friend request alert shown for: \(senderUser.displayName)")
-                        }
+                DispatchQueue.main.async {
+                    self.incomingRequests = documents.compactMap { doc -> UserProfile? in
+                        let data = doc.data()
+                        return UserProfile(
+                            id: doc.documentID,
+                            uid: data["uid"] as? String ?? doc.documentID,
+                            displayName: data["displayName"] as? String ?? "Unknown User",
+                            email: data["email"] as? String ?? "unknown",
+                            photoURL: data["photoURL"] as? String,
+                            friends: data["friends"] as? [String] ?? [],
+                            incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                            outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                            bio: data["bio"] as? String
+                        )
                     }
                 }
             }
     }
     
     private func reloadData() {
-        print("🔄 Reloading FriendsView data...")
-        guard let uid = Auth.auth().currentUser?.uid else {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized, setting notLoggedIn")
             notLoggedIn = true
             loading = false
             return
         }
-
-        // Use getDocuments instead of addSnapshotListener to avoid continuous updates
-        db.collection("users").getDocuments { snapshot, error in
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            notLoggedIn = true
+            loading = false
+            return
+        }
+        
+        loading = true
+        errorMessage = nil
+        
+        print("🔄 Reloading friends data for user: \(currentUserId)")
+        
+        // Get all users first
+        Firestore.firestore().collection("users").getDocuments { snapshot, error in
             DispatchQueue.main.async {
                 if let error = error {
-                    print("❌ Error loading users: \(error.localizedDescription)")
                     self.errorMessage = error.localizedDescription
                     self.loading = false
                     return
                 }
                 
                 guard let documents = snapshot?.documents else {
-                    print("❌ No user documents found")
                     self.errorMessage = "No users found"
                     self.loading = false
                     return
                 }
-
+                
+                // Parse all users
                 let allUsers = documents.compactMap { doc -> UserProfile? in
                     let data = doc.data()
-                    let uid = data["uid"] as? String ?? doc.documentID
-                    let displayName = data["displayName"] as? String ?? "Unknown User"
-                    let email = data["email"] as? String ?? "unknown"
-                    let photoURL = data["photoURL"] as? String
-                    let friends = data["friends"] as? [String] ?? []
-                    let incomingRequests = data["incomingRequests"] as? [String] ?? []
-                    let outgoingRequests = data["outgoingRequests"] as? [String] ?? []
-                    let bio = data["bio"] as? String
-                    
                     return UserProfile(
                         id: doc.documentID,
-                        uid: uid,
-                        displayName: displayName,
-                        email: email,
-                        photoURL: photoURL,
-                        friends: friends,
-                        incomingRequests: incomingRequests,
-                        outgoingRequests: outgoingRequests,
-                        bio: bio
+                        uid: data["uid"] as? String ?? doc.documentID,
+                        displayName: data["displayName"] as? String ?? "Unknown User",
+                        email: data["email"] as? String ?? "unknown",
+                        photoURL: data["photoURL"] as? String,
+                        friends: data["friends"] as? [String] ?? [],
+                        incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                        outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                        bio: data["bio"] as? String
                     )
                 }
-
-                self.currentUser = allUsers.first(where: { $0.uid == uid })
-                self.users = allUsers.filter { $0.uid != uid }
                 
-                print("📄 Loaded \(self.users.count) users (excluding current user)")
-                print("👤 Current user: \(self.currentUser?.displayName ?? "Unknown")")
+                self.users = allUsers
                 
-                // Load friend requests
-                self.loadFriendRequests()
+                // Find current user
+                if let currentUser = allUsers.first(where: { $0.uid == currentUserId }) {
+                    self.currentUser = currentUser
+                    self.friends = currentUser.friends?.compactMap { friendId in
+                        allUsers.first { $0.uid == friendId }
+                    } ?? []
+                }
                 
                 self.loading = false
-                self.hasLoadedData = true
+                print("✅ Reloaded friends data: \(self.friends.count) friends")
             }
         }
     }
@@ -634,50 +650,65 @@ struct FriendsView: View {
     private func loadFriendRequests() {
         guard let currentUserId = Auth.auth().currentUser?.uid else { return }
         
-        print("🔄 Loading friend requests for user: \(currentUserId)")
-        
-        // Use getDocuments instead of addSnapshotListener for better performance
-        let group = DispatchGroup()
-        
-        // Load incoming requests
-        group.enter()
-        db.collection("users").document(currentUserId)
+        // Load incoming friend requests
+        Firestore.firestore().collection("users").document(currentUserId)
             .collection("incomingFriendRequests")
             .getDocuments { snapshot, error in
                 DispatchQueue.main.async {
                     if let error = error {
                         print("❌ Error loading incoming requests: \(error.localizedDescription)")
-                    } else {
-                        let documents = snapshot?.documents ?? []
-                        let requestIds = documents.map { $0.documentID }
-                        print("📄 Found \(requestIds.count) incoming requests: \(requestIds)")
-                        self.incomingRequests = self.users.filter { requestIds.contains($0.uid) }
-                        print("✅ Loaded \(self.incomingRequests.count) incoming request profiles")
+                        return
                     }
-                    group.leave()
+                    
+                    guard let documents = snapshot?.documents else { return }
+                    
+                    self.incomingRequests = documents.compactMap { doc -> UserProfile? in
+                        let data = doc.data()
+                        return UserProfile(
+                            id: doc.documentID,
+                            uid: data["uid"] as? String ?? doc.documentID,
+                            displayName: data["displayName"] as? String ?? "Unknown User",
+                            email: data["email"] as? String ?? "unknown",
+                            photoURL: data["photoURL"] as? String,
+                            friends: data["friends"] as? [String] ?? [],
+                            incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                            outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                            bio: data["bio"] as? String
+                        )
+                    }
                 }
             }
         
-        // Load outgoing requests
-        group.enter()
-        db.collection("users").document(currentUserId)
+        // Load outgoing friend requests
+        Firestore.firestore().collection("users").document(currentUserId)
             .collection("outgoingFriendRequests")
             .getDocuments { snapshot, error in
                 DispatchQueue.main.async {
                     if let error = error {
                         print("❌ Error loading outgoing requests: \(error.localizedDescription)")
-                    } else {
-                        let documents = snapshot?.documents ?? []
-                        let requestIds = documents.map { $0.documentID }
-                        print("📄 Found \(requestIds.count) outgoing requests: \(requestIds)")
-                        self.outgoingRequests = self.users.filter { requestIds.contains($0.uid) }
-                        print("✅ Loaded \(self.outgoingRequests.count) outgoing request profiles")
+                        return
                     }
-                    group.leave()
+                    
+                    guard let documents = snapshot?.documents else { return }
+                    
+                    self.outgoingRequests = documents.compactMap { doc -> UserProfile? in
+                        let data = doc.data()
+                        return UserProfile(
+                            id: doc.documentID,
+                            uid: data["uid"] as? String ?? doc.documentID,
+                            displayName: data["displayName"] as? String ?? "Unknown User",
+                            email: data["email"] as? String ?? "unknown",
+                            photoURL: data["photoURL"] as? String,
+                            friends: data["friends"] as? [String] ?? [],
+                            incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                            outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                            bio: data["bio"] as? String
+                        )
+                    }
                 }
             }
     }
-
+    
     private func isFriend(_ user: UserProfile) -> Bool {
         currentUser?.friends?.contains(user.uid) ?? false
     }
@@ -718,9 +749,9 @@ struct FriendsView: View {
     private func removeFriend(_ user: UserProfile) {
         guard let currentUser = currentUser else { return }
 
-        let batch = db.batch()
-        let currentRef = db.collection("users").document(currentUser.uid)
-        let otherRef = db.collection("users").document(user.uid)
+        let batch = Firestore.firestore().batch()
+        let currentRef = Firestore.firestore().collection("users").document(currentUser.uid)
+        let otherRef = Firestore.firestore().collection("users").document(user.uid)
 
         var currentFriends = Set(currentUser.friends ?? [])
         currentFriends.remove(user.uid)
@@ -731,8 +762,10 @@ struct FriendsView: View {
         batch.updateData(["friends": Array(otherFriends)], forDocument: otherRef)
 
         batch.commit { error in
-            if error == nil {
-                self.reloadData()
+            DispatchQueue.main.async {
+                if error == nil {
+                    self.reloadData()
+                }
             }
         }
     }

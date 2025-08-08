@@ -1,9 +1,14 @@
 import Foundation
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseCore
 
 class ContentModerationService: ObservableObject {
-    private let db = Firestore.firestore()
+    private lazy var db: Firestore = {
+        // Only create Firestore instance when actually needed
+        // Firebase should be configured by SessionStore before this is called
+        return Firestore.firestore()
+    }()
     
     // List of objectionable words/phrases to filter
     private let objectionableWords = [

@@ -9,6 +9,11 @@ struct ChaiSpotFixedApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(sessionStore)
+                .onAppear {
+                    sessionStore.initializeIfNeeded()
+                    sessionStore.setupAuthListener()   // This will handle current user state automatically
+                    print("🟢 App bootstrapped")
+                }
         }
     }
 }

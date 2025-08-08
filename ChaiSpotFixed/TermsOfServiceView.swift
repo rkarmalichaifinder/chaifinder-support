@@ -143,5 +143,6 @@ struct TermsOfServiceView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
 } 

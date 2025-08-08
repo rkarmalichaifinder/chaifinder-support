@@ -218,7 +218,9 @@ struct FeedView: View {
                         }
                     }
                 }
+                .navigationViewStyle(.stack)
             }
         }
+        .navigationViewStyle(.stack)
     }
 } 

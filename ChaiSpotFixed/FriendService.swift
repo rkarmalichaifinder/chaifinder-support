@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Firebase
+import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
 
@@ -8,6 +9,13 @@ struct FriendService {
 
     // ✅ Create user document on first login
     static func createUserDocumentIfNeeded(completion: @escaping (Bool) -> Void) {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized")
+            completion(false)
+            return
+        }
+        
         guard let user = Auth.auth().currentUser else {
             completion(false)
             return
@@ -23,7 +31,7 @@ struct FriendService {
             }
 
             let name = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let fallbackName = name?.isEmpty == false ? name! : (user.email ?? "Anonymous")
+            let fallbackName = (name?.isEmpty == false ? name : nil) ?? (user.email ?? "Anonymous")
 
             var newUserData: [String: Any] = [
                 "uid": user.uid,
@@ -48,6 +56,13 @@ struct FriendService {
 
     // ✅ Send Friend Request using subcollections and arrays
     static func sendFriendRequest(to recipientUID: String, completion: @escaping (Bool) -> Void) {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized")
+            completion(false)
+            return
+        }
+        
         guard let senderUID = Auth.auth().currentUser?.uid else {
             print("❌ No current user found for friend request")
             completion(false)
@@ -96,6 +111,13 @@ struct FriendService {
 
     // ✅ Accept Friend Request
     static func acceptFriendRequest(from senderUID: String, completion: @escaping (Bool) -> Void) {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized")
+            completion(false)
+            return
+        }
+        
         guard let currentUID = Auth.auth().currentUser?.uid else {
             completion(false)
             return
@@ -153,6 +175,13 @@ struct FriendService {
 
     // ✅ Reject Friend Request
     static func rejectFriendRequest(from senderUID: String, completion: @escaping (Bool) -> Void) {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized")
+            completion(false)
+            return
+        }
+        
         guard let currentUID = Auth.auth().currentUser?.uid else {
             completion(false)
             return
@@ -193,6 +222,13 @@ struct FriendService {
 
     // ✅ Get all friends' ratings for a given chai spot
     static func getFriendsRatings(forSpotId spotId: String, completion: @escaping ([Rating]) -> Void) {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized")
+            completion([])
+            return
+        }
+        
         guard let currentUID = Auth.auth().currentUser?.uid else {
             completion([])
             return
@@ -231,6 +267,13 @@ struct FriendService {
 
     // ✅ Get the current user's rating for a chai spot
     static func getMyRating(forSpotId spotId: String, completion: @escaping (Rating?) -> Void) {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized")
+            completion(nil)
+            return
+        }
+        
         guard let currentUID = Auth.auth().currentUser?.uid else {
             completion(nil)
             return

@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseCore
 import AuthenticationServices
 import CryptoKit
 import FirebaseFirestore
@@ -7,38 +8,81 @@ import GoogleSignIn
 
 class SessionStore: NSObject, ObservableObject {
     @Published var currentUser: User?
-    @Published var userProfile: UserProfile?  // ✅ Add this
-    @Published var isLoading = true // Add loading state
+    @Published var userProfile: UserProfile?
+    @Published var isLoading = true // Start with true, only set to false when we have a definitive state
     private var authStateListener: AuthStateDidChangeListenerHandle?
+    private var didInitialize = false // Track if we've initialized
+    private var didAttachListener = false // Track if we've attached the listener
     fileprivate var currentNonce: String?
 
     override init() {
         super.init()
-        // Delay the Firebase Auth listener setup to prevent hangs
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.setupAuthListener()
+        // Don't initialize Firebase Auth immediately - wait until needed
+        print("✅ SessionStore initialized without Firebase Auth")
+    }
+    
+    func initializeIfNeeded() {
+        guard !didInitialize else { 
+            print("⚙️ Already initialized, skipping")
+            return 
         }
         
-        // Add timeout to prevent infinite loading
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-            if self.isLoading {
-                print("⚠️ Firebase Auth timeout, setting loading to false")
-                self.isLoading = false
-            }
+        didInitialize = true
+        
+        print("🔄 Initializing Firebase Auth...")
+        
+        // Set loading state immediately
+        DispatchQueue.main.async {
+            self.isLoading = true
+        }
+        
+        // Don't check current user state during initialization - do it later
+        DispatchQueue.main.async {
+            print("✅ Firebase Auth initialized successfully")
         }
     }
     
-    private func setupAuthListener() {
-        // Add error handling for Firebase Auth initialization
-        authStateListener = Auth.auth().addStateDidChangeListener { [weak self] auth, user in
+    // Separate method to set up Auth listener when needed
+    func setupAuthListener() {
+        guard !didAttachListener else { 
+            print("👂 Already attached listener, skipping")
+            return 
+        }
+        
+        didAttachListener = true
+        print("👂 Attaching auth listener")
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            // First, check the current user state immediately
+            let currentUser = Auth.auth().currentUser
             DispatchQueue.main.async {
-                self?.isLoading = false
-                self?.currentUser = user
-                if let user = user {
+                if let user = currentUser {
+                    print("👤 Found current user during listener setup: \(user.email ?? "unknown")")
+                    self?.currentUser = user
                     self?.loadUserProfile(uid: user.uid)
                 } else {
-                    self?.userProfile = nil
+                    print("👤 No current user found during listener setup")
                 }
+            }
+            
+            // Then attach the listener for future changes
+            let listener = Auth.auth().addStateDidChangeListener { [weak self] auth, user in
+                DispatchQueue.main.async {
+                    self?.currentUser = user
+                    if let user = user {
+                        self?.loadUserProfile(uid: user.uid)
+                    } else {
+                        self?.userProfile = nil
+                    }
+                    // Always set loading to false when auth state changes
+                    self?.isLoading = false
+                    print("👤 Auth state changed. user: \(user?.uid ?? "nil")")
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self?.authStateListener = listener
+                print("✅ Auth listener set up successfully")
             }
         }
     }
@@ -52,7 +96,26 @@ class SessionStore: NSObject, ObservableObject {
             }
             
             guard let document = snapshot, document.exists else {
-                print("❌ User profile document does not exist")
+                // Auto-create a basic user profile document so edits can persist
+                let email = Auth.auth().currentUser?.email ?? "unknown"
+                let display = email.components(separatedBy: "@").first ?? "User"
+                let newProfile = [
+                    "uid": uid,
+                    "displayName": display,
+                    "email": email,
+                    "friends": [],
+                    "incomingRequests": [],
+                    "outgoingRequests": []
+                ] as [String : Any]
+                Firestore.firestore().collection("users").document(uid).setData(newProfile, merge: true) { err in
+                    if let err = err {
+                        print("❌ Failed to auto-create user profile: \(err.localizedDescription)")
+                        return
+                    }
+                    print("✅ Auto-created user profile for \(uid)")
+                    // Reload after creation
+                    self.loadUserProfile(uid: uid)
+                }
                 return
             }
             
@@ -146,7 +209,7 @@ class SessionStore: NSObject, ObservableObject {
     func signInWithEmail(email: String, password: String) async {
         do {
             let result = try await Auth.auth().signIn(withEmail: email, password: password)
-            DispatchQueue.main.async {
+            await MainActor.run {
                 self.currentUser = result.user
                 self.loadUserProfile(uid: result.user.uid)
             }
@@ -170,7 +233,7 @@ class SessionStore: NSObject, ObservableObject {
                 bio: nil
             )
             try Firestore.firestore().collection("users").document(newUser.uid).setData(from: newUser)
-            DispatchQueue.main.async {
+            await MainActor.run {
                 self.currentUser = result.user
                 self.userProfile = newUser
             }
@@ -193,7 +256,7 @@ class SessionStore: NSObject, ObservableObject {
 
         do {
             try await ref.setData(["bio": newBio], merge: true)
-            DispatchQueue.main.async {
+            await MainActor.run {
                 self.userProfile?.bio = newBio
                 print("✅ Bio updated locally to: \(newBio)")
             }
@@ -216,7 +279,7 @@ class SessionStore: NSObject, ObservableObject {
 
         do {
             try await ref.setData(["displayName": newDisplayName], merge: true)
-            DispatchQueue.main.async {
+            await MainActor.run {
                 self.userProfile?.displayName = newDisplayName
                 print("✅ Display name updated locally to: \(newDisplayName)")
             }

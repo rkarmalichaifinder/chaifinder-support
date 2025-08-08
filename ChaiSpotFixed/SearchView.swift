@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import Firebase
+import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
 
@@ -13,7 +14,6 @@ struct SearchView: View {
     @State private var searchLocation: CLLocation?
     @State private var isGeocoding = false
     @State private var selectedSpot: ChaiSpot?
-    @State private var showingSpotDetail = false
     @State private var showingAddChaiSpot = false
     @State private var showingAddConfirmation = false
     @State private var addConfirmationMessage = ""
@@ -137,6 +137,7 @@ struct SearchView: View {
                 loadAllChaiSpots()
             }
         }
+        .navigationViewStyle(.stack)
         .alert("Add Confirmation", isPresented: $showingAddConfirmation) {
             Button("OK", role: .cancel) {
                 if showingAddConfirmation {
@@ -543,6 +544,16 @@ struct SearchView: View {
     private func handleAddChaiSpot(name: String, address: String, rating: Int, comments: String, chaiTypes: [String], coordinate: CLLocationCoordinate2D) {
         let db = Firestore.firestore()
         
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized")
+            DispatchQueue.main.async {
+                self.addConfirmationMessage = "Please sign in to add locations"
+                self.showingAddConfirmation = true
+            }
+            return
+        }
+        
         // Check if user is authenticated
         guard let currentUser = Auth.auth().currentUser else {
             print("❌ User not authenticated")
@@ -602,7 +613,8 @@ struct SearchView: View {
         
         isAddingSpot = true
         
-        db.collection("chaiFinder").addDocument(data: newSpotData) { error in
+        let spotRef = db.collection("chaiFinder").document()
+        spotRef.setData(newSpotData) { error in
             DispatchQueue.main.async {
                 self.isAddingSpot = false
                 
@@ -620,7 +632,7 @@ struct SearchView: View {
                     
                     // Create a new ChaiSpot object with the data
                     let newSpot = ChaiSpot(
-                        id: UUID().uuidString, // Temporary ID for UI
+                        id: spotRef.documentID,
                         name: name,
                         address: address,
                         latitude: coordinate.latitude,
@@ -643,6 +655,27 @@ struct SearchView: View {
                     // Close the add form
                     self.showingAddChaiSpot = false
                     
+                    // Also create the user's initial rating so it shows in feeds/list
+                    if let user = Auth.auth().currentUser {
+                        // Fetch display name from users collection if available
+                        db.collection("users").document(user.uid).getDocument { doc, _ in
+                            var username = user.email ?? user.uid
+                            if let data = doc?.data(), let displayName = data["displayName"] as? String, !displayName.isEmpty {
+                                username = displayName
+                            }
+                            var ratingDict: [String: Any] = [
+                                "spotId": spotRef.documentID,
+                                "userId": user.uid,
+                                "username": username,
+                                "value": rating,
+                                "comment": comments,
+                                "timestamp": FieldValue.serverTimestamp()
+                            ]
+                            if let firstType = chaiTypes.first { ratingDict["chaiType"] = firstType }
+                            db.collection("ratings").addDocument(data: ratingDict)
+                        }
+                    }
+
                     // Reload all spots after a short delay to ensure consistency
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         self.loadAllChaiSpots()
@@ -674,8 +707,8 @@ struct MapSearchView: View {
             Map(coordinateRegion: $region, annotationItems: chaiSpots) { spot in
                 MapAnnotation(coordinate: spot.coordinate) {
                     Button(action: {
+                        // Present sheet by setting selectedSpot; avoid additional boolean to prevent state-change-during-update warnings
                         selectedSpot = spot
-                        showingSpotDetail = true
                     }) {
                         VStack(spacing: 2) {
                             Image(systemName: "cup.and.saucer.fill")
@@ -798,16 +831,8 @@ struct MapSearchView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingSpotDetail) {
-            if let spot = selectedSpot {
-                ChaiSpotDetailSheet(spot: spot, userLocation: locationManager.location)
-                    .onAppear {
-                        // Small delay to ensure sheet is fully presented before loading data
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            // Data will be loaded in ChaiSpotDetailSheet.onAppear
-                        }
-                    }
-            }
+        .sheet(item: $selectedSpot) { spot in
+            ChaiSpotDetailSheet(spot: spot, userLocation: locationManager.location)
         }
     }
 }

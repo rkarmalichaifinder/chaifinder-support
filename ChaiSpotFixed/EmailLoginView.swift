@@ -1,5 +1,6 @@
 import SwiftUI
 import Firebase
+import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
 
@@ -74,6 +75,12 @@ struct EmailLoginView: View {
             return
         }
         
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            handleError("Authentication service not available")
+            return
+        }
+        
         isLoading = true
         errorMessage = nil
         
@@ -99,6 +106,12 @@ struct EmailLoginView: View {
         
         guard password.count >= 6 else {
             handleError("Password must be at least 6 characters")
+            return
+        }
+        
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            handleError("Authentication service not available")
             return
         }
         

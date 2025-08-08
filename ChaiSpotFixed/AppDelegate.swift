@@ -5,9 +5,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        // Configure Firebase with error handling
-        FirebaseApp.configure()  // ✅ CRUCIAL
-        print("✅ Firebase configured successfully")
+        // Configure Firebase at app launch to prevent hang detection
+        print("🔄 Configuring Firebase at app launch...")
+        FirebaseApp.configure()
+        print("✅ Firebase configured successfully at app launch")
         return true
     }
     
