@@ -516,6 +516,7 @@ struct FriendsView: View {
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                         .lineLimit(1)
                 }
+                .layoutPriority(1)
                 
                 Spacer()
                 
@@ -545,10 +546,11 @@ struct FriendsView: View {
                                     .foregroundColor(DesignSystem.Colors.textSecondary)
                                     .lineLimit(1)
                             } else {
-                                Text("Send Request")
+                                Text("Send\nRequest")
                                     .font(DesignSystem.Typography.caption)
                                     .fontWeight(.medium)
-                                    .lineLimit(1)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
                             }
                         }
                         .foregroundColor(.white)
@@ -556,7 +558,6 @@ struct FriendsView: View {
                         .padding(.vertical, DesignSystem.Spacing.xs)
                         .background(DesignSystem.Colors.primary)
                         .cornerRadius(DesignSystem.CornerRadius.small)
-                        .fixedSize(horizontal: true, vertical: false)
                         .disabled(sendingToUser != nil)
                     }
                 }
