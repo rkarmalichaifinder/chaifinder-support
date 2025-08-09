@@ -220,6 +220,54 @@ struct FriendService {
         }
     }
 
+    // ✅ Cancel Outgoing Friend Request
+    static func cancelOutgoingFriendRequest(to recipientUID: String, completion: @escaping (Bool) -> Void) {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized")
+            completion(false)
+            return
+        }
+        
+        guard let currentUID = Auth.auth().currentUser?.uid else {
+            completion(false)
+            return
+        }
+        
+        let db = Firestore.firestore()
+        let batch = db.batch()
+        
+        // Remove from requests subcollections
+        let outgoingRequestRef = db.collection("users").document(currentUID)
+            .collection("outgoingFriendRequests").document(recipientUID)
+        let incomingRequestRef = db.collection("users").document(recipientUID)
+            .collection("incomingFriendRequests").document(currentUID)
+        
+        batch.deleteDocument(outgoingRequestRef)
+        batch.deleteDocument(incomingRequestRef)
+        
+        // Update arrays in user documents
+        let currentUserRef = db.collection("users").document(currentUID)
+        let recipientUserRef = db.collection("users").document(recipientUID)
+        
+        batch.updateData([
+            "outgoingRequests": FieldValue.arrayRemove([recipientUID])
+        ], forDocument: currentUserRef)
+        batch.updateData([
+            "incomingRequests": FieldValue.arrayRemove([currentUID])
+        ], forDocument: recipientUserRef)
+        
+        batch.commit { error in
+            if let error = error {
+                print("❌ Failed to cancel outgoing friend request: \(error.localizedDescription)")
+                completion(false)
+            } else {
+                print("✅ Outgoing friend request canceled successfully")
+                completion(true)
+            }
+        }
+    }
+
     // ✅ Get all friends' ratings for a given chai spot
     static func getFriendsRatings(forSpotId spotId: String, completion: @escaping ([Rating]) -> Void) {
         // Check if Firebase is initialized before accessing Auth

@@ -298,30 +298,56 @@ struct FriendsView: View {
                 .foregroundColor(DesignSystem.Colors.textPrimary)
             
             ForEach(outgoingRequests) { user in
-                HStack {
-                    profileImage(for: user)
-                        .frame(width: 50, height: 50)
-                    
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        Text(user.displayName)
-                            .font(DesignSystem.Typography.bodyMedium)
-                            .fontWeight(.semibold)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack {
+                        profileImage(for: user)
+                            .frame(width: 50, height: 50)
                         
-                        Text("Request sent")
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                            Text(user.displayName)
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .fontWeight(.semibold)
+                                .foregroundColor(DesignSystem.Colors.textPrimary)
+                            
+                            Text("Request sent")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Text("Pending")
                             .font(DesignSystem.Typography.caption)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                            .background(DesignSystem.Colors.secondary.opacity(0.1))
+                            .cornerRadius(DesignSystem.CornerRadius.small)
                     }
-                    
-                    Spacer()
-                    
-                    Text("Pending")
+
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Button("Cancel Request") {
+                            FriendService.cancelOutgoingFriendRequest(to: user.uid) { _ in
+                                reloadData()
+                            }
+                        }
                         .font(DesignSystem.Typography.caption)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .padding(.horizontal, DesignSystem.Spacing.sm)
-                        .padding(.vertical, DesignSystem.Spacing.xs)
-                        .background(DesignSystem.Colors.secondary.opacity(0.1))
+                        .fontWeight(.medium)
+                        .foregroundColor(DesignSystem.Colors.primary)
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .background(DesignSystem.Colors.primary.opacity(0.1))
                         .cornerRadius(DesignSystem.CornerRadius.small)
+
+                        Button("Send Reminder") {
+                            // Optional: future enhancement to notify user
+                        }
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .background(DesignSystem.Colors.primary)
+                        .cornerRadius(DesignSystem.CornerRadius.small)
+                    }
                 }
                 .padding(DesignSystem.Spacing.md)
                 .background(DesignSystem.Colors.secondary.opacity(0.05))
