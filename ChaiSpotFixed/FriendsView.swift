@@ -411,10 +411,12 @@ struct FriendsView: View {
                     .font(DesignSystem.Typography.bodyMedium)
                     .fontWeight(.semibold)
                     .foregroundColor(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
                 
                 Text(user.email)
                     .font(DesignSystem.Typography.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
             }
             
             Spacer()
@@ -507,26 +509,29 @@ struct FriendsView: View {
                         .font(DesignSystem.Typography.bodyMedium)
                         .fontWeight(.semibold)
                         .foregroundColor(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
                     
                     Text(user.email)
                         .font(DesignSystem.Typography.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
                 }
                 
                 Spacer()
                 
-                // Add a chevron to indicate it's clickable
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                
-                // Action buttons in a separate HStack to prevent tap interference
+                // Action buttons aligned to the right; compact styling to avoid wrapping
                 HStack(spacing: DesignSystem.Spacing.xs) {
                     if isFriend(user) {
-                        Button("Remove") {
-                            removeFriend(user)
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
+                        Button("Remove") { removeFriend(user) }
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                            .background(DesignSystem.Colors.primary.opacity(0.1))
+                            .cornerRadius(DesignSystem.CornerRadius.small)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     } else {
                         Button(action: {
                             sendFriendRequest(to: user)
@@ -538,13 +543,20 @@ struct FriendsView: View {
                                 Text("Requested")
                                     .font(DesignSystem.Typography.caption)
                                     .foregroundColor(DesignSystem.Colors.textSecondary)
+                                    .lineLimit(1)
                             } else {
                                 Text("Send Request")
-                                    .font(DesignSystem.Typography.bodySmall)
+                                    .font(DesignSystem.Typography.caption)
                                     .fontWeight(.medium)
+                                    .lineLimit(1)
                             }
                         }
-                        .buttonStyle(PrimaryButtonStyle())
+                        .foregroundColor(.white)
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, DesignSystem.Spacing.xs)
+                        .background(DesignSystem.Colors.primary)
+                        .cornerRadius(DesignSystem.CornerRadius.small)
+                        .fixedSize(horizontal: true, vertical: false)
                         .disabled(sendingToUser != nil)
                     }
                 }
