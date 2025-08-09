@@ -1026,9 +1026,16 @@ struct ChaiSpotCard: View {
     }
     
     var calculatedAverageRating: Double {
-        guard !ratings.isEmpty else { return 0.0 }
-        let totalRating = ratings.reduce(0) { $0 + $1.value }
-        return Double(totalRating) / Double(ratings.count)
+        if !ratings.isEmpty {
+            let totalRating = ratings.reduce(0) { $0 + $1.value }
+            return Double(totalRating) / Double(ratings.count)
+        } else {
+            return spot.averageRating
+        }
+    }
+    
+    var displayRatingCount: Int {
+        return !ratings.isEmpty ? ratings.count : spot.ratingCount
     }
     
     var calculatedFriendAverageRating: Double {
@@ -1039,14 +1046,6 @@ struct ChaiSpotCard: View {
     
     var body: some View {
         ZStack {
-            // Background tap area
-            Rectangle()
-                .fill(Color.clear)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    showingDetailSheet = true
-                }
-            
             // Card content
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) { // Reduced from md to sm
                 // Header
@@ -1082,7 +1081,7 @@ struct ChaiSpotCard: View {
                                     .background(DesignSystem.Colors.ratingGreen)
                                     .cornerRadius(DesignSystem.CornerRadius.small)
                                 
-                                Text("(\(ratings.count))")
+                                Text("(\(displayRatingCount))")
                                     .font(DesignSystem.Typography.caption)
                                     .foregroundColor(DesignSystem.Colors.textSecondary)
                             } else {
@@ -1188,6 +1187,10 @@ struct ChaiSpotCard: View {
             x: DesignSystem.Shadows.small.x,
             y: DesignSystem.Shadows.small.y
         )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showingDetailSheet = true
+        }
         .onAppear {
             loadRatings()
             checkIfSpotIsSaved()

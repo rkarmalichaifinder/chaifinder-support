@@ -10,6 +10,9 @@ class ContentModerationService: ObservableObject {
         return Firestore.firestore()
     }()
     
+    // Minimum content size before applying heuristic checks like ALL CAPS or excessive punctuation
+    private let minimumLettersForHeuristics = 10
+    
     // List of objectionable words/phrases to filter
     private let objectionableWords = [
         "fuck", "shit", "bitch", "ass", "damn", "hell", "crap", "piss", "dick", "cock", "pussy", "cunt",
@@ -34,14 +37,18 @@ class ContentModerationService: ObservableObject {
         // Check for excessive caps (shouting)
         let uppercaseCount = text.filter { $0.isUppercase }.count
         let totalLetters = text.filter { $0.isLetter }.count
-        if totalLetters > 0 && Double(uppercaseCount) / Double(totalLetters) > 0.7 {
-            return (false, text)
+        if totalLetters >= minimumLettersForHeuristics {
+            if Double(uppercaseCount) / Double(totalLetters) > 0.7 {
+                return (false, text)
+            }
         }
         
         // Check for excessive punctuation
         let punctuationCount = text.filter { "!@#$%^&*()_+-=[]{}|;':\",./<>?".contains($0) }.count
-        if punctuationCount > text.count / 3 {
-            return (false, text)
+        if totalLetters >= minimumLettersForHeuristics {
+            if punctuationCount > max(1, text.count / 3) {
+                return (false, text)
+            }
         }
         
         return (true, filteredText)

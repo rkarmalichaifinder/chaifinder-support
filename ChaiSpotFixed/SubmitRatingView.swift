@@ -13,6 +13,7 @@ struct SubmitRatingView: View {
     @State private var isSubmitting = false
     @State private var showContentWarning = false
     @State private var contentWarningMessage = ""
+    @State private var inlineWarningMessage: String? = nil
     @StateObject private var moderationService = ContentModerationService()
     
     private let db = Firestore.firestore()
@@ -27,8 +28,17 @@ struct SubmitRatingView: View {
                 Section(header: Text("Comment (Optional)")) {
                     TextField("Write something...", text: $comment)
                         .onChange(of: comment) { newValue in
-                            validateContent(newValue)
+                            validateContentTyping(newValue)
                         }
+                    if let warning = inlineWarningMessage {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text(warning)
+                                .font(.footnote)
+                                .foregroundColor(.orange)
+                        }
+                    }
                 }
                 
                 Section {
@@ -70,14 +80,15 @@ struct SubmitRatingView: View {
         }
     }
     
-    private func validateContent(_ text: String) {
-        if !text.isEmpty {
-            let (isAppropriate, _) = moderationService.filterContent(text)
-            if !isAppropriate {
-                contentWarningMessage = "Your comment may contain inappropriate content. Please review and edit if necessary."
-                showContentWarning = true
-            }
+    private func validateContentTyping(_ text: String) {
+        // Do not trigger warnings for very short inputs to avoid false positives on first keystrokes
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 5 else {
+            inlineWarningMessage = nil
+            return
         }
+        let (isAppropriate, _) = moderationService.filterContent(trimmed)
+        inlineWarningMessage = isAppropriate ? nil : "Your comment may contain inappropriate content. Please review and edit if necessary."
     }
     
     func submitRating(forceSubmit: Bool = false) {
