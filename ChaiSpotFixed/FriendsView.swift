@@ -510,13 +510,14 @@ struct FriendsView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(DesignSystem.Colors.textPrimary)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                     
                     Text(user.email)
                         .font(DesignSystem.Typography.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-                .layoutPriority(1)
                 
                 Spacer()
                 
@@ -548,7 +549,8 @@ struct FriendsView: View {
                                         .font(DesignSystem.Typography.caption)
                                         .fontWeight(.medium)
                                         .multilineTextAlignment(.center)
-                                        .lineLimit(2)
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
                                 }
                             }
                             .foregroundColor(.white)
@@ -559,6 +561,7 @@ struct FriendsView: View {
                             .disabled(sendingToUser != nil)
                         }
                     }
+                    .layoutPriority(2)
                     
                     // Fallback: vertical actions to free horizontal space for the name
                     VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
@@ -586,7 +589,8 @@ struct FriendsView: View {
                                         .font(DesignSystem.Typography.caption)
                                         .fontWeight(.medium)
                                         .multilineTextAlignment(.center)
-                                        .lineLimit(2)
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
                                 }
                             }
                             .foregroundColor(.white)
@@ -597,6 +601,7 @@ struct FriendsView: View {
                             .disabled(sendingToUser != nil)
                         }
                     }
+                    .layoutPriority(2)
                 }
                 .allowsHitTesting(true) // Ensure buttons are tappable
             }
