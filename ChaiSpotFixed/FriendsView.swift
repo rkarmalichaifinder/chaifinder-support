@@ -520,45 +520,82 @@ struct FriendsView: View {
                 
                 Spacer()
                 
-                // Action buttons aligned to the right; compact styling to avoid wrapping
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    if isFriend(user) {
-                        Button("Remove") { removeFriend(user) }
-                            .font(DesignSystem.Typography.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(DesignSystem.Colors.primary)
+                // Action area prefers horizontal layout, but will stack vertically if space is tight
+                ViewThatFits(in: .horizontal) {
+                    // Preferred: horizontal actions
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        if isFriend(user) {
+                            Button("Remove") { removeFriend(user) }
+                                .font(DesignSystem.Typography.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(DesignSystem.Colors.primary)
+                                .padding(.horizontal, DesignSystem.Spacing.sm)
+                                .padding(.vertical, DesignSystem.Spacing.xs)
+                                .background(DesignSystem.Colors.primary.opacity(0.1))
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                                .lineLimit(1)
+                        } else {
+                            Button(action: { sendFriendRequest(to: user) }) {
+                                if sendingToUser == user.uid {
+                                    ProgressView().scaleEffect(0.8)
+                                } else if sentRequests.contains(user.uid) || isRequestSent(to: user) {
+                                    Text("Requested")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                        .lineLimit(1)
+                                } else {
+                                    Text("Send Request")
+                                        .font(DesignSystem.Typography.caption)
+                                        .fontWeight(.medium)
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(2)
+                                }
+                            }
+                            .foregroundColor(.white)
                             .padding(.horizontal, DesignSystem.Spacing.sm)
                             .padding(.vertical, DesignSystem.Spacing.xs)
-                            .background(DesignSystem.Colors.primary.opacity(0.1))
+                            .background(DesignSystem.Colors.primary)
                             .cornerRadius(DesignSystem.CornerRadius.small)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    } else {
-                        Button(action: {
-                            sendFriendRequest(to: user)
-                        }) {
-                            if sendingToUser == user.uid {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else if sentRequests.contains(user.uid) || isRequestSent(to: user) {
-                                Text("Requested")
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                                    .lineLimit(1)
-                            } else {
-                                Text("Send\nRequest")
-                                    .font(DesignSystem.Typography.caption)
-                                    .fontWeight(.medium)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                            }
+                            .disabled(sendingToUser != nil)
                         }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, DesignSystem.Spacing.sm)
-                        .padding(.vertical, DesignSystem.Spacing.xs)
-                        .background(DesignSystem.Colors.primary)
-                        .cornerRadius(DesignSystem.CornerRadius.small)
-                        .disabled(sendingToUser != nil)
+                    }
+                    
+                    // Fallback: vertical actions to free horizontal space for the name
+                    VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
+                        if isFriend(user) {
+                            Button("Remove") { removeFriend(user) }
+                                .font(DesignSystem.Typography.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(DesignSystem.Colors.primary)
+                                .padding(.horizontal, DesignSystem.Spacing.sm)
+                                .padding(.vertical, DesignSystem.Spacing.xs)
+                                .background(DesignSystem.Colors.primary.opacity(0.1))
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                                .lineLimit(1)
+                        } else {
+                            Button(action: { sendFriendRequest(to: user) }) {
+                                if sendingToUser == user.uid {
+                                    ProgressView().scaleEffect(0.8)
+                                } else if sentRequests.contains(user.uid) || isRequestSent(to: user) {
+                                    Text("Requested")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                        .lineLimit(1)
+                                } else {
+                                    Text("Send Request")
+                                        .font(DesignSystem.Typography.caption)
+                                        .fontWeight(.medium)
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(2)
+                                }
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                            .background(DesignSystem.Colors.primary)
+                            .cornerRadius(DesignSystem.CornerRadius.small)
+                            .disabled(sendingToUser != nil)
+                        }
                     }
                 }
                 .allowsHitTesting(true) // Ensure buttons are tappable
