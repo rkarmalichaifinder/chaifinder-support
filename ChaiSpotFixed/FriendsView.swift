@@ -545,12 +545,20 @@ struct FriendsView: View {
                                         .foregroundColor(DesignSystem.Colors.textSecondary)
                                         .lineLimit(1)
                                 } else {
-                                    Text("Send Request")
-                                        .font(DesignSystem.Typography.caption)
-                                        .fontWeight(.medium)
-                                        .multilineTextAlignment(.center)
-                                        .lineLimit(1)
-                                        .fixedSize(horizontal: true, vertical: false)
+                                    VStack(spacing: 0) {
+                                        Text("Send")
+                                            .font(DesignSystem.Typography.caption)
+                                            .fontWeight(.medium)
+                                            .lineLimit(1)
+                                            .allowsTightening(false)
+                                        Text("Request")
+                                            .font(DesignSystem.Typography.caption)
+                                            .fontWeight(.medium)
+                                            .lineLimit(1)
+                                            .allowsTightening(false)
+                                    }
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: true, vertical: true)
                                 }
                             }
                             .foregroundColor(.white)
@@ -585,12 +593,20 @@ struct FriendsView: View {
                                         .foregroundColor(DesignSystem.Colors.textSecondary)
                                         .lineLimit(1)
                                 } else {
-                                    Text("Send Request")
-                                        .font(DesignSystem.Typography.caption)
-                                        .fontWeight(.medium)
-                                        .multilineTextAlignment(.center)
-                                        .lineLimit(1)
-                                        .fixedSize(horizontal: true, vertical: false)
+                                    VStack(spacing: 0) {
+                                        Text("Send")
+                                            .font(DesignSystem.Typography.caption)
+                                            .fontWeight(.medium)
+                                            .lineLimit(1)
+                                            .allowsTightening(false)
+                                        Text("Request")
+                                            .font(DesignSystem.Typography.caption)
+                                            .fontWeight(.medium)
+                                            .lineLimit(1)
+                                            .allowsTightening(false)
+                                    }
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: true, vertical: true)
                                 }
                             }
                             .foregroundColor(.white)
