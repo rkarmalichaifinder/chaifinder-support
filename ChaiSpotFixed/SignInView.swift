@@ -97,21 +97,18 @@ struct SignInView: View {
                 }
                 .iPadOptimized()
 
-                // Apple Sign-In - Temporarily hidden
-                /*
-                Button(action: {
-                    sessionStore.signInWithApple()
-                }) {
-                    HStack {
-                        Image(systemName: "applelogo")
-                        Text("Sign in with Apple")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
+                // Apple Sign-In
+                SignInWithAppleButton(.signIn) { _ in
+                    // no-op: action handled in onTap
+                } onCompletion: { _ in
+                    // handled by SessionStore delegate
                 }
-                */
+                .frame(height: 44)
+                .cornerRadius(DesignSystem.CornerRadius.medium)
+                .onTapGesture {
+                    sessionStore.signInWithApple()
+                }
+                .iPadOptimized()
 
                 Spacer()
             }
@@ -124,7 +121,7 @@ struct SignInView: View {
             .onChange(of: hasAcceptedTerms) { accepted in
                 if accepted {
                     showingSignUp = true
-                    hasAcceptedTerms = false // Reset for next time
+                    hasAcceptedTerms = false
                 }
             }
             .sheet(isPresented: $showingSignUp) {

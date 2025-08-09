@@ -1,127 +1,131 @@
 import SwiftUI
-import FirebaseAuth
+import UIKit
 import FirebaseCore
+import FirebaseAuth
+import FirebaseFirestore
 import AuthenticationServices
 import CryptoKit
-import FirebaseFirestore
 import GoogleSignIn
 
-class SessionStore: NSObject, ObservableObject {
+// MARK: - SessionStore
+
+class SessionStore: NSObject, ObservableObject,
+                    ASAuthorizationControllerDelegate,
+                    ASAuthorizationControllerPresentationContextProviding {
+
+    // MARK: Published state
     @Published var currentUser: User?
     @Published var userProfile: UserProfile?
-    @Published var isLoading = true // Start with true, only set to false when we have a definitive state
-    private var authStateListener: AuthStateDidChangeListenerHandle?
-    private var didInitialize = false // Track if we've initialized
-    private var didAttachListener = false // Track if we've attached the listener
-    fileprivate var currentNonce: String?
+    @Published var isLoading = true
 
+    // MARK: Private state
+    private var authStateListener: AuthStateDidChangeListenerHandle?
+    private var didInitialize = false
+    private var didAttachListener = false
+    private var currentNonce: String?
+
+    // MARK: Lifecycle
     override init() {
         super.init()
-        // Don't initialize Firebase Auth immediately - wait until needed
-        print("✅ SessionStore initialized without Firebase Auth")
+        print("✅ SessionStore initialized")
     }
-    
+
+    deinit {
+        if let h = authStateListener {
+            Auth.auth().removeStateDidChangeListener(h)
+        }
+    }
+
+    // MARK: - Bootstrap / Listener
+
+    /// Call once from App root
     func initializeIfNeeded() {
-        guard !didInitialize else { 
+        guard !didInitialize else {
             print("⚙️ Already initialized, skipping")
-            return 
+            return
         }
-        
         didInitialize = true
-        
-        print("🔄 Initializing Firebase Auth...")
-        
-        // Set loading state immediately
-        DispatchQueue.main.async {
-            self.isLoading = true
-        }
-        
-        // Don't check current user state during initialization - do it later
-        DispatchQueue.main.async {
-            print("✅ Firebase Auth initialized successfully")
-        }
+        print("🔄 initializeIfNeeded (Firebase should already be configured in AppDelegate)")
+        DispatchQueue.main.async { self.isLoading = true }
     }
-    
-    // Separate method to set up Auth listener when needed
+
+    /// Attach the Firebase auth listener (safe to call once)
     func setupAuthListener() {
-        guard !didAttachListener else { 
+        guard !didAttachListener else {
             print("👂 Already attached listener, skipping")
-            return 
+            return
         }
-        
         didAttachListener = true
         print("👂 Attaching auth listener")
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            // First, check the current user state immediately
-            let currentUser = Auth.auth().currentUser
+        // Immediate snapshot
+        let u = Auth.auth().currentUser
+        DispatchQueue.main.async {
+            self.currentUser = u
+            if let u { self.loadUserProfile(uid: u.uid) } else { self.userProfile = nil }
+        }
+
+        // Continuous updates
+        let handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            guard let self else { return }
             DispatchQueue.main.async {
-                if let user = currentUser {
-                    print("👤 Found current user during listener setup: \(user.email ?? "unknown")")
-                    self?.currentUser = user
-                    self?.loadUserProfile(uid: user.uid)
-                } else {
-                    print("👤 No current user found during listener setup")
-                }
+                self.currentUser = user
+                if let user { self.loadUserProfile(uid: user.uid) } else { self.userProfile = nil }
+                self.isLoading = false
+                print("👤 Auth state changed. user: \(user?.uid ?? "nil")")
             }
-            
-            // Then attach the listener for future changes
-            let listener = Auth.auth().addStateDidChangeListener { [weak self] auth, user in
-                DispatchQueue.main.async {
-                    self?.currentUser = user
-                    if let user = user {
-                        self?.loadUserProfile(uid: user.uid)
-                    } else {
-                        self?.userProfile = nil
-                    }
-                    // Always set loading to false when auth state changes
-                    self?.isLoading = false
-                    print("👤 Auth state changed. user: \(user?.uid ?? "nil")")
-                }
-            }
-            
-            DispatchQueue.main.async {
-                self?.authStateListener = listener
-                print("✅ Auth listener set up successfully")
-            }
+        }
+
+        DispatchQueue.main.async {
+            self.authStateListener = handle
+            print("✅ Auth listener set up successfully")
         }
     }
 
+    /// Optional: call after splash
+    func checkCurrentUser() {
+        let u = Auth.auth().currentUser
+        DispatchQueue.main.async {
+            self.currentUser = u
+            self.isLoading = false
+            print("🔎 checkCurrentUser: \(u?.uid ?? "nil")")
+        }
+    }
+
+    // MARK: - Firestore Profile
+
     func loadUserProfile(uid: String) {
-        let db = Firestore.firestore()
-        db.collection("users").document(uid).getDocument { snapshot, error in
+        Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
             if let error = error {
                 print("❌ Failed to load user profile: \(error.localizedDescription)")
                 return
             }
-            
-            guard let document = snapshot, document.exists else {
-                // Auto-create a basic user profile document so edits can persist
+
+            guard let doc = snapshot, doc.exists else {
+                // Create minimal profile so edits persist
                 let email = Auth.auth().currentUser?.email ?? "unknown"
-                let display = email.components(separatedBy: "@").first ?? "User"
-                let newProfile = [
+                let display = email.split(separator: "@").first.map(String.init) ?? "User"
+                let newProfile: [String: Any] = [
                     "uid": uid,
                     "displayName": display,
                     "email": email,
+                    "photoURL": NSNull(),
                     "friends": [],
                     "incomingRequests": [],
-                    "outgoingRequests": []
-                ] as [String : Any]
+                    "outgoingRequests": [],
+                    "bio": NSNull()
+                ]
                 Firestore.firestore().collection("users").document(uid).setData(newProfile, merge: true) { err in
-                    if let err = err {
-                        print("❌ Failed to auto-create user profile: \(err.localizedDescription)")
-                        return
-                    }
+                    if let err { print("❌ Auto-create user profile failed: \(err.localizedDescription)") ; return }
                     print("✅ Auto-created user profile for \(uid)")
-                    // Reload after creation
                     self.loadUserProfile(uid: uid)
                 }
                 return
             }
-            
-            let data = document.data() ?? [:]
-            let userProfile = UserProfile(
-                id: document.documentID,
+
+            let data = doc.data() ?? [:]
+            let profile = UserProfile(
+                id: doc.documentID,
                 uid: data["uid"] as? String ?? uid,
                 displayName: data["displayName"] as? String ?? "Unknown User",
                 email: data["email"] as? String ?? "unknown",
@@ -131,28 +135,33 @@ class SessionStore: NSObject, ObservableObject {
                 outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
                 bio: data["bio"] as? String
             )
-            
             DispatchQueue.main.async {
-                self.userProfile = userProfile
-                print("✅ User profile loaded with bio: \(userProfile.bio ?? "nil")")
+                self.userProfile = profile
+                print("✅ User profile loaded with bio: \(profile.bio ?? "nil")")
             }
         }
     }
 
+    // MARK: - Sign Out
+
     func signOut() {
         do {
             try Auth.auth().signOut()
-            self.currentUser = nil
-            self.userProfile = nil
+            DispatchQueue.main.async {
+                self.currentUser = nil
+                self.userProfile = nil
+            }
             print("✅ Signed out")
         } catch {
-            print("❌ Error signing out: \(error.localizedDescription)")
+            print("❌ Sign out error: \(error.localizedDescription)")
         }
     }
 
-    // MARK: - Apple Sign-In (local only, not Firebase)
+    // MARK: - Apple Sign-In (Firebase 12.1, SPM)
 
     func signInWithApple() {
+        isLoading = true
+
         let nonce = randomNonceString()
         currentNonce = nonce
 
@@ -166,6 +175,68 @@ class SessionStore: NSObject, ObservableObject {
         controller.performRequests()
     }
 
+    // Delegate: success
+    func authorizationController(controller: ASAuthorizationController,
+                                 didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard
+            let cred = authorization.credential as? ASAuthorizationAppleIDCredential,
+            let tokenData = cred.identityToken,
+            let idToken = String(data: tokenData, encoding: .utf8),
+            let nonce = currentNonce
+        else {
+            print("❌ Apple: Missing identity token or nonce.")
+            DispatchQueue.main.async { self.isLoading = false }
+            return
+        }
+
+        // Firebase 12.x API for Apple credential
+        let firebaseCred = OAuthProvider.appleCredential(
+            withIDToken: idToken,
+            rawNonce: nonce,
+            fullName: cred.fullName
+        )
+
+        Auth.auth().signIn(with: firebaseCred) { authResult, error in
+            if let error = error {
+                self.handleAuthError(error, pendingCredential: firebaseCred)
+                DispatchQueue.main.async { self.isLoading = false }
+                return
+            }
+
+            if let authResult {
+                print("🍎 Apple sign-in success: \(authResult.user.uid)")
+
+                // Persist displayName on first consent
+                if let name = cred.fullName, (name.givenName != nil || name.familyName != nil) {
+                    let display = [name.givenName, name.familyName].compactMap { $0 }.joined(separator: " ")
+                    let change = authResult.user.createProfileChangeRequest()
+                    change.displayName = display.isEmpty ? nil : display
+                    change.commitChanges(completion: nil)
+                }
+
+                DispatchQueue.main.async {
+                    self.currentUser = authResult.user
+                    self.isLoading = false
+                }
+            } else {
+                DispatchQueue.main.async { self.isLoading = false }
+            }
+        }
+    }
+
+    // Delegate: failure
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        print("❌ Apple Sign-In failed: \(error.localizedDescription)")
+        DispatchQueue.main.async { self.isLoading = false }
+    }
+
+    // iPhone + iPad anchor
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+            .first ?? ASPresentationAnchor()
+    }
+
     // MARK: - Google Sign-In
 
     func signInWithGoogle() {
@@ -175,14 +246,17 @@ class SessionStore: NSObject, ObservableObject {
             return
         }
 
+        isLoading = true
         GIDSignIn.sharedInstance.signIn(withPresenting: presentingVC) { result, error in
             if let error = error {
+                self.isLoading = false
                 print("❌ Google Sign-In failed: \(error.localizedDescription)")
                 return
             }
 
             guard let user = result?.user,
                   let idToken = user.idToken?.tokenString else {
+                self.isLoading = false
                 print("❌ Missing Google ID Token")
                 return
             }
@@ -194,68 +268,86 @@ class SessionStore: NSObject, ObservableObject {
 
             Auth.auth().signIn(with: credential) { authResult, error in
                 if let error = error {
-                    print("❌ Firebase sign-in failed: \(error.localizedDescription)")
+                    self.isLoading = false
+                    self.handleAuthError(error, pendingCredential: credential)
                     return
                 }
                 DispatchQueue.main.async {
                     self.currentUser = authResult?.user
+                    self.isLoading = false
                 }
             }
         }
     }
 
-    // MARK: - Email/Password Sign-In
+    // MARK: - Email/Password
 
     func signInWithEmail(email: String, password: String) async {
         do {
+            DispatchQueue.main.async { self.isLoading = true }
             let result = try await Auth.auth().signIn(withEmail: email, password: password)
             await MainActor.run {
                 self.currentUser = result.user
+                self.isLoading = false
                 self.loadUserProfile(uid: result.user.uid)
             }
             print("✅ Signed in with email: \(result.user.uid)")
         } catch {
+            await MainActor.run { self.isLoading = false }
             print("❌ Email sign-in error: \(error.localizedDescription)")
         }
     }
 
     func signUpWithEmail(email: String, password: String) async {
         do {
+            DispatchQueue.main.async { self.isLoading = true }
             let result = try await Auth.auth().createUser(withEmail: email, password: password)
-            let newUser = UserProfile(
-                uid: result.user.uid,
-                displayName: email.components(separatedBy: "@").first ?? "User",
-                email: email,
-                photoURL: nil,
-                friends: [],
-                incomingRequests: [],
-                outgoingRequests: [],
-                bio: nil
-            )
-            try Firestore.firestore().collection("users").document(newUser.uid).setData(from: newUser)
+
+            let doc: [String: Any] = [
+                "uid": result.user.uid,
+                "displayName": email.split(separator: "@").first.map(String.init) ?? "User",
+                "email": email,
+                "photoURL": NSNull(),
+                "friends": [],
+                "incomingRequests": [],
+                "outgoingRequests": [],
+                "bio": NSNull()
+            ]
+            try await Firestore.firestore().collection("users").document(result.user.uid).setData(doc, merge: true)
+
             await MainActor.run {
                 self.currentUser = result.user
-                self.userProfile = newUser
+                self.userProfile = UserProfile(
+                    id: result.user.uid,
+                    uid: result.user.uid,
+                    displayName: doc["displayName"] as? String ?? "User",
+                    email: email,
+                    photoURL: nil,
+                    friends: [],
+                    incomingRequests: [],
+                    outgoingRequests: [],
+                    bio: nil
+                )
+                self.isLoading = false
             }
             print("✅ Signed up with email: \(result.user.uid)")
         } catch {
+            await MainActor.run { self.isLoading = false }
             print("❌ Email sign-up error: \(error.localizedDescription)")
         }
     }
 
+    // MARK: - Profile Mutations
+
     func updateBio(to newBio: String) async {
-        guard let uid = Auth.auth().currentUser?.uid else { 
+        guard let uid = Auth.auth().currentUser?.uid else {
             print("❌ No current user found for bio update")
-            return 
+            return
         }
-
         print("🔄 Updating bio for user \(uid) to: \(newBio)")
-        
-        let db = Firestore.firestore()
-        let ref = db.collection("users").document(uid)
-
         do {
-            try await ref.setData(["bio": newBio], merge: true)
+            try await Firestore.firestore().collection("users").document(uid)
+                .setData(["bio": newBio], merge: true)
             await MainActor.run {
                 self.userProfile?.bio = newBio
                 print("✅ Bio updated locally to: \(newBio)")
@@ -267,18 +359,14 @@ class SessionStore: NSObject, ObservableObject {
     }
 
     func updateDisplayName(to newDisplayName: String) async {
-        guard let uid = Auth.auth().currentUser?.uid else { 
+        guard let uid = Auth.auth().currentUser?.uid else {
             print("❌ No current user found for display name update")
-            return 
+            return
         }
-
         print("🔄 Updating display name for user \(uid) to: \(newDisplayName)")
-        
-        let db = Firestore.firestore()
-        let ref = db.collection("users").document(uid)
-
         do {
-            try await ref.setData(["displayName": newDisplayName], merge: true)
+            try await Firestore.firestore().collection("users").document(uid)
+                .setData(["displayName": newDisplayName], merge: true)
             await MainActor.run {
                 self.userProfile?.displayName = newDisplayName
                 print("✅ Display name updated locally to: \(newDisplayName)")
@@ -290,31 +378,68 @@ class SessionStore: NSObject, ObservableObject {
     }
 
     func loadSavedSpotsCount() async -> Int {
-        guard let uid = Auth.auth().currentUser?.uid else { 
+        guard let uid = Auth.auth().currentUser?.uid else {
             print("❌ No current user found for saved spots count")
-            return 0 
+            return 0
         }
-
-        let db = Firestore.firestore()
-        let ref = db.collection("users").document(uid)
-
         do {
-            let snapshot = try await ref.getDocument()
-            guard let data = snapshot.data() else {
-                print("❌ No user data found for saved spots count")
-                return 0
-            }
-            
-            let savedSpotIds = data["savedSpots"] as? [String] ?? []
-            print("✅ Loaded saved spots count: \(savedSpotIds.count)")
-            return savedSpotIds.count
+            let snap = try await Firestore.firestore().collection("users").document(uid).getDocument()
+            let data = snap.data() ?? [:]
+            let saved = data["savedSpots"] as? [String] ?? []
+            print("✅ Loaded saved spots count: \(saved.count)")
+            return saved.count
         } catch {
             print("❌ Failed to load saved spots count: \(error.localizedDescription)")
             return 0
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Error & Linking (Firebase 12.x)
+
+    private func handleAuthError(_ error: Error, pendingCredential: AuthCredential? = nil) {
+        let nsErr = error as NSError
+
+        // Only process Firebase Auth errors
+        guard nsErr.domain == AuthErrorDomain,
+              let authError = AuthErrorCode(_bridgedNSError: nsErr) else {
+            print("❌ Non-Auth error: \(nsErr.localizedDescription)")
+            return
+        }
+
+        let code = authError.code
+
+        switch code {
+        case .accountExistsWithDifferentCredential:
+            let email = nsErr.userInfo[AuthErrorUserInfoEmailKey] as? String
+            let updated = nsErr.userInfo[AuthErrorUserInfoUpdatedCredentialKey] as? AuthCredential ?? pendingCredential
+            print("⚠️ Account exists with different credential. email=\(email ?? "nil")")
+            if let updated { self.linkPendingCredentialAfterSignIn(updated) }
+
+        case .wrongPassword, .invalidEmail, .userDisabled, .userNotFound:
+            print("❌ Auth error (\(code)): \(nsErr.localizedDescription)")
+
+        default:
+            print("❌ Auth error (\(code)): \(nsErr.localizedDescription)")
+        }
+    }
+
+    private func linkPendingCredentialAfterSignIn(_ credential: AuthCredential) {
+        guard let user = Auth.auth().currentUser else {
+            print("ℹ️ No current user to link credential to.")
+            return
+        }
+        user.link(with: credential) { result, error in
+            if let error = error {
+                print("❌ Linking failed: \(error.localizedDescription)")
+            } else if let linkedUser = result?.user {
+                print("✅ Linking succeeded for user: \(linkedUser.uid)")
+            } else {
+                print("ℹ️ Linking finished with no result.")
+            }
+        }
+    }
+
+    // MARK: - Nonce helpers
 
     private func sha256(_ input: String) -> String {
         let inputData = Data(input.utf8)
@@ -323,37 +448,24 @@ class SessionStore: NSObject, ObservableObject {
     }
 
     private func randomNonceString(length: Int = 32) -> String {
-        let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        precondition(length > 0)
+        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
         var result = ""
-        var remainingLength = length
+        var remaining = length
 
-        while remainingLength > 0 {
+        while remaining > 0 {
             var random: UInt8 = 0
-            let errorCode = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
-            if errorCode == errSecSuccess && random < charset.count {
-                result.append(charset[Int(random)])
-                remainingLength -= 1
-            }
+            let status = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+            if status != errSecSuccess { continue }
+            result.append(charset[Int(random) % charset.count])
+            remaining -= 1
         }
-
         return result
     }
 }
 
-extension SessionStore: ASAuthorizationControllerDelegate {
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-        print("⚠️ Apple Sign-In received, but not hooked up to Firebase in this build.")
-    }
+// MARK: - UIWindowScene helper (file scope)
 
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        print("❌ Apple Sign-In failed: \(error.localizedDescription)")
-    }
-}
-
-extension SessionStore: ASAuthorizationControllerPresentationContextProviding {
-    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
-            .first ?? ASPresentationAnchor()
-    }
+private extension UIWindowScene {
+    var keyWindow: UIWindow? { windows.first(where: { $0.isKeyWindow }) }
 }

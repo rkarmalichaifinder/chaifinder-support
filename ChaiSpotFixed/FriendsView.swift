@@ -240,23 +240,25 @@ struct FriendsView: View {
     }
     
     private func incomingRequestCard(_ user: UserProfile) -> some View {
-        HStack {
-            profileImage(for: user)
-                .frame(width: 50, height: 50)
-            
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text(user.displayName)
-                    .font(DesignSystem.Typography.bodyMedium)
-                    .fontWeight(.semibold)
-                    .foregroundColor(DesignSystem.Colors.textPrimary)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack {
+                profileImage(for: user)
+                    .frame(width: 50, height: 50)
                 
-                Text(user.email)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text(user.displayName)
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .fontWeight(.semibold)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                    
+                    Text(user.email)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+                
+                Spacer()
             }
-            
-            Spacer()
-            
+
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Button("Accept") {
                     FriendService.acceptFriendRequest(from: user.uid) { _ in
@@ -266,8 +268,7 @@ struct FriendsView: View {
                 .font(DesignSystem.Typography.caption)
                 .fontWeight(.medium)
                 .foregroundColor(.white)
-                .padding(.horizontal, DesignSystem.Spacing.md)
-                .padding(.vertical, DesignSystem.Spacing.sm)
+                .frame(maxWidth: .infinity, minHeight: 36)
                 .background(DesignSystem.Colors.primary)
                 .cornerRadius(DesignSystem.CornerRadius.small)
                 
@@ -279,8 +280,7 @@ struct FriendsView: View {
                 .font(DesignSystem.Typography.caption)
                 .fontWeight(.medium)
                 .foregroundColor(DesignSystem.Colors.primary)
-                .padding(.horizontal, DesignSystem.Spacing.md)
-                .padding(.vertical, DesignSystem.Spacing.sm)
+                .frame(maxWidth: .infinity, minHeight: 36)
                 .background(DesignSystem.Colors.primary.opacity(0.1))
                 .cornerRadius(DesignSystem.CornerRadius.small)
             }
