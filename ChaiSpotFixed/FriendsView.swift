@@ -94,6 +94,23 @@ struct FriendsView: View {
                     .iPadOptimized()
                 } else {
                     ScrollView {
+                        // Header
+                        VStack(spacing: DesignSystem.Spacing.md) {
+                            Text("Social")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text("chai finder")
+                                .font(DesignSystem.Typography.titleLarge)
+                                .fontWeight(.bold)
+                                .foregroundColor(DesignSystem.Colors.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(DesignSystem.Spacing.lg)
+                        .background(DesignSystem.Colors.background)
+                        .iPadOptimized()
+
                         VStack(spacing: DesignSystem.Spacing.lg) {
                             // My Profile Section
                             if let currentUser = currentUser {
@@ -128,8 +145,21 @@ struct FriendsView: View {
                     }
                 }
             }
-            .navigationTitle("Friends")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 8) {
+                        Image("AppLogo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: 24)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        Text("Friends")
+                            .font(DesignSystem.Typography.titleMedium)
+                            .fontWeight(.bold)
+                    }
+                }
+            }
             .onAppear {
                 if !hasLoadedData {
                     reloadData()

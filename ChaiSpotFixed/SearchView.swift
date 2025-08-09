@@ -25,10 +25,18 @@ struct SearchView: View {
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: DesignSystem.Spacing.md) {
+                    // Breadcrumb / subtitle
                     Text("Search")
-                        .font(DesignSystem.Typography.titleMedium)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // Brand title
+                    Text("chai finder")
+                        .font(DesignSystem.Typography.titleLarge)
                         .fontWeight(.bold)
-                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                        .foregroundColor(DesignSystem.Colors.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     
                     // View Toggle
                     HStack(spacing: 0) {

@@ -16,6 +16,18 @@ struct FeedView: View {
                 VStack(spacing: 0) {
                     // Header
                     VStack(spacing: DesignSystem.Spacing.md) {
+                        // Breadcrumb / subtitle
+                        Text("Home Page")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // Brand title
+                        Text("chai finder")
+                            .font(DesignSystem.Typography.titleLarge)
+                            .fontWeight(.bold)
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         // Feed Type Toggle
                         Picker("Feed Type", selection: $viewModel.currentFeedType) {
                             Text("Friends")
@@ -34,7 +46,7 @@ struct FeedView: View {
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
                                 .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
                             
-                            TextField("Search reviews...", text: $searchText)
+                            TextField("Search for a chai spot, member, etc...", text: $searchText)
                                 .font(DesignSystem.Typography.bodyMedium)
                                 .foregroundColor(DesignSystem.Colors.textPrimary)
                                 .onChange(of: searchText) { newValue in
@@ -71,6 +83,15 @@ struct FeedView: View {
                     .padding(DesignSystem.Spacing.lg)
                     .background(DesignSystem.Colors.background)
                     .iPadOptimized()
+
+                    // Section title
+                    Text("YOUR FEED")
+                        .font(DesignSystem.Typography.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, DesignSystem.Spacing.lg)
+                        .padding(.top, DesignSystem.Spacing.sm)
                     
                     // Feed Content
                     if viewModel.isLoading {
@@ -176,18 +197,7 @@ struct FeedView: View {
                     }
                 }
             }
-            .navigationTitle("Feed")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingAddReview = true
-                    }) {
-                        Image(systemName: "plus")
-                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
-                    }
-                }
-            }
+            .navigationBarHidden(true)
             .sheet(isPresented: $showingAddReview) {
                 NavigationView {
                     VStack(spacing: DesignSystem.Spacing.lg) {

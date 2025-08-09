@@ -8,7 +8,7 @@ struct MainAppView: View {
         TabView(selection: $selectedTab) {
             FeedView()
                 .tabItem {
-                    Label("Feed", systemImage: "bubble.left.and.bubble.right")
+                    Label("Feed", systemImage: "list.bullet")
                 }
                 .tag(0)
             
@@ -20,7 +20,7 @@ struct MainAppView: View {
             
             FriendsView()
                 .tabItem {
-                    Label("Friends", systemImage: "person.2")
+                    Label("Social", systemImage: "person.3")
                 }
                 .tag(2)
                 
@@ -30,6 +30,7 @@ struct MainAppView: View {
                 }
                 .tag(3)
         }
+        .accentColor(DesignSystem.Colors.primary)
         .environmentObject(sessionStore)
     }
 }

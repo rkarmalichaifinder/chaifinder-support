@@ -189,6 +189,20 @@ struct ProfileView: View {
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 8) {
+                        Image("AppLogo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: 24)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        Text("Profile")
+                            .font(DesignSystem.Typography.titleMedium)
+                            .fontWeight(.bold)
+                    }
+                }
+            }
             .sheet(isPresented: $showingEditBio) {
                 EditBioView()
                     .environmentObject(sessionStore)

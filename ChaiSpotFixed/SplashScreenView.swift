@@ -14,7 +14,7 @@ struct SplashScreenView: View {
                     .frame(width: 120, height: 120)
                     .cornerRadius(20)
                 
-                Text("ChaiSpot")
+                Text("Chai Finder")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
