@@ -15,6 +15,21 @@ struct ProfileView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: DesignSystem.Spacing.lg) {
+                    VStack(spacing: DesignSystem.Spacing.md) {
+                        Text("Profile")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Text("chai finder")
+                            .font(DesignSystem.Typography.titleLarge)
+                            .fontWeight(.bold)
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                    .background(DesignSystem.Colors.background)
+                    .iPadOptimized()
                     // Profile Header
                     VStack(spacing: DesignSystem.Spacing.md) {
                         Image(systemName: "person.circle.fill")
@@ -187,22 +202,7 @@ struct ProfileView: View {
                     Spacer()
                 }
             }
-            .navigationTitle("Profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 8) {
-                        Image("AppLogo")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(height: 24)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                        Text("Profile")
-                            .font(DesignSystem.Typography.titleMedium)
-                            .fontWeight(.bold)
-                    }
-                }
-            }
+            .navigationBarHidden(true)
             .sheet(isPresented: $showingEditBio) {
                 EditBioView()
                     .environmentObject(sessionStore)

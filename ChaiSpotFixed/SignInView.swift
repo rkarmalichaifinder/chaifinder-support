@@ -17,11 +17,20 @@ struct SignInView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: DesignSystem.Spacing.xl) {
-                Spacer()
+                // Header
+                VStack(spacing: DesignSystem.Spacing.md) {
+                    Text("Welcome")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text("Chai Finder")
-                    .font(DesignSystem.Typography.titleLarge)
-                    .bold()
+                    Text("chai finder")
+                        .font(DesignSystem.Typography.titleLarge)
+                        .fontWeight(.bold)
+                        .foregroundColor(DesignSystem.Colors.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .iPadOptimized()
 
                 VStack(spacing: DesignSystem.Spacing.lg) {
                     TextField("Email", text: $email)
@@ -113,8 +122,7 @@ struct SignInView: View {
                 Spacer()
             }
             .padding(DesignSystem.Spacing.xl)
-            .navigationTitle("Welcome")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarHidden(true)
             .sheet(isPresented: $showingTerms) {
                 TermsOfServiceView(hasAcceptedTerms: $hasAcceptedTerms)
             }
