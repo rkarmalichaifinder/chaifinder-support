@@ -16,6 +16,11 @@ struct DesignSystem {
         static let tabSelected = Color(hex: "#FF6B35")
         static let tabUnselected = Color(hex: "#999999")
         static let ratingGreen = Color(hex: "#4CAF50")
+        
+        // New rating colors
+        static let creaminessRating = Color(hex: "#F4E4BC") // Cream color
+        static let chaiStrengthRating = Color(hex: "#8B4513") // Brown color
+        static let flavorNotesRating = Color(hex: "#9370DB") // Purple color
     }
     
     // MARK: - Typography
@@ -27,6 +32,7 @@ struct DesignSystem {
         static let bodyMedium = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 18 : 16, weight: .regular)
         static let bodySmall = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 16 : 14, weight: .regular)
         static let caption = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 14 : 12, weight: .medium)
+        static let caption2 = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 12 : 10, weight: .medium)
     }
     
     // MARK: - Spacing (iPad-optimized)

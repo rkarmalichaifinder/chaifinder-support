@@ -11,4 +11,9 @@ struct ReviewFeedItem: Identifiable {
     let comment: String?
     let timestamp: Date
     let chaiType: String?
+    
+    // New rating fields
+    let creaminessRating: Int?
+    let chaiStrengthRating: Int?
+    let flavorNotes: [String]?
 } 

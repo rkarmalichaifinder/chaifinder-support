@@ -106,16 +106,21 @@ struct SignInView: View {
                 }
                 .iPadOptimized()
 
-                // Apple Sign-In
-                SignInWithAppleButton(.signIn) { _ in
-                    // no-op: action handled in onTap
-                } onCompletion: { _ in
-                    // handled by SessionStore delegate
-                }
-                .frame(height: 44)
-                .cornerRadius(DesignSystem.CornerRadius.medium)
-                .onTapGesture {
+                // Apple Sign-In - Custom styled to match other buttons
+                Button(action: {
                     sessionStore.signInWithApple()
+                }) {
+                    HStack {
+                        Image(systemName: "applelogo")
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
+                        Text("Sign in with Apple")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(DesignSystem.Spacing.lg)
+                    .background(Color(.systemGray5))
+                    .cornerRadius(DesignSystem.CornerRadius.medium)
                 }
                 .iPadOptimized()
 

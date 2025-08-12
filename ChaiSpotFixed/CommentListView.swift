@@ -33,40 +33,51 @@ struct CommentListView: View {
             List(sortedComments) { comment in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("⭐️ \(comment.value)")
+                        Text("\(comment.value)★")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(DesignSystem.Colors.ratingGreen)
+                            .cornerRadius(DesignSystem.CornerRadius.small)
+                        
                         Spacer()
+                        
                         Text(comment.timestamp?.formatted(date: .abbreviated, time: .shortened) ?? "")
-                            .font(.caption)
-                            .foregroundColor(.gray)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
                     }
 
                     if let text = comment.comment {
                         Text(text)
-                            .font(.body)
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .foregroundColor(DesignSystem.Colors.textPrimary)
                     }
 
                     if let author = comment.username {
                         Text("– \(author)")
-                            .font(.caption)
-                            .foregroundColor(.gray)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
                     }
-
 
                     HStack(spacing: 16) {
                         Button {
                             updateVote(commentId: comment.id ?? "", field: "likes")
                         } label: {
                             Label("\(comment.likes ?? 0)", systemImage: "hand.thumbsup")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
                         }
 
                         Button {
                             updateVote(commentId: comment.id ?? "", field: "dislikes")
                         } label: {
                             Label("\(comment.dislikes ?? 0)", systemImage: "hand.thumbsdown")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
                         }
                     }
-                    .font(.caption)
-                    .foregroundColor(.gray)
                 }
                 .padding(.vertical, 4)
             }
@@ -99,7 +110,10 @@ struct CommentListView: View {
                         comment: data["comment"] as? String,
                         timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
                         likes: data["likes"] as? Int ?? 0,
-                        dislikes: data["dislikes"] as? Int ?? 0
+                        dislikes: data["dislikes"] as? Int ?? 0,
+                        creaminessRating: data["creaminessRating"] as? Int,
+                        chaiStrengthRating: data["chaiStrengthRating"] as? Int,
+                        flavorNotes: data["flavorNotes"] as? [String]
                     )
                 } ?? []
                 

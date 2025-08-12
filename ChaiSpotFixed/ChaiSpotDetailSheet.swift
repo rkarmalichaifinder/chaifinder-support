@@ -242,6 +242,73 @@ struct ChaiSpotDetailSheet: View {
                     .foregroundColor(DesignSystem.Colors.primary)
             }
             
+            // Display rating fields - always show with "NR" if missing
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                // Creaminess Rating
+                HStack {
+                    Image(systemName: "drop.fill")
+                        .foregroundColor(DesignSystem.Colors.creaminessRating)
+                        .font(.caption)
+                    if let creaminessRating = rating.creaminessRating {
+                        Text("Creaminess: \(creaminessRating)/5")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    } else {
+                        Text("Creaminess: NR")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .italic()
+                    }
+                }
+                
+                // Chai Strength Rating
+                HStack {
+                    Image(systemName: "leaf.fill")
+                        .foregroundColor(DesignSystem.Colors.chaiStrengthRating)
+                        .font(.caption)
+                    if let chaiStrengthRating = rating.chaiStrengthRating {
+                        Text("Strength: \(chaiStrengthRating)/5")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    } else {
+                        Text("Strength: NR")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .italic()
+                    }
+                }
+            }
+            
+            // Flavor Notes - always show with "NR" if missing
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Flavor Notes:")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                if let flavorNotes = rating.flavorNotes, !flavorNotes.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 4) {
+                        ForEach(flavorNotes, id: \.self) { note in
+                            Text(note)
+                                .font(DesignSystem.Typography.caption2)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(DesignSystem.Colors.flavorNotesRating)
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                        }
+                    }
+                } else {
+                    Text("NR")
+                        .font(DesignSystem.Typography.caption2)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .italic()
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(DesignSystem.Colors.border.opacity(0.3))
+                        .cornerRadius(DesignSystem.CornerRadius.small)
+                }
+            }
+            
             if let comment = rating.comment, !comment.isEmpty {
                 Text(comment)
                     .font(DesignSystem.Typography.bodySmall)
@@ -432,6 +499,9 @@ struct ChaiSpotDetailSheet: View {
                         let timestamp = data["timestamp"] as? Timestamp
                         let likes = data["likes"] as? Int
                         let dislikes = data["dislikes"] as? Int
+                        let creaminessRating = data["creaminessRating"] as? Int
+                        let chaiStrengthRating = data["chaiStrengthRating"] as? Int
+                        let flavorNotes = data["flavorNotes"] as? [String]
                         
                         return Rating(
                             spotId: spotId,
@@ -441,7 +511,10 @@ struct ChaiSpotDetailSheet: View {
                             comment: comment,
                             timestamp: timestamp?.dateValue(),
                             likes: likes,
-                            dislikes: dislikes
+                            dislikes: dislikes,
+                            creaminessRating: creaminessRating,
+                            chaiStrengthRating: chaiStrengthRating,
+                            flavorNotes: flavorNotes
                         )
                     }
                 }

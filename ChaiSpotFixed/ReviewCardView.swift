@@ -2,6 +2,38 @@ import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
 
+// MARK: - Rating Bar View
+struct RatingBarView: View {
+    let rating: Int
+    let maxRating: Int
+    let iconName: String
+    let activeColor: Color
+    let inactiveColor: Color
+    let label: String
+    
+    var body: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            Text(label)
+                .font(DesignSystem.Typography.bodySmall)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .frame(width: 60, alignment: .leading)
+            
+            HStack(spacing: 2) {
+                ForEach(1...maxRating, id: \.self) { i in
+                    Image(systemName: i <= rating ? "\(iconName).fill" : iconName)
+                        .foregroundColor(i <= rating ? activeColor : inactiveColor)
+                        .font(.system(size: 12))
+                }
+            }
+            
+            Text("\(rating)/\(maxRating)")
+                .font(DesignSystem.Typography.bodySmall)
+                .foregroundColor(activeColor)
+                .fontWeight(.medium)
+        }
+    }
+}
+
 struct ReviewCardView: View {
     let review: ReviewFeedItem
     @State private var spotName: String
@@ -115,6 +147,115 @@ struct ReviewCardView: View {
                         .cornerRadius(DesignSystem.CornerRadius.small)
                 }
             }
+            
+            // New Rating Information - Always show all fields with "NR" if missing
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text("Rating Details")
+                    .font(DesignSystem.Typography.bodySmall)
+                    .fontWeight(.semibold)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                VStack(spacing: DesignSystem.Spacing.xs) {
+                    // Creaminess Rating
+                    if let creaminessRating = review.creaminessRating {
+                        RatingBarView(
+                            rating: creaminessRating,
+                            maxRating: 5,
+                            iconName: "drop",
+                            activeColor: DesignSystem.Colors.creaminessRating,
+                            inactiveColor: DesignSystem.Colors.border,
+                            label: "Creaminess"
+                        )
+                    } else {
+                        // Show "NR" for missing creaminess rating
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            Text("Creaminess")
+                                .font(DesignSystem.Typography.bodySmall)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .frame(width: 60, alignment: .leading)
+                            
+                            HStack(spacing: 2) {
+                                ForEach(1...5, id: \.self) { i in
+                                    Image(systemName: "drop")
+                                        .foregroundColor(DesignSystem.Colors.border)
+                                        .font(.system(size: 12))
+                                }
+                            }
+                            
+                            Text("NR")
+                                .font(DesignSystem.Typography.bodySmall)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .fontWeight(.medium)
+                        }
+                    }
+                    
+                    // Chai Strength Rating
+                    if let chaiStrengthRating = review.chaiStrengthRating {
+                        RatingBarView(
+                            rating: chaiStrengthRating,
+                            maxRating: 5,
+                            iconName: "leaf",
+                            activeColor: DesignSystem.Colors.chaiStrengthRating,
+                            inactiveColor: DesignSystem.Colors.border,
+                            label: "Strength"
+                        )
+                    } else {
+                        // Show "NR" for missing strength rating
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            Text("Strength")
+                                .font(DesignSystem.Typography.bodySmall)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .frame(width: 60, alignment: .leading)
+                            
+                            HStack(spacing: 2) {
+                                ForEach(1...5, id: \.self) { i in
+                                    Image(systemName: "leaf")
+                                        .foregroundColor(DesignSystem.Colors.border)
+                                        .font(.system(size: 12))
+                                }
+                            }
+                            
+                            Text("NR")
+                                .font(DesignSystem.Typography.bodySmall)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .fontWeight(.medium)
+                        }
+                    }
+                }
+            }
+            .padding(.top, DesignSystem.Spacing.xs)
+            
+            // Flavor Notes - Always show with "NR" if missing
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Flavor Notes:")
+                    .font(DesignSystem.Typography.bodySmall)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                if let flavorNotes = review.flavorNotes, !flavorNotes.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: DesignSystem.Spacing.xs) {
+                        ForEach(flavorNotes, id: \.self) { note in
+                            Text(note)
+                                .font(DesignSystem.Typography.bodySmall)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, DesignSystem.Spacing.xs)
+                                .padding(.vertical, 2)
+                                .background(DesignSystem.Colors.flavorNotesRating)
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                        }
+                    }
+                } else {
+                    // Show "NR" for missing flavor notes
+                    Text("NR")
+                        .font(DesignSystem.Typography.bodySmall)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .italic()
+                        .padding(.horizontal, DesignSystem.Spacing.xs)
+                        .padding(.vertical, 2)
+                        .background(DesignSystem.Colors.border.opacity(0.3))
+                        .cornerRadius(DesignSystem.CornerRadius.small)
+                }
+            }
+            .padding(.top, DesignSystem.Spacing.xs)
             
             // Review Comment
             if let comment = review.comment, !comment.isEmpty {

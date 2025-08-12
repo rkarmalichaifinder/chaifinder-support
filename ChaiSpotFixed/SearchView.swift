@@ -23,121 +23,25 @@ struct SearchView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Header
-                VStack(spacing: DesignSystem.Spacing.md) {
-                    // Breadcrumb / subtitle
-                    Text("Search")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    // Brand title
-                    Text("chai finder")
-                        .font(DesignSystem.Typography.titleLarge)
-                        .fontWeight(.bold)
-                        .foregroundColor(DesignSystem.Colors.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    // View Toggle
-                    HStack(spacing: 0) {
-                        Button(action: { isMapView = true }) {
-                            Text("Map View")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .fontWeight(.medium)
-                                .foregroundColor(isMapView ? .white : DesignSystem.Colors.textSecondary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, DesignSystem.Spacing.md)
-                                .background(isMapView ? DesignSystem.Colors.primary : DesignSystem.Colors.secondary)
-                        }
-                        
-                        Button(action: { isMapView = false }) {
-                            Text("List View")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .fontWeight(.medium)
-                                .foregroundColor(!isMapView ? .white : DesignSystem.Colors.textSecondary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, DesignSystem.Spacing.md)
-                                .background(!isMapView ? DesignSystem.Colors.primary : DesignSystem.Colors.secondary)
-                        }
-                    }
-                    .cornerRadius(DesignSystem.CornerRadius.medium)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                            .stroke(DesignSystem.Colors.border, lineWidth: 1)
-                    )
-                    
-                    // Search Bar
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
-                        
-                        TextField("Search for a chai spot, type, etc.", text: $searchText)
-                            .font(DesignSystem.Typography.bodyMedium)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
-                            .onChange(of: searchText) { newValue in
-                                // Use a more appropriate approach to avoid state modification during view updates
-                                if !newValue.isEmpty {
-                                    searchChaiSpots()
-                                } else {
-                                    loadAllChaiSpots()
-                                }
-                            }
-                        
-                        if !searchText.isEmpty {
-                            Button(action: { 
-                                DispatchQueue.main.async {
-                                    searchText = ""
-                                    loadAllChaiSpots()
-                                }
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                                    .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
-                            }
-                        }
-                    }
-                    .padding(DesignSystem.Spacing.md)
-                    .background(DesignSystem.Colors.searchBackground)
-                    .cornerRadius(DesignSystem.CornerRadius.large)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.large)
-                            .stroke(DesignSystem.Colors.border, lineWidth: 1)
-                    )
-                }
-                .padding(DesignSystem.Spacing.lg)
-                .background(DesignSystem.Colors.background)
-                .iPadOptimized()
-                
-                // Content
-                VStack(spacing: 0) {
-                    if isMapView {
-                        MapSearchView(searchText: $searchText, chaiSpots: $chaiSpots, searchLocation: $searchLocation, locationManager: locationManager, onAddChaiSpot: {
-                            showingAddChaiSpot = true
-                        })
-                    } else {
-                        ListSearchView(searchText: $searchText, chaiSpots: $chaiSpots, locationManager: locationManager, onAddChaiSpot: {
-                            showingAddChaiSpot = true
-                        })
-                    }
-                    Spacer(minLength: 0)
-                }
+                headerSection
+                contentSection
             }
             .background(DesignSystem.Colors.background)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped() // Ensure content doesn't overflow
+            .clipped()
             .navigationBarHidden(true)
             .sheet(isPresented: $showingAddChaiSpot) {
                 AddChaiFinderForm(
                     coordinate: locationManager.location?.coordinate,
-                    onSubmit: { name, address, rating, comments, chaiTypes, coordinate in
-                        handleAddChaiSpot(name: name, address: address, rating: rating, comments: comments, chaiTypes: chaiTypes, coordinate: coordinate)
+                    onSubmit: { name, address, rating, comments, chaiTypes, coordinate, creaminessRating, chaiStrengthRating, flavorNotes in
+                        // Convert flavorNotes array to a comma-separated string
+                        let flavorNotesString = flavorNotes.joined(separator: ", ")
+                        handleAddChaiSpot(name: name, address: address, rating: rating, comments: comments, chaiTypes: chaiTypes, coordinate: coordinate, creaminessRating: creaminessRating, chaiStrengthRating: chaiStrengthRating, flavorNotes: flavorNotesString)
                     }
                 )
             }
             .onChange(of: showingAddChaiSpot) { newValue in
                 if !newValue {
-                    // Reset any loading states when the sheet is dismissed
                     isAddingSpot = false
                 }
             }
@@ -158,6 +62,128 @@ struct SearchView: View {
         }
     }
     
+    // MARK: - View Components
+    
+    private var headerSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            breadcrumbTitle
+            brandTitle
+            viewToggle
+            searchBar
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.background)
+        .iPadOptimized()
+    }
+    
+    private var breadcrumbTitle: some View {
+        Text("Search")
+            .font(DesignSystem.Typography.caption)
+            .foregroundColor(DesignSystem.Colors.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    
+    private var brandTitle: some View {
+        Text("chai finder")
+            .font(DesignSystem.Typography.titleLarge)
+            .fontWeight(.bold)
+            .foregroundColor(DesignSystem.Colors.primary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    
+    private var viewToggle: some View {
+        HStack(spacing: 0) {
+            Button(action: { isMapView = true }) {
+                let mapViewTextColor = isMapView ? .white : DesignSystem.Colors.textSecondary
+                let mapViewBackground = isMapView ? DesignSystem.Colors.primary : DesignSystem.Colors.secondary
+                
+                Text("Map View")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.medium)
+                    .foregroundColor(mapViewTextColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, DesignSystem.Spacing.md)
+                    .background(mapViewBackground)
+            }
+            
+            Button(action: { isMapView = false }) {
+                let listViewTextColor = !isMapView ? .white : DesignSystem.Colors.textSecondary
+                let listViewBackground = !isMapView ? DesignSystem.Colors.primary : DesignSystem.Colors.secondary
+                
+                Text("List View")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.medium)
+                    .foregroundColor(listViewTextColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, DesignSystem.Spacing.md)
+                    .background(listViewBackground)
+            }
+        }
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+    
+    private var searchBar: some View {
+        HStack {
+            let searchIconSize = UIDevice.current.userInterfaceIdiom == .pad ? CGFloat(20) : CGFloat(16)
+            
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .font(.system(size: searchIconSize))
+            
+            TextField("Search for a chai spot, type, etc.", text: $searchText)
+                .font(DesignSystem.Typography.bodyMedium)
+                .foregroundColor(DesignSystem.Colors.textPrimary)
+                .onChange(of: searchText) { newValue in
+                    if !newValue.isEmpty {
+                        searchChaiSpots()
+                    } else {
+                        loadAllChaiSpots()
+                    }
+                }
+            
+            if !searchText.isEmpty {
+                Button(action: { 
+                    DispatchQueue.main.async {
+                        searchText = ""
+                        loadAllChaiSpots()
+                    }
+                }) {
+                    let clearIconSize = UIDevice.current.userInterfaceIdiom == .pad ? CGFloat(20) : CGFloat(16)
+                    
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .font(.system(size: clearIconSize))
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.searchBackground)
+        .cornerRadius(DesignSystem.CornerRadius.large)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.large)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+    
+    private var contentSection: some View {
+        VStack(spacing: 0) {
+            if isMapView {
+                MapSearchView(searchText: $searchText, chaiSpots: $chaiSpots, searchLocation: $searchLocation, locationManager: locationManager, onAddChaiSpot: {
+                    showingAddChaiSpot = true
+                })
+            } else {
+                ListSearchView(searchText: $searchText, chaiSpots: $chaiSpots, locationManager: locationManager, onAddChaiSpot: {
+                    showingAddChaiSpot = true
+                })
+            }
+            Spacer(minLength: 0)
+        }
+    }
+    
     private func searchChaiSpots() {
         guard !searchText.isEmpty else {
             loadAllChaiSpots()
@@ -167,17 +193,19 @@ struct SearchView: View {
         print("🔍 Searching for: '\(searchText)'")
         
         // Check if it's a location-based search (zip code, city, or address)
-        let isLocationSearch = (searchText.count == 5 && Int(searchText) != nil) || 
-                              searchText.range(of: "^[A-Za-z\\s]+$", options: .regularExpression) != nil ||
-                              searchText.lowercased().contains("street") ||
-                              searchText.lowercased().contains("avenue") ||
-                              searchText.lowercased().contains("road") ||
-                              searchText.lowercased().contains("drive") ||
-                              searchText.lowercased().contains("lane") ||
-                              searchText.lowercased().contains("blvd") ||
-                              searchText.lowercased().contains("st") ||
-                              searchText.lowercased().contains("ave") ||
-                              searchText.lowercased().contains("rd")
+        let isZipCode = searchText.count == 5 && Int(searchText) != nil
+        let isCityName = searchText.range(of: "^[A-Za-z\\s]+$", options: .regularExpression) != nil
+        let containsStreetTerms = searchText.lowercased().contains("street") ||
+                                 searchText.lowercased().contains("avenue") ||
+                                 searchText.lowercased().contains("road") ||
+                                 searchText.lowercased().contains("drive") ||
+                                 searchText.lowercased().contains("lane") ||
+                                 searchText.lowercased().contains("blvd") ||
+                                 searchText.lowercased().contains("st") ||
+                                 searchText.lowercased().contains("ave") ||
+                                 searchText.lowercased().contains("rd")
+        
+        let isLocationSearch = isZipCode || isCityName || containsStreetTerms
         
         if isLocationSearch {
             print("📍 Detected location search, geocoding and centering map...")
@@ -470,7 +498,10 @@ struct SearchView: View {
         print("🗺️ Geocoding search location: '\(searchText)'")
         
         // Check if it looks like a zip code (5 digits)
-        if searchText.count == 5, let _ = Int(searchText) {
+        let isZipCode = searchText.count == 5
+        let canConvertToInt = Int(searchText) != nil
+        
+        if isZipCode && canConvertToInt {
             geocodeZipCode(searchText)
             return
         }
@@ -549,7 +580,7 @@ struct SearchView: View {
     }
     
     // MARK: - Add Chai Spot Handler
-    private func handleAddChaiSpot(name: String, address: String, rating: Int, comments: String, chaiTypes: [String], coordinate: CLLocationCoordinate2D) {
+    private func handleAddChaiSpot(name: String, address: String, rating: Int, comments: String, chaiTypes: [String], coordinate: CLLocationCoordinate2D, creaminessRating: Int, chaiStrengthRating: Int, flavorNotes: String) {
         let db = Firestore.firestore()
         
         // Check if Firebase is initialized before accessing Auth
@@ -597,12 +628,12 @@ struct SearchView: View {
                     }
                     
                     // No duplicates found, proceed with adding the spot
-                    self.addSpotToDatabase(name: name, address: address, rating: rating, comments: comments, chaiTypes: chaiTypes, coordinate: coordinate)
+                    self.addSpotToDatabase(name: name, address: address, rating: rating, comments: comments, chaiTypes: chaiTypes, coordinate: coordinate, creaminessRating: creaminessRating, chaiStrengthRating: chaiStrengthRating, flavorNotes: flavorNotes)
                 }
             }
     }
     
-    private func addSpotToDatabase(name: String, address: String, rating: Int, comments: String, chaiTypes: [String], coordinate: CLLocationCoordinate2D) {
+    private func addSpotToDatabase(name: String, address: String, rating: Int, comments: String, chaiTypes: [String], coordinate: CLLocationCoordinate2D, creaminessRating: Int, chaiStrengthRating: Int, flavorNotes: String) {
         let db = Firestore.firestore()
         
         let newSpotData: [String: Any] = [
@@ -677,7 +708,10 @@ struct SearchView: View {
                                 "username": username,
                                 "value": rating,
                                 "comment": comments,
-                                "timestamp": FieldValue.serverTimestamp()
+                                "timestamp": FieldValue.serverTimestamp(),
+                                "creaminessRating": creaminessRating,
+                                "chaiStrengthRating": chaiStrengthRating,
+                                "flavorNotes": flavorNotes
                             ]
                             if let firstType = chaiTypes.first { ratingDict["chaiType"] = firstType }
                             db.collection("ratings").addDocument(data: ratingDict)
@@ -685,9 +719,9 @@ struct SearchView: View {
                     }
 
                     // Reload all spots after a short delay to ensure consistency
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: DispatchWorkItem {
                         self.loadAllChaiSpots()
-                    }
+                    })
                 }
             }
         }
@@ -975,9 +1009,9 @@ struct ListSearchView: View {
         }
         .onChange(of: chaiSpots) { _ in
             // Debounce the filtering to avoid state modification during view updates
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: DispatchWorkItem {
                 filterSpotsByLocation()
-            }
+            })
         }
         .onAppear {
             filterSpotsByLocation()
@@ -1145,6 +1179,102 @@ struct ChaiSpotCard: View {
                     Text("Chai Types: \(spot.chaiTypes.joined(separator: ", "))")
                         .font(DesignSystem.Typography.bodyMedium)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+                
+                // Rating Details - Show from most recent rating if available
+                if let mostRecentRating = ratings.first {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        Text("Recent Rating Details")
+                            .font(DesignSystem.Typography.bodySmall)
+                            .fontWeight(.semibold)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        
+                        HStack(spacing: DesignSystem.Spacing.md) {
+                            // Creaminess Rating
+                            if let creaminessRating = mostRecentRating.creaminessRating {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "drop.fill")
+                                        .foregroundColor(DesignSystem.Colors.creaminessRating)
+                                        .font(.caption)
+                                    Text("\(creaminessRating)/5")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                }
+                            } else {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "drop")
+                                        .foregroundColor(DesignSystem.Colors.border)
+                                        .font(.caption)
+                                    Text("NR")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                        .italic()
+                                }
+                            }
+                            
+                            // Chai Strength Rating
+                            if let chaiStrengthRating = mostRecentRating.chaiStrengthRating {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "leaf.fill")
+                                        .foregroundColor(DesignSystem.Colors.chaiStrengthRating)
+                                        .font(.caption)
+                                    Text("\(chaiStrengthRating)/5")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                }
+                            } else {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "leaf")
+                                        .foregroundColor(DesignSystem.Colors.border)
+                                        .font(.caption)
+                                    Text("NR")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                        .italic()
+                                }
+                            }
+                        }
+                        
+                        // Flavor Notes
+                        if let flavorNotes = mostRecentRating.flavorNotes, !flavorNotes.isEmpty {
+                            HStack(spacing: DesignSystem.Spacing.xs) {
+                                Text("Flavors:")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                                
+                                LazyHGrid(rows: Array(repeating: GridItem(.flexible()), count: 1), spacing: DesignSystem.Spacing.xs) {
+                                    ForEach(flavorNotes, id: \.self) { note in
+                                        Text(note)
+                                            .font(DesignSystem.Typography.caption)
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 2)
+                                            .background(DesignSystem.Colors.flavorNotesRating)
+                                            .cornerRadius(DesignSystem.CornerRadius.small)
+                                    }
+                                }
+                            }
+                        } else {
+                            HStack(spacing: DesignSystem.Spacing.xs) {
+                                Text("Flavors:")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                                
+                                Text("NR")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                                    .italic()
+                            }
+                        }
+                    }
+                    .padding(.top, DesignSystem.Spacing.xs)
+                } else {
+                    // No ratings available
+                    Text("No ratings available")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .italic()
+                        .padding(.top, DesignSystem.Spacing.xs)
                 }
                 
                 // Details
@@ -1356,6 +1486,12 @@ struct ChaiSpotCard: View {
                         let likes = data["likes"] as? Int
                         let dislikes = data["dislikes"] as? Int
                         
+                        // Debug logging for rating fields
+                        print("🔍 Loading rating for spot \(spotId):")
+                        print("   - creaminessRating: \(String(describing: data["creaminessRating"]))")
+                        print("   - chaiStrengthRating: \(String(describing: data["chaiStrengthRating"]))")
+                        print("   - flavorNotes: \(String(describing: data["flavorNotes"]))")
+                        
                         return Rating(
                             spotId: spotId,
                             userId: userId,
@@ -1364,8 +1500,18 @@ struct ChaiSpotCard: View {
                             comment: comment,
                             timestamp: timestamp?.dateValue(),
                             likes: likes,
-                            dislikes: dislikes
+                            dislikes: dislikes,
+                            creaminessRating: data["creaminessRating"] as? Int,
+                            chaiStrengthRating: data["chaiStrengthRating"] as? Int,
+                            flavorNotes: data["flavorNotes"] as? [String]
                         )
+                    }
+                    
+                    print("✅ Loaded \(self.ratings.count) ratings for spot \(self.spot.name)")
+                    if let firstRating = self.ratings.first {
+                        print("   - First rating has creaminess: \(String(describing: firstRating.creaminessRating))")
+                        print("   - First rating has strength: \(String(describing: firstRating.chaiStrengthRating))")
+                        print("   - First rating has flavors: \(String(describing: firstRating.flavorNotes))")
                     }
                 }
             }
@@ -1440,7 +1586,10 @@ struct ChaiSpotCard: View {
                                 comment: comment,
                                 timestamp: timestamp?.dateValue(),
                                 likes: likes,
-                                dislikes: dislikes
+                                dislikes: dislikes,
+                                creaminessRating: data["creaminessRating"] as? Int,
+                                chaiStrengthRating: data["chaiStrengthRating"] as? Int,
+                                flavorNotes: data["flavorNotes"] as? [String]
                             )
                         }
                         

@@ -32,8 +32,7 @@ struct FriendsView: View {
     @State private var showingIncomingRequestAlert = false
     @State private var newIncomingRequest: UserProfile?
     
-    // Add state to track if data has been loaded
-    @State private var hasLoadedData = false
+
 
     private lazy var db: Firestore = {
         // Only create Firestore instance when actually needed
@@ -161,9 +160,22 @@ struct FriendsView: View {
                 }
             }
             .onAppear {
-                if !hasLoadedData {
-                    reloadData()
+                print("🔄 FriendsView onAppear - users.count: \(users.count), currentUser: \(currentUser?.displayName ?? "nil")")
+                
+                // Check if user is authenticated before trying to load data
+                guard Auth.auth().currentUser != nil else {
+                    print("⚠️ User not authenticated, skipping data load")
+                    return
                 }
+                
+                // Always ensure we have data when the view appears
+                if users.isEmpty || currentUser == nil {
+                    print("🔄 Data is empty or missing, reloading")
+                    reloadData()
+                } else {
+                    print("🔄 Data appears to be valid, no reload needed")
+                }
+                
                 setupIncomingRequestsListener()
             }
             .sheet(isPresented: $showingFriendDetails) {
@@ -716,7 +728,9 @@ struct FriendsView: View {
             return
         }
         
+        // Check if user is authenticated
         guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("⚠️ User not authenticated in reloadData")
             notLoggedIn = true
             loading = false
             return
@@ -759,17 +773,25 @@ struct FriendsView: View {
                 }
                 
                 self.users = allUsers
+                print("🔄 Loaded \(allUsers.count) total users")
                 
                 // Find current user
                 if let currentUser = allUsers.first(where: { $0.uid == currentUserId }) {
                     self.currentUser = currentUser
+                    print("🔄 Found current user: \(currentUser.displayName)")
+                    print("🔄 Current user has \(currentUser.friends?.count ?? 0) friends")
+                    
                     self.friends = currentUser.friends?.compactMap { friendId in
                         allUsers.first { $0.uid == friendId }
                     } ?? []
+                    
+                    print("🔄 Resolved \(self.friends.count) friend profiles")
+                } else {
+                    print("❌ Could not find current user in loaded users")
                 }
                 
                 self.loading = false
-                print("✅ Reloaded friends data: \(self.friends.count) friends")
+                print("✅ Reloaded friends data: \(self.friends.count) friends, \(self.users.count) total users")
             }
         }
     }
@@ -803,6 +825,8 @@ struct FriendsView: View {
                             bio: data["bio"] as? String
                         )
                     }
+                    
+
                 }
             }
         
@@ -832,6 +856,8 @@ struct FriendsView: View {
                             bio: data["bio"] as? String
                         )
                     }
+                    
+
                 }
             }
     }

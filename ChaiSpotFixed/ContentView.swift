@@ -30,12 +30,12 @@ struct ContentView: View {
                 SplashScreenView()
                     .onAppear {
                         print("🟣 Splash appeared")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: DispatchWorkItem {
                             withAnimation(.easeInOut(duration: 0.4)) {
                                 showingSplash = false
                             }
                             print("🟣 Splash dismissed")
-                        }
+                        })
                     }
                     .transition(.opacity)
             }

@@ -253,10 +253,10 @@ struct ReportDetailView: View {
         )
         
         // Simulate network delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: DispatchWorkItem {
             isUpdating = false
             onUpdate()
             dismiss()
-        }
+        })
     }
 } 

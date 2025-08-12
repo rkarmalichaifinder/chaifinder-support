@@ -12,4 +12,10 @@ struct Rating: Identifiable, Codable {
     var timestamp: Date?
     var likes: Int?
     var dislikes: Int?
+    
+    // New rating fields
+    var creaminessRating: Int?
+    var chaiStrengthRating: Int?
+    var flavorNotes: [String]?
+    var chaiType: String?
 }

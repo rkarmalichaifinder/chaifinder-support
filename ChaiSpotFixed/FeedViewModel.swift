@@ -25,12 +25,89 @@ class FeedViewModel: ObservableObject {
     private var loadingSpots: Set<String> = []
     private var hasLoadedData = false
     
+    // Add a method to refresh the feed
+    func refreshFeed() {
+        print("🔄 refreshFeed() called - clearing cache and reloading...")
+        hasLoadedData = false
+        clearCache() // Clear spot details cache
+        loadFeed()
+    }
+    
+    // Add a method to manually refresh after rating submission
+    func refreshAfterRatingSubmission() {
+        print("🔄 Manually refreshing feed after rating submission...")
+        refreshFeed()
+    }
+    
+    // Add a method to listen for rating updates
+    func startListeningForRatingUpdates() {
+        print("🔥 Setting up Firestore listener for rating updates...")
+        // Listen for changes in the ratings collection
+        db.collection("ratings")
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("❌ Error listening for rating updates: \(error.localizedDescription)")
+                    return
+                }
+                
+                // If there are changes, refresh the feed
+                if let snapshot = snapshot, !snapshot.documentChanges.isEmpty {
+                    print("🔄 Rating changes detected, refreshing feed...")
+                    print("🔄 Document changes: \(snapshot.documentChanges.count)")
+                    for change in snapshot.documentChanges {
+                        print("🔄 Change type: \(change.type.rawValue), document ID: \(change.document.documentID)")
+                    }
+                    DispatchQueue.main.async(execute: DispatchWorkItem {
+                        self.refreshFeed()
+                    })
+                }
+            }
+    }
+    
+    // Add a method to stop listening for rating updates
+    func stopListeningForRatingUpdates() {
+        // The snapshot listener will be automatically removed when the view disappears
+        // This method is here for future use if we need to manually control the listener
+    }
+    
+    // Add a method to listen for rating update notifications
+    func startListeningForNotifications() {
+        print("🔔 Setting up notification listener for rating updates...")
+        NotificationCenter.default.addObserver(
+            forName: .ratingUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("🔄 Rating update notification received, refreshing feed...")
+            self?.refreshFeed()
+        }
+    }
+    
+    // Add a method to stop listening for notifications
+    func stopListeningForNotifications() {
+        NotificationCenter.default.removeObserver(self, name: .ratingUpdated, object: nil)
+    }
+    
+    // Add a method to validate rating data
+    private func validateRatingData(_ feedItem: ReviewFeedItem) {
+        // Data validation is now handled by the UI showing "NR" for missing fields
+        // No need for console warnings
+    }
+    
+    // Clean up notification observers
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
     func loadFeed() {
         // Prevent multiple simultaneous loads
         if isLoading && hasLoadedData {
             return
         }
         
+        print("🔄 Starting to load feed...")
         isLoading = true
         error = nil
         
@@ -96,9 +173,9 @@ class FeedViewModel: ObservableObject {
     
     func handleFirebasePermissionError() {
         // Set a flag to show user-friendly error message
-        DispatchQueue.main.async {
+        DispatchQueue.main.async(execute: DispatchWorkItem {
             self.error = "Some data may not be available due to permission settings. The app will continue to work with available information."
-        }
+        })
     }
     
     private func checkUserFriends(currentUserId: String, completion: @escaping (Bool) -> Void) {
@@ -121,7 +198,7 @@ class FeedViewModel: ObservableObject {
     private func loadFriendRatings(currentUserId: String) {
         // Get user's friends list
         db.collection("users").document(currentUserId).getDocument { snapshot, error in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async(execute: DispatchWorkItem {
                 if let error = error {
                     self.isLoading = false
                     self.reviews = []
@@ -146,7 +223,7 @@ class FeedViewModel: ObservableObject {
                     .order(by: "timestamp", descending: true)
                     .limit(to: 20)
                     .getDocuments { snapshot, error in
-                        DispatchQueue.main.async {
+                        DispatchQueue.main.async(execute: DispatchWorkItem {
                             self.isLoading = false
                             
                             if let error = error {
@@ -172,16 +249,17 @@ class FeedViewModel: ObservableObject {
                             
                             self.processFriendRatingDocuments(documents)
                             self.hasLoadedData = true
-                        }
+                            print("✅ Friend feed loaded successfully with \(documents.count) ratings")
+                        })
                     }
-            }
+            })
         }
     }
     
     private func loadFriendRatingsDirectly(currentUserId: String) {
         // Get user's friends list
         db.collection("users").document(currentUserId).getDocument { snapshot, error in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async(execute: DispatchWorkItem {
                 if let error = error {
                     self.isLoading = false
                     self.reviews = []
@@ -213,7 +291,7 @@ class FeedViewModel: ObservableObject {
                     .order(by: "timestamp", descending: true)
                     .limit(to: 20)
                     .getDocuments { snapshot, error in
-                        DispatchQueue.main.async {
+                        DispatchQueue.main.async(execute: DispatchWorkItem {
                             self.isLoading = false
                             
                             if let error = error {
@@ -232,23 +310,23 @@ class FeedViewModel: ObservableObject {
                             
                             self.processFriendRatingDocuments(documents)
                             self.hasLoadedData = true
-                        }
+                        })
                     }
-            }
+            })
         }
     }
     
     private func loadCommunityRatings() {
         // Add a timeout to prevent hanging
         let timeoutTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
-            DispatchQueue.main.async {
+            DispatchQueue.main.async(execute: DispatchWorkItem {
                 if self.isLoading {
                     self.isLoading = false
                     self.reviews = []
                     self.filteredReviews = []
                     self.error = "Loading timeout - please try again"
                 }
-            }
+            })
         }
         
         db.collection("ratings")
@@ -257,7 +335,7 @@ class FeedViewModel: ObservableObject {
             .getDocuments { snapshot, error in
                 timeoutTimer.invalidate() // Cancel timeout if we get a response
                 
-                DispatchQueue.main.async {
+                DispatchQueue.main.async(execute: DispatchWorkItem {
                     self.isLoading = false
                     
                     if let error = error {
@@ -273,13 +351,14 @@ class FeedViewModel: ObservableObject {
                     
                     self.processRatingDocuments(documents)
                     self.hasLoadedData = true
-                }
+                    print("✅ Community feed loaded successfully with \(documents.count) ratings")
+                })
             }
     }
     
     private func processRatingDocuments(_ documents: [QueryDocumentSnapshot]) {
         // Process documents on background queue to avoid blocking main thread
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async(execute: DispatchWorkItem {
             let feedItems = documents.compactMap { document -> ReviewFeedItem? in
                 guard let data = document.data() as? [String: Any],
                       let spotId = data["spotId"] as? String,
@@ -293,7 +372,12 @@ class FeedViewModel: ObservableObject {
                 let timestamp = data["timestamp"] as? Timestamp
                 let chaiType = data["chaiType"] as? String
                 
-                // Create initial feed item with placeholder spot info
+                // Extract rating details with robust type handling
+                let creaminessRating = self.extractCreaminessRating(from: data["creaminessRating"])
+                let chaiStrengthRating = self.extractChaiStrengthRating(from: data["chaiStrengthRating"])
+                let flavorNotes = self.extractFlavorNotes(from: data["flavorNotes"])
+                
+                // Create ReviewFeedItem
                 let feedItem = ReviewFeedItem(
                     id: document.documentID,
                     spotId: spotId,
@@ -304,21 +388,33 @@ class FeedViewModel: ObservableObject {
                     rating: value,
                     comment: comment,
                     timestamp: timestamp?.dateValue() ?? Date(),
-                    chaiType: chaiType
+                    chaiType: chaiType,
+                    creaminessRating: creaminessRating,
+                    chaiStrengthRating: chaiStrengthRating,
+                    flavorNotes: flavorNotes
                 )
                 
                 return feedItem
             }
             
+            print("📊 Total feed items created: \(feedItems.count)")
+            
             // Update UI on main thread
-            DispatchQueue.main.async {
+            DispatchQueue.main.async(execute: DispatchWorkItem {
                 self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
                 self.filteredReviews = self.reviews
+                
+                print("📊 Updated reviews array with \(self.reviews.count) items")
+                
+                // Validate rating data for debugging
+                for feedItem in feedItems {
+                    self.validateRatingData(feedItem)
+                }
                 
                 // Load spot details asynchronously after initial load
                 for feedItem in feedItems {
                     self.loadSpotDetails(for: feedItem.spotId) { spotName, spotAddress in
-                        DispatchQueue.main.async {
+                        DispatchQueue.main.async(execute: DispatchWorkItem {
                             // Update both reviews and filteredReviews arrays
                             if let index = self.reviews.firstIndex(where: { $0.id == feedItem.id }) {
                                 self.reviews[index].spotName = spotName
@@ -330,16 +426,16 @@ class FeedViewModel: ObservableObject {
                                     self.filteredReviews[filteredIndex].spotAddress = spotAddress
                                 }
                             }
-                        }
+                        })
                     }
                 }
-            }
-        }
+            })
+        })
     }
     
     private func processFriendRatingDocuments(_ documents: [QueryDocumentSnapshot]) {
         // Process documents on background queue to avoid blocking main thread
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async(execute: DispatchWorkItem {
             let feedItems = documents.compactMap { document -> ReviewFeedItem? in
                 guard let data = document.data() as? [String: Any],
                       let spotId = data["spotId"] as? String,
@@ -353,7 +449,12 @@ class FeedViewModel: ObservableObject {
                 let timestamp = data["timestamp"] as? Timestamp
                 let chaiType = data["chaiType"] as? String
                 
-                // Create initial feed item with placeholder spot info
+                // Extract rating details with robust type handling
+                let creaminessRating = self.extractCreaminessRating(from: data["creaminessRating"])
+                let chaiStrengthRating = self.extractChaiStrengthRating(from: data["chaiStrengthRating"])
+                let flavorNotes = self.extractFlavorNotes(from: data["flavorNotes"])
+                
+                // Create ReviewFeedItem
                 let feedItem = ReviewFeedItem(
                     id: document.documentID,
                     spotId: spotId,
@@ -364,21 +465,33 @@ class FeedViewModel: ObservableObject {
                     rating: value,
                     comment: comment,
                     timestamp: timestamp?.dateValue() ?? Date(),
-                    chaiType: chaiType
+                    chaiType: chaiType,
+                    creaminessRating: creaminessRating,
+                    chaiStrengthRating: chaiStrengthRating,
+                    flavorNotes: flavorNotes
                 )
                 
                 return feedItem
             }
             
+            print("📊 Total friend feed items created: \(feedItems.count)")
+            
             // Update UI on main thread
-            DispatchQueue.main.async {
+            DispatchQueue.main.async(execute: DispatchWorkItem {
                 self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
                 self.filteredReviews = self.reviews
+                
+                print("📊 Updated friend reviews array with \(self.reviews.count) items")
+                
+                // Validate rating data for debugging
+                for feedItem in feedItems {
+                    self.validateRatingData(feedItem)
+                }
                 
                 // Load spot details asynchronously after initial load
                 for feedItem in feedItems {
                     self.loadSpotDetails(for: feedItem.spotId) { spotName, spotAddress in
-                        DispatchQueue.main.async {
+                        DispatchQueue.main.async(execute: DispatchWorkItem {
                             // Update both reviews and filteredReviews arrays
                             if let index = self.reviews.firstIndex(where: { $0.id == feedItem.id }) {
                                 self.reviews[index].spotName = spotName
@@ -390,11 +503,11 @@ class FeedViewModel: ObservableObject {
                                     self.filteredReviews[filteredIndex].spotAddress = spotAddress
                                 }
                             }
-                        }
+                        })
                     }
                 }
-            }
-        }
+            })
+        })
     }
     
     private func loadSpotDetails(for spotId: String, completion: @escaping (String, String) -> Void) {
@@ -414,15 +527,15 @@ class FeedViewModel: ObservableObject {
         // Add retry logic for permission issues
         func attemptLoad(retryCount: Int = 0) {
             db.collection("chaiFinder").document(spotId).getDocument { snapshot, error in
-                DispatchQueue.main.async {
+                DispatchQueue.main.async(execute: DispatchWorkItem {
                     self.loadingSpots.remove(spotId)
                     
                     if let error = error {
                         // Retry once for permission issues
                         if retryCount == 0 && error.localizedDescription.contains("permissions") {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: DispatchWorkItem {
                                 attemptLoad(retryCount: 1)
-                            }
+                            })
                             return
                         }
                         
@@ -447,7 +560,7 @@ class FeedViewModel: ObservableObject {
                     
                     self.spotDetailsCache[spotId] = (name, address)
                     completion(name, address)
-                }
+                })
             }
         }
         
@@ -472,5 +585,52 @@ class FeedViewModel: ObservableObject {
                 String(review.rating).contains(searchText)
             }
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func formatTimestamp(_ timestamp: Timestamp) -> String {
+        let date = timestamp.dateValue()
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+    
+    // Helper methods for robust rating data extraction
+    private func extractCreaminessRating(from value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return intValue
+        }
+        if let doubleValue = value as? Double {
+            return Int(doubleValue)
+        }
+        if let stringValue = value as? String {
+            return Int(stringValue)
+        }
+        return nil
+    }
+    
+    private func extractChaiStrengthRating(from value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return intValue
+        }
+        if let doubleValue = value as? Double {
+            return Int(doubleValue)
+        }
+        if let stringValue = value as? String {
+            return Int(stringValue)
+        }
+        return nil
+    }
+    
+    private func extractFlavorNotes(from value: Any?) -> [String]? {
+        if let arrayValue = value as? [String] {
+            return arrayValue
+        }
+        if let stringValue = value as? String {
+            // Handle case where flavorNotes might be saved as a single string
+            return [stringValue]
+        }
+        return nil
     }
 } 

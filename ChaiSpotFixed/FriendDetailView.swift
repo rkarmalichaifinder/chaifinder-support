@@ -303,14 +303,15 @@ struct FriendDetailView: View {
     
     private func ratingRow(_ rating: Rating) -> some View {
         HStack {
-            // Rating stars
-            HStack(spacing: 2) {
-                ForEach(1...5, id: \.self) { star in
-                    Image(systemName: star <= rating.value ? "star.fill" : "star")
-                        .font(.system(size: 12))
-                        .foregroundColor(star <= rating.value ? .yellow : .gray)
-                }
-            }
+            // Rating display
+            Text("\(rating.value)★")
+                .font(DesignSystem.Typography.bodyMedium)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(DesignSystem.Colors.ratingGreen)
+                .cornerRadius(DesignSystem.CornerRadius.small)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(rating.spotName ?? "Unknown Spot")
@@ -420,7 +421,10 @@ struct FriendDetailView: View {
                             comment: data["comment"] as? String,
                             timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
                             likes: data["likes"] as? Int ?? 0,
-                            dislikes: data["dislikes"] as? Int ?? 0
+                            dislikes: data["dislikes"] as? Int ?? 0,
+                            creaminessRating: data["creaminessRating"] as? Int,
+                            chaiStrengthRating: data["chaiStrengthRating"] as? Int,
+                            flavorNotes: data["flavorNotes"] as? [String]
                         )
                     }
                     

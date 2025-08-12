@@ -17,10 +17,24 @@ struct FeedView: View {
                     // Header
                     VStack(spacing: DesignSystem.Spacing.md) {
                         // Breadcrumb / subtitle
-                        Text("Home Page")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack {
+                            Text("Home Page")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            Spacer()
+                            
+                            // Refresh button
+                            Button(action: {
+                                viewModel.refreshFeed()
+                            }) {
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundColor(DesignSystem.Colors.primary)
+                                    .font(.system(size: 16))
+                            }
+                            .disabled(viewModel.isLoading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         // Brand title
                         Text("chai finder")
@@ -194,6 +208,10 @@ struct FeedView: View {
                             }
                             .padding(DesignSystem.Spacing.lg)
                         }
+                        .refreshable {
+                            // Pull to refresh functionality
+                            viewModel.refreshFeed()
+                        }
                     }
                 }
             }
@@ -232,5 +250,14 @@ struct FeedView: View {
             }
         }
         .navigationViewStyle(.stack)
+        .onAppear {
+            print("📱 FeedView appeared - starting listeners...")
+            viewModel.startListeningForRatingUpdates()
+            viewModel.startListeningForNotifications()
+        }
+        .onDisappear {
+            // Stop listening for notifications when view disappears
+            viewModel.stopListeningForNotifications()
+        }
     }
 } 
