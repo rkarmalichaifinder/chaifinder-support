@@ -15,6 +15,7 @@ class FeedViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var currentFeedType: FeedType = .friends
+    @Published var initialLoadComplete = false
     
     private lazy var db: Firestore = {
         // Only create Firestore instance when actually needed
@@ -285,9 +286,10 @@ class FeedViewModel: ObservableObject {
                     return
                 }
                 
-                // Load ratings from friends
+                // Load ratings from friends (respect privacy settings)
                 self.db.collection("ratings")
                     .whereField("userId", in: friends)
+                    .whereField("visibility", in: ["public", "friends"]) // Show public and friends-only reviews
                     .order(by: "timestamp", descending: true)
                     .limit(to: 20)
                     .getDocuments { snapshot, error in
@@ -317,8 +319,11 @@ class FeedViewModel: ObservableObject {
     }
     
     private func loadCommunityRatings() {
+        // Optimize initial load - start with smaller batch
+        let initialLimit = initialLoadComplete ? 20 : 10
+        
         // Add a timeout to prevent hanging
-        let timeoutTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
+        let timeoutTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { _ in
             DispatchQueue.main.async(execute: DispatchWorkItem {
                 if self.isLoading {
                     self.isLoading = false
@@ -329,9 +334,11 @@ class FeedViewModel: ObservableObject {
             })
         }
         
+        // 🔒 Filter by privacy settings - only show public ratings in community feed
         db.collection("ratings")
+            .whereField("visibility", isEqualTo: "public") // Only show public reviews
             .order(by: "timestamp", descending: true)
-            .limit(to: 20) // Reduced from 50 to 20 for faster loading
+            .limit(to: initialLimit) // Use optimized limit for initial load
             .getDocuments { snapshot, error in
                 timeoutTimer.invalidate() // Cancel timeout if we get a response
                 
@@ -351,7 +358,8 @@ class FeedViewModel: ObservableObject {
                     
                     self.processRatingDocuments(documents)
                     self.hasLoadedData = true
-                    print("✅ Community feed loaded successfully with \(documents.count) ratings")
+                    self.initialLoadComplete = true
+                    print("✅ Community feed loaded successfully with \(documents.count) public ratings")
                 })
             }
     }
@@ -391,7 +399,12 @@ class FeedViewModel: ObservableObject {
                     chaiType: chaiType,
                     creaminessRating: creaminessRating,
                     chaiStrengthRating: chaiStrengthRating,
-                    flavorNotes: flavorNotes
+                    flavorNotes: flavorNotes,
+                    photoURL: data["photoURL"] as? String,
+                    hasPhoto: data["hasPhoto"] as? Bool ?? false,
+                    gamificationScore: data["gamificationScore"] as? Int ?? 0,
+                    isFirstReview: data["isFirstReview"] as? Bool ?? false,
+                    isNewSpot: data["isNewSpot"] as? Bool ?? false
                 )
                 
                 return feedItem
@@ -468,7 +481,12 @@ class FeedViewModel: ObservableObject {
                     chaiType: chaiType,
                     creaminessRating: creaminessRating,
                     chaiStrengthRating: chaiStrengthRating,
-                    flavorNotes: flavorNotes
+                    flavorNotes: flavorNotes,
+                    photoURL: data["photoURL"] as? String,
+                    hasPhoto: data["hasPhoto"] as? Bool ?? false,
+                    gamificationScore: data["gamificationScore"] as? Int ?? 0,
+                    isFirstReview: data["isFirstReview"] as? Bool ?? false,
+                    isNewSpot: data["isNewSpot"] as? Bool ?? false
                 )
                 
                 return feedItem

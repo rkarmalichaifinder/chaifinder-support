@@ -16,4 +16,11 @@ struct ReviewFeedItem: Identifiable {
     let creaminessRating: Int?
     let chaiStrengthRating: Int?
     let flavorNotes: [String]?
+    
+    // 🎮 NEW: Photo and gamification fields
+    let photoURL: String?
+    let hasPhoto: Bool
+    let gamificationScore: Int
+    let isFirstReview: Bool
+    let isNewSpot: Bool
 } 

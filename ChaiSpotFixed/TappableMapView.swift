@@ -1,12 +1,21 @@
 import SwiftUI
 import MapKit
+import UIKit
+
+// MARK: - Color Extensions
+extension Color {
+    func toUIColor() -> UIColor {
+        return UIColor(self)
+    }
+}
 
 struct TappableMapView: UIViewRepresentable {
     @Binding var region: MKCoordinateRegion
     var chaiFinder: [ChaiFinder]
+    var personalizedSpotIds: Set<String> = []  // 🆕 Track which spots are personalized
     var onTap: (CLLocationCoordinate2D) -> Void
     var onAnnotationTap: ((String) -> Void)? = nil
-    var tempSearchCoordinate: CLLocationCoordinate2D? = nil  // 🆕
+    var tempSearchCoordinate: CLLocationCoordinate2D? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -25,6 +34,7 @@ struct TappableMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        print("🗺️ TappableMapView updating with \(chaiFinder.count) spots")
         mapView.setRegion(region, animated: true)
         mapView.removeAnnotations(mapView.annotations)
 
@@ -34,6 +44,7 @@ struct TappableMapView: UIViewRepresentable {
             annotation.title = spot.name
             mapView.addAnnotation(annotation)
         }
+        print("✅ TappableMapView updated with \(mapView.annotations.count) annotations")
 
         // 🆕 Add temp search pin if available
         if let tempCoord = tempSearchCoordinate {
@@ -91,6 +102,25 @@ struct TappableMapView: UIViewRepresentable {
                 annotationView?.canShowCallout = true
             } else {
                 annotationView?.annotation = annotation
+            }
+            
+            // 🆕 Color-code annotations based on personalization
+            if let annotationView = annotationView as? MKMarkerAnnotationView {
+                // Find the corresponding spot to check if it's personalized
+                if let spot = parent.chaiFinder.first(where: { spot in
+                    abs(spot.latitude - annotation.coordinate.latitude) < 0.0001 &&
+                    abs(spot.longitude - annotation.coordinate.longitude) < 0.0001
+                }) {
+                    if parent.personalizedSpotIds.contains(spot.id ?? "") {
+                        // Personalized spot - use primary color (orange)
+                        annotationView.markerTintColor = DesignSystem.Colors.primary.toUIColor()
+                        annotationView.glyphText = "🫖"
+                    } else {
+                        // General community spot - use secondary color (orange secondary)
+                        annotationView.markerTintColor = DesignSystem.Colors.secondary.toUIColor()
+                        annotationView.glyphText = "☕"
+                    }
+                }
             }
 
             return annotationView

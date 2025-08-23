@@ -701,6 +701,7 @@ struct FriendsView: View {
                 guard let documents = snapshot?.documents else { return }
                 
                 DispatchQueue.main.async {
+                    let previousCount = self.incomingRequests.count
                     self.incomingRequests = documents.compactMap { doc -> UserProfile? in
                         let data = doc.data()
                         return UserProfile(
@@ -714,6 +715,17 @@ struct FriendsView: View {
                             outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
                             bio: data["bio"] as? String
                         )
+                    }
+                    
+                    // Check if we have new friend requests and send notifications
+                    if self.incomingRequests.count > previousCount {
+                        let newRequests = self.incomingRequests.count - previousCount
+                        print("📱 New friend requests detected: \(newRequests)")
+                        
+                        // Send notification for the most recent request
+                        if let latestRequest = self.incomingRequests.last {
+                            NotificationService.shared.notifyFriendRequest(fromUserName: latestRequest.displayName)
+                        }
                     }
                 }
             }
@@ -943,21 +955,21 @@ struct FriendsView: View {
         let currentUserName = currentUser?.displayName ?? "Your friend"
         
         // Create a more professional invitation
-        let subject = "Find the best Desi chai near you with Chai Finder! 🫖"
+        let subject = "Join our chai-loving community with Chai Finder! 🫖"
         
         let body = """
         Hey!
         
-        I've been using **Chai Finder**, an app that helps you discover and rate the best Desi chai spots nearby — and I think you'd love it too!
+        I've been using **Chai Finder**, a social app that connects chai lovers through shared experiences and trusted recommendations — and I think you'd love it too!
         
         🫶 What makes Chai Finder special:
-        • Find authentic chai spots shared by real chai lovers
-        • See friends' reviews and top picks
+        • See where your friends actually love to get chai
+        • Get personalized recommendations based on your taste
         • Share your own chai ratings and comments
         • Save your favorite spots for next time
         • Connect over your love of good chai
         
-        📍 It's perfect for finding a new favorite cup — whether it's cutting chai, kadak chai, or anything in between.
+        📍 It's perfect for discovering authentic chai through people you trust — whether it's cutting chai, kadak chai, or anything in between.
         
         👉 Download the app:
         **iOS App Store:** https://apps.apple.com/us/app/chai-finder/id6747459183

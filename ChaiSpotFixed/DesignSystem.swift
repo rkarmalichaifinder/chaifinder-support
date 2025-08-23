@@ -5,9 +5,10 @@ struct DesignSystem {
     
     // MARK: - Colors
     struct Colors {
-        static let primary = Color(hex: "#FF6B35")
-        static let secondary = Color(hex: "#F7931E")
-        static let textPrimary = Color(hex: "#1A1A1A")
+            static let primary = Color(hex: "#FF6B35")
+    static let secondary = Color(hex: "#F7931E")
+    static let accent = Color(hex: "#4ECDC4")
+    static let textPrimary = Color(hex: "#1A1A1A")
         static let textSecondary = Color(hex: "#666666")
         static let background = Color(hex: "#F8F9FA")
         static let cardBackground = Color.white
@@ -21,18 +22,33 @@ struct DesignSystem {
         static let creaminessRating = Color(hex: "#F4E4BC") // Cream color
         static let chaiStrengthRating = Color(hex: "#8B4513") // Brown color
         static let flavorNotesRating = Color(hex: "#9370DB") // Purple color
+        
+        // Enhanced accessibility colors
+        static let success = Color(hex: "#28A745")
+        static let warning = Color(hex: "#FFC107")
+        static let error = Color(hex: "#DC3545")
+        static let info = Color(hex: "#17A2B8")
+        
+        // High contrast support
+        static let highContrastBackground = Color(hex: "#FFFFFF")
+        static let highContrastText = Color(hex: "#000000")
+        static let highContrastAccent = Color(hex: "#007AFF")
     }
     
     // MARK: - Typography
     struct Typography {
-        static let titleLarge = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 32 : 28, weight: .bold)
-        static let titleMedium = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 28 : 24, weight: .bold)
-        static let headline = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 24 : 20, weight: .semibold)
-        static let bodyLarge = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 18, weight: .regular)
-        static let bodyMedium = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 18 : 16, weight: .regular)
-        static let bodySmall = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 16 : 14, weight: .regular)
-        static let caption = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 14 : 12, weight: .medium)
-        static let caption2 = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 12 : 10, weight: .medium)
+        static let titleLarge = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 32 : 28, weight: .bold, design: .default)
+        static let titleMedium = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 28 : 24, weight: .bold, design: .default)
+        static let headline = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 24 : 20, weight: .semibold, design: .default)
+        static let bodyLarge = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 18, weight: .regular, design: .default)
+        static let bodyMedium = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 18 : 16, weight: .regular, design: .default)
+        static let bodySmall = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 16 : 14, weight: .regular, design: .default)
+        static let caption = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 14 : 12, weight: .medium, design: .default)
+        static let caption2 = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 12 : 10, weight: .medium, design: .default)
+        
+        // Accessibility-focused typography
+        static let accessibleTitle = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 34 : 30, weight: .bold, design: .default)
+        static let accessibleBody = Font.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 22 : 18, weight: .regular, design: .default)
     }
     
     // MARK: - Spacing (iPad-optimized)
@@ -43,6 +59,9 @@ struct DesignSystem {
         static let lg: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 32 : 24
         static let xl: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 48 : 32
         static let xxl: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 64 : 48
+        
+        // Accessibility spacing
+        static let accessibleTouch: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 44 : 44
     }
     
     // MARK: - Corner Radius
@@ -50,6 +69,7 @@ struct DesignSystem {
         static let small: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 12 : 8
         static let medium: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 16 : 12
         static let large: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16
+        static let extraLarge: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 24 : 20
     }
     
     // MARK: - Shadows
@@ -96,6 +116,18 @@ struct DesignSystem {
         
         // Grid columns for iPad
         static let gridColumns: Int = UIDevice.current.userInterfaceIdiom == .pad ? 2 : 1
+        
+        // Accessibility layout
+        static let minTouchTarget: CGFloat = 44
+        static let maxContentWidthAccessible: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 700 : .infinity
+    }
+    
+    // MARK: - Animation
+    struct Animation {
+        static let quick = SwiftUI.Animation.easeInOut(duration: 0.2)
+        static let standard = SwiftUI.Animation.easeInOut(duration: 0.3)
+        static let slow = SwiftUI.Animation.easeInOut(duration: 0.5)
+        static let spring = SwiftUI.Animation.spring(response: 0.5, dampingFraction: 0.8, blendDuration: 0)
     }
 }
 
@@ -159,12 +191,14 @@ struct PrimaryButtonStyle: ButtonStyle {
             .foregroundColor(.white)
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
+            .frame(minHeight: DesignSystem.Layout.minTouchTarget)
             .background(DesignSystem.Colors.primary)
             .cornerRadius(DesignSystem.CornerRadius.medium)
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+            .animation(DesignSystem.Animation.quick, value: configuration.isPressed)
             .lineLimit(2)
             .minimumScaleFactor(0.9)
+            .accessibilityLabel("Primary action button")
     }
 }
 
@@ -176,12 +210,14 @@ struct SecondaryButtonStyle: ButtonStyle {
             .foregroundColor(DesignSystem.Colors.primary)
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
+            .frame(minHeight: DesignSystem.Layout.minTouchTarget)
             .background(DesignSystem.Colors.primary.opacity(0.1))
             .cornerRadius(DesignSystem.CornerRadius.medium)
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+            .animation(DesignSystem.Animation.quick, value: configuration.isPressed)
             .lineLimit(2)
             .minimumScaleFactor(0.9)
+            .accessibilityLabel("Secondary action button")
     }
 }
 
@@ -196,7 +232,122 @@ struct SearchBarStyle: ViewModifier {
                     .stroke(DesignSystem.Colors.border, lineWidth: 1)
             )
     }
-} 
+}
+
+// MARK: - Enhanced Button Styles
+struct SuccessButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(DesignSystem.Typography.bodyMedium)
+            .fontWeight(.semibold)
+            .foregroundColor(.white)
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .frame(minHeight: DesignSystem.Layout.minTouchTarget)
+            .background(DesignSystem.Colors.success)
+            .cornerRadius(DesignSystem.CornerRadius.medium)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(DesignSystem.Animation.quick, value: configuration.isPressed)
+    }
+}
+
+struct WarningButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(DesignSystem.Typography.bodyMedium)
+            .fontWeight(.semibold)
+            .foregroundColor(.white)
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .frame(minHeight: DesignSystem.Layout.minTouchTarget)
+            .background(DesignSystem.Colors.warning)
+            .cornerRadius(DesignSystem.CornerRadius.medium)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(DesignSystem.Animation.quick, value: configuration.isPressed)
+    }
+}
+
+// MARK: - Loading States
+struct LoadingView: View {
+    let message: String
+    let showSpinner: Bool
+    
+    init(_ message: String = "Loading...", showSpinner: Bool = true) {
+        self.message = message
+        self.showSpinner = showSpinner
+    }
+    
+    var body: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            if showSpinner {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .accessibilityLabel("Loading indicator")
+            }
+            Text(message)
+                .font(DesignSystem.Typography.bodyMedium)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(.ultraThinMaterial)
+        .cornerRadius(DesignSystem.CornerRadius.large)
+    }
+}
+
+// MARK: - Empty State
+struct EmptyStateView: View {
+    let icon: String
+    let title: String
+    let message: String
+    let actionTitle: String?
+    let action: (() -> Void)?
+    
+    init(icon: String, title: String, message: String, actionTitle: String? = nil, action: (() -> Void)? = nil) {
+        self.icon = icon
+        self.title = title
+        self.message = message
+        self.actionTitle = actionTitle
+        self.action = action
+    }
+    
+    var body: some View {
+        VStack(spacing: DesignSystem.Spacing.lg) {
+            Image(systemName: icon)
+                .font(.system(size: 48))
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .accessibilityHidden(true)
+            
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                Text(title)
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                    .multilineTextAlignment(.center)
+                
+                Text(message)
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            if let actionTitle = actionTitle, let action = action {
+                Button(action: action) {
+                    Text(actionTitle)
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, DesignSystem.Spacing.lg)
+                        .padding(.vertical, DesignSystem.Spacing.md)
+                        .background(DesignSystem.Colors.primary)
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                }
+                .accessibilityLabel("Action button: \(actionTitle)")
+            }
+        }
+        .padding(DesignSystem.Spacing.xl)
+        .frame(maxWidth: .infinity)
+    }
+}
 
 // MARK: - iPad-specific extensions
 extension View {
@@ -217,5 +368,19 @@ extension View {
                 x: DesignSystem.Shadows.medium.x,
                 y: DesignSystem.Shadows.medium.y
             )
+    }
+    
+    // Accessibility helpers
+    func accessibleButton() -> some View {
+        self
+            .frame(minHeight: DesignSystem.Layout.minTouchTarget)
+            .contentShape(Rectangle())
+    }
+    
+    func accessibleText() -> some View {
+        self
+            .font(DesignSystem.Typography.accessibleBody)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
     }
 } 

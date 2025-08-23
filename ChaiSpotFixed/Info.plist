@@ -57,5 +57,12 @@
 			</array>
 		</dict>
 	</dict>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>We'll notify you about new badges, friend activity, streak reminders, and weekly challenges to keep you engaged with the chai community!</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>background-fetch</string>
+	</array>
 </dict>
 </plist>

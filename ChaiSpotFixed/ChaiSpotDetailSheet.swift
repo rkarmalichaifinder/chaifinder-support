@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 import FirebaseAuth
 import FirebaseFirestore
+import UIKit
 
 struct ChaiSpotDetailSheet: View {
     let spot: ChaiSpot
@@ -120,6 +121,25 @@ struct ChaiSpotDetailSheet: View {
                     .font(DesignSystem.Typography.bodyLarge)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
             }
+            
+            // Google Maps link for hours, photos, and more info
+            Button(action: {
+                openInGoogleMaps()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "map.fill")
+                        .font(.system(size: 14))
+                    Text("View on Google Maps")
+                        .font(DesignSystem.Typography.bodySmall)
+                        .fontWeight(.medium)
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(DesignSystem.Colors.primary)
+                .cornerRadius(8)
+            }
+            .buttonStyle(PlainButtonStyle())
             
             HStack {
                 Image(systemName: "location.circle.fill")
@@ -528,6 +548,24 @@ struct ChaiSpotDetailSheet: View {
             DispatchQueue.main.async {
                 self.isLoadingFriendRatings = false
                 self.friendRatings = ratings
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func openInGoogleMaps() {
+        // Create search query with name and address for better accuracy
+        let query = "\(spot.name) \(spot.address)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        
+        // Try Google Maps app first, fallback to web version
+        if let googleMapsURL = URL(string: "comgooglemaps://?q=\(query)"),
+           UIApplication.shared.canOpenURL(googleMapsURL) {
+            UIApplication.shared.open(googleMapsURL)
+        } else {
+            // Fallback to Google Maps web version
+            if let webURL = URL(string: "https://www.google.com/maps/search/?api=1&query=\(query)") {
+                UIApplication.shared.open(webURL)
             }
         }
     }

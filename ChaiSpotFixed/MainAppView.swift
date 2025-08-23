@@ -12,9 +12,9 @@ struct MainAppView: View {
                 }
                 .tag(0)
             
-            SearchView()
+            PersonalizedMapView()
                 .tabItem {
-                    Label("Search", systemImage: "magnifyingglass")
+                    Label("My Chai Map", systemImage: "map")
                 }
                 .tag(1)
             

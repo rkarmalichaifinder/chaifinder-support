@@ -50,6 +50,11 @@ struct ReviewCardView: View {
     @State private var showingBlockAlert = false
     @StateObject private var moderationService = ContentModerationService()
     
+    // 🎮 NEW: Social reactions states
+    @State private var userReactions: [String: Int] = [:]
+    @State private var showingReactionPicker = false
+    @State private var selectedReaction: Rating.ReactionType?
+    
     init(review: ReviewFeedItem) {
         self.review = review
         // Initialize with the review's spot info
@@ -101,6 +106,44 @@ struct ReviewCardView: View {
                 }) {
                     Image(systemName: "ellipsis")
                         .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+            }
+            
+            // 🎮 NEW: Photo Display
+            if let photoURL = review.photoURL, !photoURL.isEmpty {
+                VStack(spacing: 8) {
+                    AsyncImage(url: URL(string: photoURL)) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(height: 200)
+                            .clipped()
+                            .cornerRadius(12)
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(height: 200)
+                            .overlay(
+                                ProgressView()
+                                    .scaleEffect(1.2)
+                            )
+                    }
+                    
+                    // Photo bonus indicator
+                    HStack(spacing: 6) {
+                        Image(systemName: "camera.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption)
+                        
+                        Text("Photo included (+15 points)")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(.orange)
+                            .fontWeight(.medium)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
                 }
             }
             
@@ -265,6 +308,48 @@ struct ReviewCardView: View {
                     .padding(.top, DesignSystem.Spacing.xs)
             }
             
+            // 🎮 NEW: Social Reactions
+            VStack(spacing: 12) {
+                // Reaction summary
+                if !userReactions.isEmpty {
+                    HStack(spacing: 12) {
+                        ForEach(Array(userReactions.keys.sorted()), id: \.self) { reactionType in
+                            if let count = userReactions[reactionType], count > 0 {
+                                HStack(spacing: 4) {
+                                    Text(Rating.ReactionType(rawValue: reactionType)?.emoji ?? "👍")
+                                        .font(.caption)
+                                    
+                                    Text("\(count)")
+                                        .font(DesignSystem.Typography.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(12)
+                            }
+                        }
+                    }
+                }
+                
+                // Reaction buttons
+                HStack(spacing: 16) {
+                    ForEach(Rating.ReactionType.allCases, id: \.self) { reactionType in
+                        ReactionButton(
+                            reactionType: reactionType,
+                            isSelected: selectedReaction == reactionType,
+                            onTap: {
+                                handleReaction(reactionType)
+                            }
+                        )
+                    }
+                    
+                    Spacer()
+                }
+            }
+            .padding(.top, DesignSystem.Spacing.sm)
+            
             // Action Buttons
             HStack(spacing: DesignSystem.Spacing.lg) {
                 Button(action: {
@@ -347,6 +432,98 @@ struct ReviewCardView: View {
         .onAppear {
             loadSpotInfo()
             checkLikeState()
+            loadReactions()
+        }
+    }
+    
+    // 🎮 NEW: Handle reaction
+    private func handleReaction(_ reactionType: Rating.ReactionType) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        let db = Firestore.firestore()
+        let reactionRef = db.collection("ratings").document(review.id).collection("reactions").document(currentUserId)
+        
+        if selectedReaction == reactionType {
+            // Remove reaction
+            reactionRef.delete { error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("❌ Error removing reaction: \(error.localizedDescription)")
+                    } else {
+                        selectedReaction = nil
+                        updateReactionCount(reactionType: reactionType, increment: -1)
+                    }
+                }
+            }
+        } else {
+            // Add/change reaction
+            reactionRef.setData([
+                "userId": currentUserId,
+                "reactionType": reactionType.rawValue,
+                "timestamp": FieldValue.serverTimestamp()
+            ]) { error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("❌ Error adding reaction: \(error.localizedDescription)")
+                    } else {
+                        // Remove previous reaction count if exists
+                        if let previous = selectedReaction {
+                            updateReactionCount(reactionType: previous, increment: -1)
+                        }
+                        
+                        selectedReaction = reactionType
+                        updateReactionCount(reactionType: reactionType, increment: 1)
+                    }
+                }
+            }
+        }
+    }
+    
+    // 🎮 NEW: Update reaction count
+    private func updateReactionCount(reactionType: Rating.ReactionType, increment: Int) {
+        let currentCount = userReactions[reactionType.rawValue] ?? 0
+        let newCount = max(0, currentCount + increment)
+        
+        if newCount > 0 {
+            userReactions[reactionType.rawValue] = newCount
+        } else {
+            userReactions.removeValue(forKey: reactionType.rawValue)
+        }
+    }
+    
+    // 🎮 NEW: Load reactions
+    private func loadReactions() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        let db = Firestore.firestore()
+        
+        // Load user's reaction
+        let userReactionRef = db.collection("ratings").document(review.id).collection("reactions").document(currentUserId)
+        userReactionRef.getDocument { document, error in
+            DispatchQueue.main.async {
+                if let document = document, document.exists,
+                   let reactionType = document.get("reactionType") as? String {
+                    self.selectedReaction = Rating.ReactionType(rawValue: reactionType)
+                }
+            }
+        }
+        
+        // Load all reactions
+        let reactionsRef = db.collection("ratings").document(review.id).collection("reactions")
+        reactionsRef.getDocuments { snapshot, error in
+            DispatchQueue.main.async {
+                if let snapshot = snapshot {
+                    var reactionCounts: [String: Int] = [:]
+                    
+                    for document in snapshot.documents {
+                        if let reactionType = document.get("reactionType") as? String {
+                            reactionCounts[reactionType, default: 0] += 1
+                        }
+                    }
+                    
+                    self.userReactions = reactionCounts
+                }
+            }
         }
     }
     
@@ -447,6 +624,38 @@ struct ReviewCardView: View {
                 }
             }
         }
+    }
+}
+
+// 🎮 NEW: Reaction Button
+struct ReactionButton: View {
+    let reactionType: Rating.ReactionType
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 4) {
+                Text(reactionType.emoji)
+                    .font(.title3)
+                
+                Text(reactionType.displayName)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.medium)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.orange.opacity(0.2) : Color.gray.opacity(0.1))
+            .foregroundColor(isSelected ? .orange : .secondary)
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isSelected ? Color.orange : Color.gray.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .scaleEffect(isSelected ? 1.05 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isSelected)
     }
 }
 

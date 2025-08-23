@@ -26,6 +26,7 @@ struct AddChaiFinderForm: View {
     @StateObject private var autoModel = AutocompleteModel()
     @State private var showNameDropdown = false
     @State private var showChaiTypeDropdown = false
+    @State private var justSelectedName = false
 
     private let allChaiTypes = [
         "Masala", "Ginger", "Cardamom / Elaichi",
@@ -49,15 +50,22 @@ struct AddChaiFinderForm: View {
                 Section(header: Text("Chai Spot Details")) {
                     // Shop Name with autocomplete
                     TextField("Shop Name", text: $name, onEditingChanged: { began in
-                        showNameDropdown = began && !name.isEmpty
-                        autoModel.completer.queryFragment = name
+                        if began && !justSelectedName {
+                            showNameDropdown = !name.isEmpty
+                            autoModel.completer.queryFragment = name
+                        }
+                        if !began {
+                            justSelectedName = false
+                        }
                     })
                     .padding(8)
                     .background(Color(white: 0.95))
                     .cornerRadius(6)
                     .onChange(of: name) { newValue in
-                        showNameDropdown = !newValue.isEmpty
-                        autoModel.completer.queryFragment = newValue
+                        if !justSelectedName {
+                            showNameDropdown = !newValue.isEmpty
+                            autoModel.completer.queryFragment = newValue
+                        }
                     }
 
                     // Autocomplete suggestions listed below name field
@@ -67,10 +75,16 @@ struct AddChaiFinderForm: View {
                                 ForEach(autoModel.results, id: \.self) { completion in
                                     Button(action: {
                                         let full = completion.title + " " + completion.subtitle
+                                        justSelectedName = true
                                         name = completion.title
                                         showNameDropdown = false
                                         autoModel.results = []
                                         geocodePlace(named: full)
+                                        
+                                        // Reset the flag after a short delay to allow typing again
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            justSelectedName = false
+                                        }
                                     }) {
                                         VStack(alignment: .leading) {
                                             Text(completion.title)

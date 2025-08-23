@@ -2,6 +2,7 @@ import SwiftUI
 import Firebase
 import FirebaseAuth
 import FirebaseFirestore
+import PhotosUI
 
 // Notification names for rating updates
 extension Notification.Name {
@@ -14,6 +15,7 @@ struct SubmitRatingView: View {
     let onComplete: () -> Void
     
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var sessionStore: SessionStore
     
     @State private var ratingValue: Int = 3
     @State private var comment: String = ""
@@ -29,6 +31,22 @@ struct SubmitRatingView: View {
     @State private var selectedFlavorNotes: Set<String> = []
     @State private var chaiType = ""
     @State private var showChaiTypeDropdown = false
+    
+    // 📸 Photo states
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedPhotoData: Data? = nil
+    @State private var photoURL: String?
+    @State private var isUploadingPhoto = false
+    
+    // 🎯 Gamification states
+    @State private var showingBadgeEarned = false
+    @State private var newlyEarnedBadges: [Badge] = []
+    @State private var newlyEarnedAchievements: [Achievement] = []
+    @StateObject private var gamificationService = GamificationService()
+    
+    // 🔒 Privacy controls
+    @State private var reviewVisibility: String = "public" // "public", "friends", "private"
+    @State private var showingPrivacyHelp = false
     
     private let db = Firestore.firestore()
     
@@ -54,261 +72,67 @@ struct SubmitRatingView: View {
         UIDevice.current.userInterfaceIdiom == .pad ? 44 : 36
     }
     
-    private func creaminessColor(for index: Int) -> Color {
-        index <= creaminessRating ? DesignSystem.Colors.creaminessRating : DesignSystem.Colors.border
-    }
-    
-    private func creaminessBackground(for index: Int) -> some View {
-        Circle()
-            .fill(index <= creaminessRating ? DesignSystem.Colors.creaminessRating.opacity(0.1) : Color.clear)
-    }
-    
-    private func creaminessOverlay(for index: Int) -> some View {
-        Circle()
-            .stroke(index <= creaminessRating ? DesignSystem.Colors.creaminessRating : DesignSystem.Colors.border, lineWidth: 1)
-    }
-    
-    private func strengthColor(for index: Int) -> Color {
-        index <= chaiStrengthRating ? DesignSystem.Colors.chaiStrengthRating : DesignSystem.Colors.border
-    }
-    
-    private func strengthBackground(for index: Int) -> some View {
-        Circle()
-            .fill(index <= chaiStrengthRating ? DesignSystem.Colors.chaiStrengthRating.opacity(0.1) : Color.clear)
-    }
-    
-    private func strengthOverlay(for index: Int) -> some View {
-        Circle()
-            .stroke(index <= chaiStrengthRating ? DesignSystem.Colors.chaiStrengthRating : DesignSystem.Colors.border, lineWidth: 1)
-    }
-    
-    // Helper computed properties for complex expressions
-    private var chaiTypeButtonOverlay: some View {
-        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-            .stroke(DesignSystem.Colors.border, lineWidth: 1)
-    }
-    
-    private var chaiTypeDropdownContent: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            ForEach(allChaiTypes, id: \.self) { type in
-                Button(action: {
-                    chaiType = type
-                    showChaiTypeDropdown = false
-                }) {
-                    HStack {
-                        Image(systemName: "checkmark")
-                            .foregroundColor(chaiType == type ? .white : .clear)
-                        Text(type)
-                            .foregroundColor(chaiType == type ? .white : .black)
-                    }
-                    .padding(.vertical, DesignSystem.Spacing.xs)
-                    .padding(.horizontal, DesignSystem.Spacing.sm)
-                    .background(chaiType == type ? DesignSystem.Colors.primary : DesignSystem.Colors.border)
-                    .cornerRadius(DesignSystem.CornerRadius.small)
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
+    private var totalGamificationScore: Int {
+        var score = 10 // Base rating score
+        
+        // Detailed ratings bonus
+        if creaminessRating != 3 { score += 5 }
+        if chaiStrengthRating != 3 { score += 5 }
+        if !selectedFlavorNotes.isEmpty { score += 5 }
+        if !chaiType.isEmpty { score += 5 }
+        
+        // 📸 Photo bonus
+        if selectedPhotoData != nil { score += 15 }
+        
+        // Comment bonus
+        if !comment.isEmpty {
+            let wordCount = comment.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+            score += min(wordCount * 2, 20) // Max 20 points for detailed comments
         }
-        .padding(.vertical, DesignSystem.Spacing.xs)
-        .padding(.horizontal, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.border)
-        .cornerRadius(DesignSystem.CornerRadius.small)
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                .stroke(DesignSystem.Colors.border, lineWidth: 1)
-        )
-    }
-    
-    private var flavorNotesGridColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible()), count: UIDevice.current.userInterfaceIdiom == .pad ? 3 : 2)
-    }
-    
-    private func flavorNoteButton(for note: FlavorNote) -> some View {
-        Button(action: {
-            if selectedFlavorNotes.contains(note.name) {
-                selectedFlavorNotes.remove(note.name)
-            } else {
-                selectedFlavorNotes.insert(note.name)
-            }
-        }) {
-            HStack(spacing: DesignSystem.Spacing.xs) {
-                Image(systemName: selectedFlavorNotes.contains(note.name) ? note.symbol + ".fill" : note.symbol)
-                    .foregroundColor(selectedFlavorNotes.contains(note.name) ? .white : note.color)
-                    .font(.system(size: flavorNoteIconSize))
-                    .frame(width: 16, height: 16)
-                Text(note.name)
-                    .font(DesignSystem.Typography.bodySmall)
-                    .foregroundColor(selectedFlavorNotes.contains(note.name) ? .white : note.color)
-                    .fontWeight(selectedFlavorNotes.contains(note.name) ? .semibold : .regular)
-            }
-            .padding(.horizontal, DesignSystem.Spacing.sm)
-            .padding(.vertical, DesignSystem.Spacing.xs)
-            .background(selectedFlavorNotes.contains(note.name) ? note.color : Color.clear)
-            .cornerRadius(DesignSystem.CornerRadius.small)
-            .overlay(flavorNoteOverlay(for: note))
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    private var flavorNoteIconSize: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 16 : 14
-    }
-    
-    private func flavorNoteOverlay(for note: FlavorNote) -> some View {
-        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-            .stroke(selectedFlavorNotes.contains(note.name) ? note.color : note.color.opacity(0.6), lineWidth: 1)
+        
+        return score
     }
     
     var body: some View {
         NavigationView {
-            Form {
-                Section(header: Text("Your Rating")) {
-                    Stepper("Rating: \(ratingValue)★", value: $ratingValue, in: 1...5)
-                }
-                
-                Section(header: Text("Creaminess Rating")) {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        HStack {
-                            Text("How creamy is the chai?")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            Spacer()
-                            Text("\(creaminessRating)/5")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .fontWeight(.semibold)
-                                .foregroundColor(DesignSystem.Colors.creaminessRating)
-                        }
-                        
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            ForEach(1..<6) { i in
-                                Button(action: { creaminessRating = i }) {
-                                    Image(systemName: i <= creaminessRating ? "drop.fill" : "drop")
-                                        .foregroundColor(creaminessColor(for: i))
-                                        .font(.system(size: deviceFontSize))
-                                        .frame(width: deviceButtonSize, height: deviceButtonSize)
-                                        .background(creaminessBackground(for: i))
-                                        .overlay(creaminessOverlay(for: i))
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                        }
-                        
-                        HStack {
-                            Text("Watery")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            Spacer()
-                            Text("Creamy")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                        }
-                    }
-                }
-                
-                Section(header: Text("Chai Strength Rating")) {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        HStack {
-                            Text("How strong is the chai flavor?")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            Spacer()
-                            Text("\(chaiStrengthRating)/5")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .fontWeight(.semibold)
-                                .foregroundColor(DesignSystem.Colors.chaiStrengthRating)
-                        }
-                        
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            ForEach(1..<6) { i in
-                                Button(action: { chaiStrengthRating = i }) {
-                                    Image(systemName: i <= chaiStrengthRating ? "leaf.fill" : "leaf")
-                                        .foregroundColor(strengthColor(for: i))
-                                        .font(.system(size: deviceFontSize))
-                                        .frame(width: deviceButtonSize, height: deviceButtonSize)
-                                        .background(strengthBackground(for: i))
-                                        .overlay(strengthOverlay(for: i))
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                        }
-                        
-                        HStack {
-                            Text("Mild")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            Spacer()
-                            Text("Strong")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                        }
-                    }
-                }
-                
-                Section(header: Text("Chai Type Ordered")) {
-                    Button(chaiType.isEmpty ? "Select Chai Type" : chaiType) {
-                        showChaiTypeDropdown.toggle()
-                    }
-                    .padding(.vertical, DesignSystem.Spacing.xs)
-                    .padding(.horizontal, DesignSystem.Spacing.sm)
-                    .background(DesignSystem.Colors.border)
-                    .cornerRadius(DesignSystem.CornerRadius.small)
-                    .overlay(chaiTypeButtonOverlay)
+            ScrollView {
+                VStack(spacing: DesignSystem.Spacing.lg) {
+                    // Header
+                    headerSection
                     
-                    if showChaiTypeDropdown {
-                        chaiTypeDropdownContent
-                    }
-                }
-                
-                Section(header: Text("Primary Flavor Notes")) {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        Text("Select the primary flavors you taste:")
-                            .font(DesignSystem.Typography.bodyMedium)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                        
-                        Text("(Optional - tap to select/deselect)")
-                            .font(DesignSystem.Typography.caption2)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .italic()
-                        
-                        LazyVGrid(columns: flavorNotesGridColumns, spacing: DesignSystem.Spacing.sm) {
-                            ForEach(allFlavorNotes, id: \.self) { note in
-                                flavorNoteButton(for: note)
-                            }
-                        }
-                    }
-                }
-                
-                Section(header: Text("Comment (Optional)")) {
-                    TextField("Write something...", text: $comment)
-                        .onChange(of: comment) { newValue in
-                            validateContentTyping(newValue)
-                        }
-                    if let warning = inlineWarningMessage {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                            Text(warning)
-                                .font(.footnote)
-                                .foregroundColor(.orange)
-                        }
-                    }
-                }
-                
-                Section {
-                    Button("Submit Rating") {
-                        submitRating()
-                    }
-                    .disabled(isSubmitting)
+                    // Overall Rating
+                    overallRatingSection
                     
-                    if isSubmitting {
-                        HStack {
-                            ProgressView()
-                            Text("Submitting...")
-                        }
-                    }
+                    // Detailed Ratings
+                    detailedRatingsSection
+                    
+                    // Flavor Notes
+                    flavorNotesSection
+                    
+                    // Chai Type Selection
+                    chaiTypeSection
+                    
+                    // 📸 Photo Section
+                    photoSection
+                    
+                    // Comment Section
+                    commentSection
+                    
+                    // 🔒 Privacy Controls Section
+                    privacyControlsSection
+                    
+                    // Gamification Score
+                    gamificationScoreSection
+                    
+                    // Submit Button
+                    submitButton
                 }
+                .padding(DesignSystem.Spacing.lg)
             }
-            .navigationBarTitle("Rate This Spot", displayMode: .inline)
+            .background(DesignSystem.Colors.background)
+            .navigationTitle("Rate Chai Spot")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -316,116 +140,1009 @@ struct SubmitRatingView: View {
                     }
                 }
             }
+            .onChange(of: selectedPhoto) { newItem in
+                Task {
+                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                        await MainActor.run {
+                            selectedPhotoData = data
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingBadgeEarned) {
+                BadgeEarnedView(
+                    badges: newlyEarnedBadges,
+                    achievements: newlyEarnedAchievements,
+                    onDismiss: {
+                        showingBadgeEarned = false
+                        dismiss()
+                    }
+                )
+            }
+            .onAppear {
+                loadExistingRating()
+            }
             .alert("Content Warning", isPresented: $showContentWarning) {
-                Button("Edit Comment", role: .cancel) { }
+                Button("Edit", role: .cancel) { }
                 Button("Submit Anyway", role: .destructive) {
-                    submitRating(forceSubmit: true)
+                    submitRating()
                 }
             } message: {
                 Text(contentWarningMessage)
             }
         }
-        .onAppear {
-            if let existing = existingRating {
-                ratingValue = existing.value
-                comment = existing.comment ?? ""
-                creaminessRating = existing.creaminessRating ?? 3
-                chaiStrengthRating = existing.chaiStrengthRating ?? 3
-                selectedFlavorNotes = Set(existing.flavorNotes ?? [])
-                chaiType = existing.chaiType ?? ""
+    }
+    
+    // MARK: - Header Section
+    private var headerSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Text("Rate Your Chai Experience")
+                .font(DesignSystem.Typography.titleLarge)
+                .fontWeight(.bold)
+                .multilineTextAlignment(.center)
+                .accessibilityLabel("Rating form title")
+            
+            Text("Share your thoughts and help others discover great chai spots!")
+                .font(DesignSystem.Typography.bodyMedium)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.large)
+        .shadow(color: DesignSystem.Shadows.medium.color, radius: DesignSystem.Shadows.medium.radius, x: DesignSystem.Shadows.medium.x, y: DesignSystem.Shadows.medium.y)
+    }
+    
+    // MARK: - Overall Rating Section
+    private var overallRatingSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            HStack {
+                Text("Overall Rating")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Text("\(ratingValue)/5")
+                    .font(DesignSystem.Typography.titleMedium)
+                    .fontWeight(.bold)
+                    .foregroundColor(DesignSystem.Colors.primary)
+            }
+            
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                ForEach(1...5, id: \.self) { star in
+                    Button(action: {
+                        ratingValue = star
+                    }) {
+                        Image(systemName: star <= ratingValue ? "star.fill" : "star")
+                            .font(.system(size: deviceButtonSize))
+                            .foregroundColor(star <= ratingValue ? DesignSystem.Colors.primary : DesignSystem.Colors.textSecondary)
+                    }
+                    .accessibilityLabel("Rate \(star) stars")
+                    .accessibilityValue(star <= ratingValue ? "Selected" : "Not selected")
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+    
+    // MARK: - Detailed Ratings Section
+    private var detailedRatingsSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Text("Detailed Ratings")
+                .font(DesignSystem.Typography.headline)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            VStack(spacing: DesignSystem.Spacing.md) {
+                // Creaminess Rating
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack {
+                        Text("Creaminess")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
+                        
+                        Spacer()
+                        
+                        Text(creaminessLabel)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    }
+                    
+                    Slider(value: Binding(
+                        get: { Double(creaminessRating) },
+                        set: { creaminessRating = Int($0) }
+                    ), in: 1...5, step: 1)
+                    .accentColor(DesignSystem.Colors.creaminessRating)
+                    .accessibilityLabel("Creaminess level: \(creaminessLabel)")
+                    .accessibilityValue("\(creaminessRating) out of 5")
+                }
+                
+                // Chai Strength Rating
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack {
+                        Text("Chai Strength")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
+                        
+                        Spacer()
+                        
+                        Text(strengthLabel)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    }
+                    
+                    Slider(value: Binding(
+                        get: { Double(chaiStrengthRating) },
+                        set: { chaiStrengthRating = Int($0) }
+                    ), in: 1...5, step: 1)
+                    .accentColor(DesignSystem.Colors.chaiStrengthRating)
+                    .accessibilityLabel("Chai strength level: \(strengthLabel)")
+                    .accessibilityValue("\(chaiStrengthRating) out of 5")
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+    
+    // MARK: - Flavor Notes Section
+    private var flavorNotesSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Text("Flavor Notes")
+                .font(DesignSystem.Typography.headline)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: DesignSystem.Spacing.sm) {
+                ForEach(allFlavorNotes, id: \.name) { flavor in
+                    Button(action: {
+                        if selectedFlavorNotes.contains(flavor.name) {
+                            selectedFlavorNotes.remove(flavor.name)
+                        } else {
+                            selectedFlavorNotes.insert(flavor.name)
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: flavor.symbol)
+                                .foregroundColor(flavor.color)
+                                .accessibilityHidden(true)
+                            
+                            Text(flavor.name)
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .fontWeight(.medium)
+                            
+                            Spacer()
+                            
+                            if selectedFlavorNotes.contains(flavor.name) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(DesignSystem.Colors.primary)
+                            }
+                        }
+                        .padding(DesignSystem.Spacing.md)
+                        .background(selectedFlavorNotes.contains(flavor.name) ? DesignSystem.Colors.primary.opacity(0.1) : DesignSystem.Colors.cardBackground)
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                                .stroke(selectedFlavorNotes.contains(flavor.name) ? DesignSystem.Colors.primary : DesignSystem.Colors.border, lineWidth: 1)
+                        )
+                    }
+                    .accessibilityLabel("\(flavor.name) flavor")
+                    .accessibilityValue(selectedFlavorNotes.contains(flavor.name) ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(selectedFlavorNotes.contains(flavor.name) ? .isSelected : [])
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+    
+    // MARK: - Chai Type Section
+    private var chaiTypeSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Text("Chai Type")
+                .font(DesignSystem.Typography.headline)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            Menu {
+                ForEach(allChaiTypes, id: \.self) { type in
+                    Button(type) {
+                        chaiType = type
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(chaiType.isEmpty ? "Select chai type" : chaiType)
+                        .foregroundColor(chaiType.isEmpty ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textPrimary)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.down")
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .accessibilityHidden(true)
+                }
+                .padding(DesignSystem.Spacing.md)
+                .background(DesignSystem.Colors.cardBackground)
+                .cornerRadius(DesignSystem.CornerRadius.medium)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                        .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                )
+            }
+            .accessibilityLabel("Select chai type")
+            .accessibilityHint("Double tap to open chai type options")
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+    
+    // MARK: - Photo Section
+    private var photoSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            HStack {
+                Text("📸 Add Photo")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                if selectedPhotoData != nil {
+                    Text("+15 points")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.1))
+                        .cornerRadius(8)
+                }
+            }
+            
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                if let photoData = selectedPhotoData,
+                   let uiImage = UIImage(data: photoData) {
+                    // Display selected photo
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 200)
+                        .clipped()
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .overlay(
+                            Button(action: {
+                                selectedPhotoData = nil
+                                selectedPhoto = nil
+                                photoURL = nil
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .background(Color.black.opacity(0.6))
+                                    .clipShape(Circle())
+                            }
+                            .padding(8),
+                            alignment: .topTrailing
+                        )
+                } else {
+                    // Photo picker button
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        VStack(spacing: DesignSystem.Spacing.sm) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(DesignSystem.Colors.accent)
+                            
+                            Text("Add a photo of your chai")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            Text("+15 bonus points!")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(.green)
+                                .fontWeight(.medium)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(DesignSystem.Spacing.xl)
+                        .background(DesignSystem.Colors.cardBackground)
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            
+            Text("Photos help other users discover great chai spots!")
+                .font(DesignSystem.Typography.caption)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .iPadCardStyle()
+    }
+    
+    // MARK: - Comment Section
+    private var commentSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            HStack {
+                Text("Comment")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Text("\(comment.count)/500")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(comment.count > 450 ? DesignSystem.Colors.warning : DesignSystem.Colors.textSecondary)
+            }
+            
+            TextEditor(text: $comment)
+                .font(DesignSystem.Typography.bodyMedium)
+                .frame(minHeight: 100)
+                .padding(DesignSystem.Spacing.md)
+                .background(DesignSystem.Colors.cardBackground)
+                .cornerRadius(DesignSystem.CornerRadius.medium)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                        .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                )
+                .accessibilityLabel("Write your comment")
+                .accessibilityHint("Share your thoughts about this chai spot")
+            
+            if let warning = inlineWarningMessage {
+                Text(warning)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(DesignSystem.Colors.warning)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+    
+    // MARK: - Privacy Controls Section
+    private var privacyControlsSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            HStack {
+                Image(systemName: "lock.shield.fill")
+                    .foregroundColor(DesignSystem.Colors.primary)
+                
+                Text("Review Privacy")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Button(action: { showingPrivacyHelp = true }) {
+                    Image(systemName: "questionmark.circle")
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+            }
+            
+            Text("Control who can see your review")
+                .font(DesignSystem.Typography.bodyMedium)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+            
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                PrivacyOptionRow(
+                    title: "Public",
+                    description: "Everyone can see your review",
+                    icon: "globe",
+                    isSelected: reviewVisibility == "public",
+                    action: { reviewVisibility = "public" }
+                )
+                
+                PrivacyOptionRow(
+                    title: "Friends Only",
+                    description: "Only your friends can see your review",
+                    icon: "person.2.fill",
+                    isSelected: reviewVisibility == "friends",
+                    action: { reviewVisibility = "friends" }
+                )
+                
+                PrivacyOptionRow(
+                    title: "Private",
+                    description: "Only you can see your review",
+                    icon: "lock.fill",
+                    isSelected: reviewVisibility == "private",
+                    action: { reviewVisibility = "private" }
+                )
+            }
+            
+            // Show current privacy default
+            if let userProfile = sessionStore.userProfile,
+               let privacyDefaults = userProfile.privacyDefaults {
+                HStack {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(DesignSystem.Colors.info)
+                    
+                    Text("Your default setting is: \(privacyDefaults.reviewsDefaultVisibility.capitalized)")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                    
+                    Spacer()
+                }
+                .padding(.top, DesignSystem.Spacing.sm)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+        .iPadCardStyle()
+        .alert("Privacy Help", isPresented: $showingPrivacyHelp) {
+            Button("OK") { }
+        } message: {
+            Text("• Public: Your review appears in community feeds and spot details\n• Friends Only: Only your friends can see your review\n• Private: Only you can see your review for personal tracking")
+        }
+    }
+    
+    // MARK: - Gamification Score Section
+    private var gamificationScoreSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            HStack {
+                Text("🎮 Gamification Score")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Text("\(totalGamificationScore) pts")
+                    .font(DesignSystem.Typography.titleMedium)
+                    .fontWeight(.bold)
+                    .foregroundColor(DesignSystem.Colors.primary)
+            }
+            
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                scoreRow("Base rating", 10, isEarned: true)
+                scoreRow("Detailed ratings", 20, isEarned: creaminessRating != 3 || chaiStrengthRating != 3 || !selectedFlavorNotes.isEmpty || !chaiType.isEmpty)
+                scoreRow("Detailed comment", 20, isEarned: !comment.isEmpty)
+                scoreRow("Photo bonus", 15, isEarned: selectedPhotoData != nil)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+    
+    // MARK: - Submit Button Section
+    private var submitButton: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Button(action: {
+                validateAndSubmit()
+            }) {
+                HStack {
+                    if isSubmitting {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: "star.fill")
+                            .accessibilityHidden(true)
+                    }
+                    
+                    Text(isSubmitting ? "Submitting..." : "Submit Rating")
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .fontWeight(.semibold)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: DesignSystem.Layout.minTouchTarget)
+                .background(isSubmitting ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.primary)
+                .cornerRadius(DesignSystem.CornerRadius.medium)
+            }
+            .disabled(isSubmitting)
+            .accessibilityLabel("Submit rating")
+            .accessibilityHint("Double tap to submit your rating")
+            
+            if isSubmitting {
+                Text("Please wait while we process your rating...")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+    }
+    
+    // MARK: - Helper Views
+    private func scoreRow(_ title: String, _ maxPoints: Int, isEarned: Bool) -> some View {
+        HStack {
+            Text(title)
+                .font(DesignSystem.Typography.bodyMedium)
+                .foregroundColor(isEarned ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+            
+            Spacer()
+            
+            if isEarned {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(DesignSystem.Colors.success)
+                    .accessibilityHidden(true)
+                
+                Text("+\(maxPoints)")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.semibold)
+                    .foregroundColor(DesignSystem.Colors.success)
+            } else {
+                Text("+\(maxPoints)")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
             }
         }
     }
     
-    private func validateContentTyping(_ text: String) {
-        // Do not trigger warnings for very short inputs to avoid false positives on first keystrokes
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 5 else {
-            inlineWarningMessage = nil
-            return
+    // MARK: - Helper Functions
+    private var creaminessLabel: String {
+        switch creaminessRating {
+        case 1: return "Light"
+        case 2: return "Mild"
+        case 3: return "Medium"
+        case 4: return "Rich"
+        case 5: return "Very Rich"
+        default: return "Medium"
         }
-        let (isAppropriate, _) = moderationService.filterContent(trimmed)
-        inlineWarningMessage = isAppropriate ? nil : "Your comment may contain inappropriate content. Please review and edit if necessary."
     }
     
-    func submitRating(forceSubmit: Bool = false) {
-        guard let user = Auth.auth().currentUser else {
+    private var strengthLabel: String {
+        switch chaiStrengthRating {
+        case 1: return "Mild"
+        case 2: return "Light"
+        case 3: return "Medium"
+        case 4: return "Strong"
+        case 5: return "Very Strong"
+        default: return "Medium"
+        }
+    }
+    
+    private func loadExistingRating() {
+        guard let existing = existingRating else { return }
+        
+        ratingValue = existing.value
+        comment = existing.comment ?? ""
+        creaminessRating = existing.creaminessRating ?? 3
+        chaiStrengthRating = existing.chaiStrengthRating ?? 3
+        selectedFlavorNotes = Set(existing.flavorNotes ?? [])
+        chaiType = existing.chaiType ?? ""
+    }
+    
+    private func validateAndSubmit() {
+        // Clear any previous warnings
+        inlineWarningMessage = nil
+        
+        // Basic validation
+        guard ratingValue > 0 else {
+            inlineWarningMessage = "Please select an overall rating"
             return
         }
         
-        // Final content validation
-        if !forceSubmit && !comment.isEmpty {
+        // Content moderation check
+        if !comment.isEmpty {
             let (isAppropriate, _) = moderationService.filterContent(comment)
             if !isAppropriate {
-                contentWarningMessage = "Your comment contains inappropriate content. Please edit it before submitting."
+                contentWarningMessage = "Your comment may contain inappropriate content. Please review and edit if necessary."
                 showContentWarning = true
                 return
             }
         }
         
-        let userId = user.uid
+        submitRating()
+    }
+    
+    private func submitRating() {
         isSubmitting = true
         
-        // Step 1: Fetch display name from Firestore
-        db.collection("users").document(userId).getDocument { document, error in
-            var username = user.email ?? user.uid  // Fallback to email or UID
-            
-            if let doc = document, doc.exists {
-                username = doc.get("displayName") as? String ?? username
-            }
-            
-            // Step 2: Build rating dictionary
-            var ratingDict: [String: Any] = [
-                "spotId": spotId,
-                "userId": userId,
-                "username": username,
-                "value": ratingValue,
-                "comment": comment,
-                "timestamp": FieldValue.serverTimestamp()
-            ]
-            
-            // Only include likes/dislikes if it's a new rating
-            if existingRating == nil {
-                ratingDict["likes"] = 0
-                ratingDict["dislikes"] = 0
-            }
-            
-            // Add new rating fields
-            ratingDict["creaminessRating"] = creaminessRating
-            ratingDict["chaiStrengthRating"] = chaiStrengthRating
-            ratingDict["flavorNotes"] = Array(selectedFlavorNotes)
-            ratingDict["chaiType"] = chaiType.isEmpty ? nil : chaiType
-            
-            let ratingsCollection = db.collection("ratings")
-            
-            // Step 3: Save to Firestore
-            if let existing = existingRating, let existingId = existing.id {
-                ratingsCollection.document(existingId).updateData(ratingDict) { error in
-                    DispatchQueue.main.async {
-                        self.isSubmitting = false
-                        if let error = error {
-                            // Handle error silently
-                        } else {
-                            // Post notification to refresh the feed
-                            NotificationCenter.default.post(name: .ratingUpdated, object: nil)
-                            self.onComplete()
-                        }
+        Task {
+            do {
+                let ratingData: [String: Any] = [
+                    "spotId": spotId,
+                    "userId": sessionStore.userProfile?.id ?? "",
+                    "userName": sessionStore.userProfile?.displayName ?? "Anonymous",
+                    "rating": ratingValue,
+                    "comment": comment.isEmpty ? nil : comment,
+                    "creaminessRating": creaminessRating,
+                    "chaiStrengthRating": chaiStrengthRating,
+                    "flavorNotes": Array(selectedFlavorNotes),
+                    "chaiType": chaiType.isEmpty ? nil : chaiType,
+                    "photoURL": photoURL, // Add photoURL to the data
+                    "timestamp": FieldValue.serverTimestamp(),
+                    "gamificationScore": totalGamificationScore,
+                    "visibility": reviewVisibility // 🔒 Add privacy setting
+                ]
+                
+                if let existing = existingRating {
+                    // Update existing rating
+                    try await db.collection("ratings").document(existing.id ?? "").updateData(ratingData)
+                } else {
+                    // Create new rating
+                    try await db.collection("ratings").addDocument(data: ratingData)
+                }
+                
+                // Check for new badges and achievements
+                let newBadges = await gamificationService.checkAndAwardBadges(
+                    userProfile: sessionStore.userProfile ?? UserProfile(id: "", uid: "", displayName: "", email: ""),
+                    newRating: Rating(
+                        spotId: spotId,
+                        userId: sessionStore.userProfile?.id ?? "",
+                        username: sessionStore.userProfile?.displayName ?? "",
+                        value: ratingValue,
+                        comment: comment.isEmpty ? nil : comment,
+                        creaminessRating: creaminessRating,
+                        chaiStrengthRating: chaiStrengthRating,
+                        flavorNotes: Array(selectedFlavorNotes),
+                        chaiType: chaiType.isEmpty ? nil : chaiType,
+                        photoURL: photoURL
+                    )
+                )
+                let newAchievements = await gamificationService.checkAndAwardAchievements(
+                    userProfile: sessionStore.userProfile ?? UserProfile(id: "", uid: "", displayName: "", email: ""),
+                    newRating: Rating(
+                        spotId: spotId,
+                        userId: sessionStore.userProfile?.id ?? "",
+                        username: sessionStore.userProfile?.displayName ?? "",
+                        value: ratingValue,
+                        comment: comment.isEmpty ? nil : comment,
+                        creaminessRating: creaminessRating,
+                        chaiStrengthRating: chaiStrengthRating,
+                        flavorNotes: Array(selectedFlavorNotes),
+                        chaiType: chaiType.isEmpty ? nil : chaiType,
+                        photoURL: photoURL
+                    )
+                )
+                
+                await MainActor.run {
+                    isSubmitting = false
+                    
+                    if !newBadges.isEmpty || !newAchievements.isEmpty {
+                        newlyEarnedBadges = newBadges
+                        newlyEarnedAchievements = newAchievements
+                        showingBadgeEarned = true
+                    } else {
+                        onComplete()
+                        dismiss()
                     }
                 }
-            } else {
-                ratingsCollection.addDocument(data: ratingDict) { error in
-                    DispatchQueue.main.async {
-                        self.isSubmitting = false
-                        if let error = error {
-                            // Handle error silently
-                        } else {
-                            // Post notification to refresh the feed
-                            NotificationCenter.default.post(name: .ratingUpdated, object: nil)
-                            self.onComplete()
+                
+                // Post notification for rating update
+                NotificationCenter.default.post(name: .ratingUpdated, object: nil)
+                
+            } catch {
+                await MainActor.run {
+                    isSubmitting = false
+                    inlineWarningMessage = "Failed to submit rating: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func performSubmission() {
+        let ratingData: [String: Any] = [
+            "spotId": spotId,
+            "userId": sessionStore.currentUser?.uid ?? "",
+            "value": ratingValue,
+            "comment": comment.isEmpty ? nil : comment,
+            "creaminessRating": creaminessRating,
+            "chaiStrengthRating": chaiStrengthRating,
+            "flavorNotes": Array(selectedFlavorNotes),
+            "chaiType": chaiType.isEmpty ? nil : chaiType,
+            "photoURL": photoURL,
+            "timestamp": FieldValue.serverTimestamp(),
+            "gamificationScore": totalGamificationScore
+        ]
+        
+        if let existingRating = existingRating {
+            // Update existing rating
+            updateExistingRating(ratingData)
+        } else {
+            // Create new rating
+            createNewRating(ratingData)
+        }
+    }
+    
+    private func createNewRating(_ ratingData: [String: Any]) {
+        let ratingRef = db.collection("ratings").document()
+        
+        ratingRef.setData(ratingData) { error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Error creating rating: \(error.localizedDescription)")
+                    self.isSubmitting = false
+                } else {
+                    print("✅ Rating created successfully")
+                    self.handleRatingSuccess()
+                }
+            }
+        }
+    }
+    
+    private func updateExistingRating(_ ratingData: [String: Any]) {
+        guard let existingRating = existingRating else { return }
+        
+        db.collection("ratings").document(existingRating.id ?? "").updateData(ratingData) { error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Error updating rating: \(error.localizedDescription)")
+                    self.isSubmitting = false
+                } else {
+                    print("✅ Rating updated successfully")
+                    self.handleRatingSuccess()
+                }
+            }
+        }
+    }
+    
+    private func handleRatingSuccess() {
+        // Check for new badges and achievements
+        Task {
+            let newRating = Rating(
+                id: nil,
+                spotId: spotId,
+                userId: sessionStore.currentUser?.uid ?? "",
+                value: ratingValue,
+                comment: comment.isEmpty ? nil : comment,
+                creaminessRating: creaminessRating,
+                chaiStrengthRating: chaiStrengthRating,
+                flavorNotes: Array(selectedFlavorNotes),
+                chaiType: chaiType.isEmpty ? nil : chaiType,
+                photoURL: photoURL
+            )
+            
+            let userProfile = await getUserProfile()
+            
+            let newBadges = await gamificationService.checkAndAwardBadges(
+                userProfile: userProfile,
+                newRating: newRating
+            )
+            
+            let newAchievements = await gamificationService.checkAndAwardAchievements(
+                userProfile: userProfile,
+                newRating: newRating
+            )
+            
+            await MainActor.run {
+                if !newBadges.isEmpty || !newAchievements.isEmpty {
+                    newlyEarnedBadges = newBadges
+                    newlyEarnedAchievements = newAchievements
+                    showingBadgeEarned = true
+                } else {
+                    onComplete()
+                    dismiss()
+                }
+            }
+        }
+    }
+    
+    private func getUserProfile() async -> UserProfile {
+        guard let userId = sessionStore.currentUser?.uid else {
+            return UserProfile(uid: "", displayName: "", email: "")
+        }
+        
+        do {
+            let document = try await db.collection("users").document(userId).getDocument()
+            if let data = document.data() {
+                return UserProfile(
+                    id: document.documentID,
+                    uid: data["uid"] as? String ?? "",
+                    displayName: data["displayName"] as? String ?? "",
+                    email: data["email"] as? String ?? "",
+                    photoURL: data["photoURL"] as? String,
+                    friends: data["friends"] as? [String],
+                    incomingRequests: data["incomingRequests"] as? [String],
+                    outgoingRequests: data["outgoingRequests"] as? [String],
+                    bio: data["bio"] as? String,
+                    hasTasteSetup: data["hasTasteSetup"] as? Bool ?? false,
+                    tasteVector: data["tasteVector"] as? [Int],
+                    topTasteTags: data["topTasteTags"] as? [String],
+                    badges: data["badges"] as? [String] ?? [],
+                    currentStreak: data["currentStreak"] as? Int ?? 0,
+                    longestStreak: data["longestStreak"] as? Int ?? 0,
+                    lastReviewDate: data["lastReviewDate"] as? Date,
+                    totalReviews: data["totalReviews"] as? Int ?? 0,
+                    spotsVisited: data["spotsVisited"] as? Int ?? 0,
+                    challengeProgress: data["challengeProgress"] as? [String: Int] ?? [:],
+                    achievements: data["achievements"] as? [String: Date] ?? [:],
+                    totalScore: data["totalScore"] as? Int ?? 0
+                )
+            }
+        } catch {
+            print("❌ Error fetching user profile: \(error.localizedDescription)")
+        }
+        
+        return UserProfile(uid: "", displayName: "", email: "")
+    }
+}
+
+// MARK: - Badge Earned View
+struct BadgeEarnedView: View {
+    let badges: [Badge]
+    let achievements: [Achievement]
+    let onDismiss: () -> Void
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: DesignSystem.Spacing.lg) {
+                ScrollView {
+                    VStack(spacing: DesignSystem.Spacing.xl) {
+                        // Header
+                        VStack(spacing: DesignSystem.Spacing.md) {
+                            Image(systemName: "trophy.fill")
+                                .font(.system(size: 64))
+                                .foregroundColor(DesignSystem.Colors.primary)
+                                .accessibilityHidden(true)
+                            
+                            Text("Congratulations!")
+                                .font(DesignSystem.Typography.titleLarge)
+                                .fontWeight(.bold)
+                                .multilineTextAlignment(.center)
+                            
+                            Text("You've earned new rewards!")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
                         }
+                        
+                        // Badges
+                        if !badges.isEmpty {
+                            VStack(spacing: DesignSystem.Spacing.md) {
+                                Text("🎖️ New Badges")
+                                    .font(DesignSystem.Typography.headline)
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                
+                                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: DesignSystem.Spacing.md) {
+                                    ForEach(badges, id: \.id) { badge in
+                                        BadgeView(badge: badge)
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Achievements
+                        if !achievements.isEmpty {
+                            VStack(spacing: DesignSystem.Spacing.md) {
+                                Text("🏆 New Achievements")
+                                    .font(DesignSystem.Typography.headline)
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                
+                                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: DesignSystem.Spacing.md) {
+                                    ForEach(achievements, id: \.id) { achievement in
+                                        AchievementView(achievement: achievement)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                }
+                
+                // Continue Button
+                Button(action: onDismiss) {
+                    Text("Continue")
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: DesignSystem.Layout.minTouchTarget)
+                        .background(DesignSystem.Colors.primary)
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                }
+                .accessibilityLabel("Continue to app")
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.bottom, DesignSystem.Spacing.lg)
+            }
+            .navigationTitle("Rewards Earned")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        onDismiss()
                     }
                 }
             }
         }
+    }
+}
+
+// MARK: - Badge View Component
+struct BadgeView: View {
+    let badge: Badge
+    
+    var body: some View {
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: badge.iconName)
+                .font(.system(size: 32))
+                .foregroundColor(DesignSystem.Colors.primary)
+                .accessibilityHidden(true)
+            
+            Text(badge.name)
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.medium)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+        }
+        .frame(width: 80)
+        .padding(DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Achievement View Component
+struct AchievementView: View {
+    let achievement: Achievement
+    
+    var body: some View {
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "star.fill")
+                .font(.system(size: 32))
+                .foregroundColor(DesignSystem.Colors.secondary)
+                .accessibilityHidden(true)
+            
+            Text(achievement.name)
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.medium)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+        }
+        .frame(width: 80)
+        .padding(DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Preview
+struct SubmitRatingView_Previews: PreviewProvider {
+    static var previews: some View {
+        SubmitRatingView(
+            spotId: "preview",
+            existingRating: nil,
+            onComplete: {}
+        )
+        .environmentObject(SessionStore())
     }
 }

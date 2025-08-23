@@ -6,6 +6,7 @@ struct FeedView: View {
     @StateObject private var viewModel = FeedViewModel()
     @State private var searchText = ""
     @State private var showingAddReview = false
+    @State private var showingSearchSuggestions = false
     
     var body: some View {
         NavigationView {
@@ -15,249 +16,255 @@ struct FeedView: View {
                 
                 VStack(spacing: 0) {
                     // Header
-                    VStack(spacing: DesignSystem.Spacing.md) {
-                        // Breadcrumb / subtitle
-                        HStack {
-                            Text("Home Page")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            
-                            Spacer()
-                            
-                            // Refresh button
-                            Button(action: {
-                                viewModel.refreshFeed()
-                            }) {
-                                Image(systemName: "arrow.clockwise")
-                                    .foregroundColor(DesignSystem.Colors.primary)
-                                    .font(.system(size: 16))
-                            }
-                            .disabled(viewModel.isLoading)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        // Brand title
-                        Text("chai finder")
-                            .font(DesignSystem.Typography.titleLarge)
-                            .fontWeight(.bold)
-                            .foregroundColor(DesignSystem.Colors.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        // Feed Type Toggle
-                        Picker("Feed Type", selection: $viewModel.currentFeedType) {
-                            Text("Friends")
-                                .tag(FeedType.friends)
-                            Text("Community")
-                                .tag(FeedType.community)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                        .onChange(of: viewModel.currentFeedType) { newValue in
-                            viewModel.switchFeedType(to: newValue)
-                        }
-                        
-                        // Search Bar
-                        HStack {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                                .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
-                            
-                            TextField("Search for a chai spot, member, etc...", text: $searchText)
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .foregroundColor(DesignSystem.Colors.textPrimary)
-                                .onChange(of: searchText) { newValue in
-                                    // Use proper async handling to avoid state modification during view updates
-                                    Task {
-                                        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
-                                        await MainActor.run {
-                                            if searchText == newValue {
-                                                viewModel.filterReviews(searchText)
-                                            }
-                                        }
-                                    }
-                                }
-                            
-                            if !searchText.isEmpty {
-                                Button(action: { 
-                                    searchText = ""
-                                    viewModel.filterReviews("")
-                                }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                                        .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
-                                }
-                            }
-                        }
-                        .padding(DesignSystem.Spacing.md)
-                        .background(DesignSystem.Colors.searchBackground)
-                        .cornerRadius(DesignSystem.CornerRadius.large)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.large)
-                                .stroke(DesignSystem.Colors.border, lineWidth: 1)
-                        )
-                    }
-                    .padding(DesignSystem.Spacing.lg)
-                    .background(DesignSystem.Colors.background)
-                    .iPadOptimized()
-
-                    // Section title
-                    Text("YOUR FEED")
-                        .font(DesignSystem.Typography.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(DesignSystem.Colors.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, DesignSystem.Spacing.lg)
-                        .padding(.top, DesignSystem.Spacing.sm)
+                    headerSection
                     
-                    // Feed Content
-                    if viewModel.isLoading {
-                        VStack(spacing: DesignSystem.Spacing.lg) {
-                            Spacer()
-                            ProgressView()
-                                .scaleEffect(UIDevice.current.userInterfaceIdiom == .pad ? 1.5 : 1.2)
-                            Text("Loading feed...")
-                                .font(DesignSystem.Typography.bodyLarge)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            Text("This may take a few seconds")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                                .opacity(0.7)
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let error = viewModel.error {
-                        VStack(spacing: DesignSystem.Spacing.lg) {
-                            Spacer()
-                            Image(systemName: viewModel.currentFeedType == .friends ? "person.2.slash" : "exclamationmark.triangle")
-                                .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 64 : 48))
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            
-                            Text(error)
-                                .font(DesignSystem.Typography.bodyLarge)
-                                .foregroundColor(DesignSystem.Colors.textPrimary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, DesignSystem.Spacing.lg)
-                            
-                            if viewModel.currentFeedType == .friends {
-                                Button(action: {
-                                    viewModel.switchFeedType(to: .community)
-                                }) {
-                                    Text("View Community Feed")
-                                        .font(DesignSystem.Typography.bodyMedium)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, DesignSystem.Spacing.lg)
-                                        .padding(.vertical, DesignSystem.Spacing.md)
-                                        .background(DesignSystem.Colors.primary)
-                                        .cornerRadius(DesignSystem.CornerRadius.medium)
-                                }
-                            } else {
-                                Button(action: {
-                                    viewModel.loadFeed()
-                                }) {
-                                    Text("Try Again")
-                                        .font(DesignSystem.Typography.bodyMedium)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, DesignSystem.Spacing.lg)
-                                        .padding(.vertical, DesignSystem.Spacing.md)
-                                        .background(DesignSystem.Colors.primary)
-                                        .cornerRadius(DesignSystem.CornerRadius.medium)
-                                }
-                            }
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if viewModel.filteredReviews.isEmpty {
-                        VStack(spacing: DesignSystem.Spacing.lg) {
-                            Spacer()
-                            Image(systemName: "cup.and.saucer")
-                                .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 64 : 48))
-                                .foregroundColor(DesignSystem.Colors.secondary)
-                            
-                            Text("No reviews yet")
-                                .font(DesignSystem.Typography.headline)
-                                .fontWeight(.bold)
-                                .foregroundColor(DesignSystem.Colors.textPrimary)
-                            
-                            Text("Be the first to review a chai spot!")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                                .multilineTextAlignment(.center)
-                            
-                            Button(action: {
-                                showingAddReview = true
-                            }) {
-                                Text("Add Review")
-                                    .font(DesignSystem.Typography.bodyMedium)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, DesignSystem.Spacing.lg)
-                                    .padding(.vertical, DesignSystem.Spacing.md)
-                                    .background(DesignSystem.Colors.primary)
-                                    .cornerRadius(DesignSystem.CornerRadius.medium)
-                            }
-                            Spacer()
-                        }
+                    // Content
+                    if viewModel.isLoading && viewModel.reviews.isEmpty {
+                        LoadingView("Loading your feed...")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if viewModel.reviews.isEmpty && !viewModel.isLoading {
+                        EmptyStateView(
+                            icon: "cup.and.saucer.fill",
+                            title: "No reviews yet",
+                            message: viewModel.currentFeedType == .friends 
+                                ? "When your friends start reviewing chai spots, they'll appear here."
+                                : "Be the first to review a chai spot in your area!",
+                            actionTitle: "Add a review",
+                            action: { showingAddReview = true }
+                        )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
-                        ScrollView {
-                            LazyVStack(spacing: DesignSystem.Spacing.lg) {
-                                ForEach(viewModel.filteredReviews) { review in
-                                    ReviewCardView(review: review)
-                                        .iPadCardStyle()
-                                }
-                            }
-                            .padding(DesignSystem.Spacing.lg)
-                        }
-                        .refreshable {
-                            // Pull to refresh functionality
-                            viewModel.refreshFeed()
-                        }
+                        feedContent
                     }
                 }
             }
             .navigationBarHidden(true)
-            .sheet(isPresented: $showingAddReview) {
-                NavigationView {
-                    VStack(spacing: DesignSystem.Spacing.lg) {
-                        Text("Add Review")
-                            .font(DesignSystem.Typography.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
-                        
-                        Text("Select a chai spot to review")
-                            .font(DesignSystem.Typography.bodyMedium)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .multilineTextAlignment(.center)
-                        
-                        Button("Go to Search") {
-                            showingAddReview = false
-                            // TODO: Navigate to search tab
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                    }
-                    .padding(DesignSystem.Spacing.xl)
-                    .navigationTitle("Add Review")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Cancel") {
-                                showingAddReview = false
-                            }
-                        }
-                    }
-                }
-                .navigationViewStyle(.stack)
+            .refreshable {
+                viewModel.refreshFeed()
             }
         }
         .navigationViewStyle(.stack)
+        .sheet(isPresented: $showingAddReview) {
+            // Add review sheet would go here
+            Text("Add Review")
+                .font(DesignSystem.Typography.titleLarge)
+        }
         .onAppear {
-            print("📱 FeedView appeared - starting listeners...")
-            viewModel.startListeningForRatingUpdates()
-            viewModel.startListeningForNotifications()
+            if viewModel.reviews.isEmpty {
+                viewModel.refreshFeed()
+            }
         }
-        .onDisappear {
-            // Stop listening for notifications when view disappears
-            viewModel.stopListeningForNotifications()
+    }
+    
+    // MARK: - Header Section
+    private var headerSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            // Breadcrumb / subtitle
+            HStack {
+                Text("Home Page")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .accessibilityLabel("Current page: Home Page")
+                
+                Spacer()
+                
+                // Refresh button
+                Button(action: {
+                    withAnimation(DesignSystem.Animation.standard) {
+                        viewModel.refreshFeed()
+                    }
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundColor(DesignSystem.Colors.primary)
+                        .font(.system(size: 16))
+                        .frame(width: 44, height: 44)
+                        .background(DesignSystem.Colors.primary.opacity(0.1))
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                }
+                .disabled(viewModel.isLoading)
+                .accessibilityLabel("Refresh feed")
+                .accessibilityHint("Double tap to refresh the feed")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Brand title
+            Text("chai finder")
+                .font(DesignSystem.Typography.titleLarge)
+                .fontWeight(.bold)
+                .foregroundColor(DesignSystem.Colors.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("App title: chai finder")
+            
+            // Feed Type Toggle
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text("Feed Type")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .accessibilityLabel("Feed type selector")
+                
+                Picker("Feed Type", selection: $viewModel.currentFeedType) {
+                    Text("Friends")
+                        .tag(FeedType.friends)
+                        .accessibilityLabel("Show friends' reviews")
+                    Text("Community")
+                        .tag(FeedType.community)
+                        .accessibilityLabel("Show community reviews")
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .onChange(of: viewModel.currentFeedType) { newValue in
+                    withAnimation(DesignSystem.Animation.standard) {
+                        viewModel.switchFeedType(to: newValue)
+                    }
+                }
+            }
+            
+            // Search Bar
+            searchBarSection
         }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.background)
+        .iPadOptimized()
+    }
+    
+    // MARK: - Search Bar Section
+    private var searchBarSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
+                    .accessibilityHidden(true)
+                
+                TextField("Search friends' reviews & community posts...", text: $searchText)
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                    .accessibilityLabel("Search reviews")
+                    .accessibilityHint("Type to search through reviews")
+                    .onChange(of: searchText) { newValue in
+                        // Debounced search
+                        Task {
+                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+                            await MainActor.run {
+                                if searchText == newValue {
+                                    viewModel.filterReviews(searchText)
+                                }
+                            }
+                        }
+                    }
+                    .onTapGesture {
+                        showingSearchSuggestions = true
+                    }
+                
+                if !searchText.isEmpty {
+                    Button(action: { 
+                        withAnimation(DesignSystem.Animation.quick) {
+                            searchText = ""
+                            viewModel.filterReviews("")
+                        }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Clear search")
+                    .accessibilityHint("Double tap to clear search text")
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(DesignSystem.Colors.searchBackground)
+            .cornerRadius(DesignSystem.CornerRadius.large)
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.large)
+                    .stroke(DesignSystem.Colors.border, lineWidth: 1)
+            )
+            
+            // Search suggestions
+            if showingSearchSuggestions && searchText.isEmpty {
+                searchSuggestionsView
+            }
+        }
+    }
+    
+    // MARK: - Search Suggestions
+    private var searchSuggestionsView: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            Text("Popular searches")
+                .font(DesignSystem.Typography.caption)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+            
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: DesignSystem.Spacing.xs) {
+                ForEach(["Masala Chai", "Cardamom", "Ginger", "Karak"], id: \.self) { suggestion in
+                    Button(action: {
+                        searchText = suggestion
+                        viewModel.filterReviews(suggestion)
+                        showingSearchSuggestions = false
+                    }) {
+                        Text(suggestion)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                            .background(DesignSystem.Colors.primary.opacity(0.1))
+                            .cornerRadius(DesignSystem.CornerRadius.small)
+                    }
+                    .accessibilityLabel("Search for \(suggestion)")
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .shadow(color: DesignSystem.Shadows.small.color, radius: DesignSystem.Shadows.small.radius, x: DesignSystem.Shadows.small.x, y: DesignSystem.Shadows.small.y)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+    
+    // MARK: - Feed Content
+    private var feedContent: some View {
+        ScrollView {
+            LazyVStack(spacing: DesignSystem.Spacing.md) {
+                ForEach(viewModel.reviews) { review in
+                    ReviewCardView(review: review)
+                        .iPadCardStyle()
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+                
+                // Load more indicator
+                if viewModel.isLoading && !viewModel.reviews.isEmpty {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Loading more...")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                    .frame(maxWidth: .infinity)
+                }
+                
+                // End of feed indicator
+                if !viewModel.reviews.isEmpty && !viewModel.isLoading {
+                    HStack {
+                        Text("You've reached the end")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+            .iPadOptimized()
+        }
+        .scrollIndicators(.hidden)
+    }
+}
+
+// MARK: - Preview
+struct FeedView_Previews: PreviewProvider {
+    static var previews: some View {
+        FeedView()
+            .environmentObject(SessionStore())
     }
 } 

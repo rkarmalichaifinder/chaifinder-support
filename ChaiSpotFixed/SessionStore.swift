@@ -17,12 +17,18 @@ class SessionStore: NSObject, ObservableObject,
     @Published var currentUser: User?
     @Published var userProfile: UserProfile?
     @Published var isLoading = true
+    
+    // Computed property for authentication status
+    var isAuthenticated: Bool {
+        return currentUser != nil
+    }
 
     // MARK: Private state
     private var authStateListener: AuthStateDidChangeListenerHandle?
     private var didInitialize = false
     private var didAttachListener = false
     private var currentNonce: String?
+    private var appleSignInCompletion: ((Bool) -> Void)?
 
     // MARK: Lifecycle
     override init() {
@@ -58,11 +64,19 @@ class SessionStore: NSObject, ObservableObject,
         didAttachListener = true
         print("👂 Attaching auth listener")
 
-        // Immediate snapshot
+        // Immediate snapshot - optimized for faster loading
         let u = Auth.auth().currentUser
         DispatchQueue.main.async {
             self.currentUser = u
-            if let u { self.loadUserProfile(uid: u.uid) } else { self.userProfile = nil }
+            self.isLoading = false // Set loading to false immediately for better UX
+            if let u { 
+                // Load user profile asynchronously without blocking UI
+                Task { 
+                    await self.loadUserProfileAsync(uid: u.uid) 
+                }
+            } else { 
+                self.userProfile = nil 
+            }
         }
 
         // Continuous updates
@@ -70,8 +84,14 @@ class SessionStore: NSObject, ObservableObject,
             guard let self else { return }
             DispatchQueue.main.async {
                 self.currentUser = user
-                if let user { self.loadUserProfile(uid: user.uid) } else { self.userProfile = nil }
                 self.isLoading = false
+                if let user { 
+                    Task { 
+                        await self.loadUserProfileAsync(uid: user.uid) 
+                    }
+                } else { 
+                    self.userProfile = nil 
+                }
                 print("👤 Auth state changed. user: \(user?.uid ?? "nil")")
             }
         }
@@ -93,6 +113,62 @@ class SessionStore: NSObject, ObservableObject,
     }
 
     // MARK: - Firestore Profile
+
+    // Optimized async profile loading
+    func loadUserProfileAsync(uid: String) async {
+        do {
+            let document = try await Firestore.firestore().collection("users").document(uid).getDocument()
+            
+            guard document.exists else {
+                // Create minimal profile asynchronously
+                await createMinimalProfile(uid: uid)
+                return
+            }
+
+            let data = document.data() ?? [:]
+            let profile = UserProfile(
+                id: document.documentID,
+                uid: data["uid"] as? String ?? uid,
+                displayName: data["displayName"] as? String ?? "Unknown User",
+                email: data["email"] as? String ?? "unknown",
+                photoURL: data["photoURL"] as? String,
+                friends: data["friends"] as? [String] ?? [],
+                incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                bio: data["bio"] as? String
+            )
+            
+            await MainActor.run {
+                self.userProfile = profile
+                print("✅ User profile loaded async with bio: \(profile.bio ?? "nil")")
+            }
+        } catch {
+            print("❌ Failed to load user profile async: \(error.localizedDescription)")
+        }
+    }
+    
+    private func createMinimalProfile(uid: String) async {
+        let email = Auth.auth().currentUser?.email ?? "unknown"
+        let display = email.split(separator: "@").first.map(String.init) ?? "User"
+        let newProfile: [String: Any] = [
+            "uid": uid,
+            "displayName": display,
+            "email": email,
+            "photoURL": NSNull(),
+            "friends": [],
+            "incomingRequests": [],
+            "outgoingRequests": [],
+            "bio": NSNull()
+        ]
+        
+        do {
+            try await Firestore.firestore().collection("users").document(uid).setData(newProfile, merge: true)
+            print("✅ Auto-created user profile for \(uid)")
+            await loadUserProfileAsync(uid: uid)
+        } catch {
+            print("❌ Auto-create user profile failed: \(error.localizedDescription)")
+        }
+    }
 
     func loadUserProfile(uid: String) {
         Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
@@ -159,7 +235,7 @@ class SessionStore: NSObject, ObservableObject,
 
     // MARK: - Apple Sign-In (Firebase 12.1, SPM)
 
-    func signInWithApple() {
+    func signInWithApple(completion: @escaping (Bool) -> Void = { _ in }) {
         isLoading = true
 
         let nonce = randomNonceString()
@@ -173,6 +249,9 @@ class SessionStore: NSObject, ObservableObject,
         controller.delegate = self
         controller.presentationContextProvider = self
         controller.performRequests()
+        
+        // Store completion for later use
+        self.appleSignInCompletion = completion
     }
 
     // Delegate: success
@@ -217,6 +296,8 @@ class SessionStore: NSObject, ObservableObject,
                 DispatchQueue.main.async {
                     self.currentUser = authResult.user
                     self.isLoading = false
+                    self.appleSignInCompletion?(true)
+                    self.appleSignInCompletion = nil
                 }
             } else {
                 DispatchQueue.main.async { self.isLoading = false }
@@ -227,7 +308,11 @@ class SessionStore: NSObject, ObservableObject,
     // Delegate: failure
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
         print("❌ Apple Sign-In failed: \(error.localizedDescription)")
-        DispatchQueue.main.async { self.isLoading = false }
+        DispatchQueue.main.async { 
+            self.isLoading = false
+            self.appleSignInCompletion?(false)
+            self.appleSignInCompletion = nil
+        }
     }
 
     // iPhone + iPad anchor
@@ -239,10 +324,11 @@ class SessionStore: NSObject, ObservableObject,
 
     // MARK: - Google Sign-In
 
-    func signInWithGoogle() {
+    func signInWithGoogle(completion: @escaping (Bool) -> Void = { _ in }) {
         guard let presentingVC = UIApplication.shared.connectedScenes
             .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController }).first else {
             print("❌ No root view controller found.")
+            completion(false)
             return
         }
 
@@ -251,6 +337,7 @@ class SessionStore: NSObject, ObservableObject,
             if let error = error {
                 self.isLoading = false
                 print("❌ Google Sign-In failed: \(error.localizedDescription)")
+                completion(false)
                 return
             }
 
@@ -270,11 +357,13 @@ class SessionStore: NSObject, ObservableObject,
                 if let error = error {
                     self.isLoading = false
                     self.handleAuthError(error, pendingCredential: credential)
+                    completion(false)
                     return
                 }
                 DispatchQueue.main.async {
                     self.currentUser = authResult?.user
                     self.isLoading = false
+                    completion(true)
                 }
             }
         }
@@ -391,6 +480,95 @@ class SessionStore: NSObject, ObservableObject,
         } catch {
             print("❌ Failed to load saved spots count: \(error.localizedDescription)")
             return 0
+        }
+    }
+    
+    // MARK: - Taste Profile
+    
+    func saveTasteProfile(creaminess: Int, strength: Int, flavorNotes: [String]) async -> Bool {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            print("❌ No current user found for taste profile")
+            return false
+        }
+        
+        do {
+            let tasteData: [String: Any] = [
+                "hasTasteSetup": true,
+                "tasteVector": [creaminess, strength], // Only creaminess and strength
+                "topTasteTags": flavorNotes,
+                "privacyDefaults": [
+                    "reviewsDefaultVisibility": "public",
+                    "allowFriendsSeeAll": true
+                ]
+            ]
+            
+            try await Firestore.firestore().collection("users").document(uid).updateData(tasteData)
+            print("✅ Taste profile saved successfully")
+            
+            // Reload user profile to include taste data
+            await MainActor.run {
+                self.loadUserProfile(uid: uid)
+            }
+            return true
+        } catch {
+            print("❌ Failed to save taste profile: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    func loadUserProfile(uid: String, completion: @escaping (UserProfile?) -> Void) {
+        Firestore.firestore().collection("users").document(uid).getDocument { snapshot, error in
+            if let error = error {
+                print("❌ Failed to load user profile: \(error.localizedDescription)")
+                completion(nil)
+                return
+            }
+
+            guard let doc = snapshot, doc.exists else {
+                // Create minimal profile so edits persist
+                let email = Auth.auth().currentUser?.email ?? "unknown"
+                let display = email.split(separator: "@").first.map(String.init) ?? "User"
+                let newProfile: [String: Any] = [
+                    "uid": uid,
+                    "displayName": display,
+                    "email": email,
+                    "photoURL": NSNull(),
+                    "friends": [],
+                    "incomingRequests": [],
+                    "outgoingRequests": [],
+                    "bio": NSNull(),
+                    "hasTasteSetup": false,
+                    "tasteVector": NSNull(),
+                    "topTasteTags": NSNull()
+                ]
+                Firestore.firestore().collection("users").document(uid).setData(newProfile, merge: true) { err in
+                    if let err { print("❌ Auto-create user profile failed: \(err.localizedDescription)") ; return }
+                    print("✅ Auto-created user profile for \(uid)")
+                    self.loadUserProfile(uid: uid, completion: completion)
+                }
+                return
+            }
+
+            let data = doc.data() ?? [:]
+            let profile = UserProfile(
+                id: doc.documentID,
+                uid: data["uid"] as? String ?? uid,
+                displayName: data["displayName"] as? String ?? "Unknown User",
+                email: data["email"] as? String ?? "unknown",
+                photoURL: data["photoURL"] as? String,
+                friends: data["friends"] as? [String] ?? [],
+                incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                bio: data["bio"] as? String,
+                hasTasteSetup: data["hasTasteSetup"] as? Bool ?? false,
+                tasteVector: data["tasteVector"] as? [Int],
+                topTasteTags: data["topTasteTags"] as? [String]
+            )
+            DispatchQueue.main.async {
+                self.userProfile = profile
+                print("✅ User profile loaded with bio: \(profile.bio ?? "nil")")
+                completion(profile)
+            }
         }
     }
 

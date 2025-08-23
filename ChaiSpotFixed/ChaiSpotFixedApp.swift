@@ -7,7 +7,7 @@ struct ChaiSpotFixedApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootRouter()
                 .environmentObject(sessionStore)
                 .onAppear {
                     sessionStore.initializeIfNeeded()

@@ -206,34 +206,42 @@ struct FriendRatingsView: View {
         
         // Add retry logic for permission issues
         func attemptLoad(retryCount: Int = 0) {
-            db.collection("chaiFinder").document(spotId).getDocument { snapshot, error in
+            // Try both collections - chaiFinder and chaiSpots
+            let collections = ["chaiFinder", "chaiSpots"]
+            var currentCollectionIndex = 0
+            
+            func tryNextCollection() {
+                guard currentCollectionIndex < collections.count else {
+                    // All collections failed, use fallback
+                    let fallbackName = "Chai Spot #\(spotId.prefix(6))"
+                    let fallbackAddress = "Tap to view details"
+                    self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
+                    
+                    let spot = ChaiSpot(
+                        id: spotId,
+                        name: fallbackName,
+                        address: fallbackAddress,
+                        latitude: 0.0,
+                        longitude: 0.0,
+                        chaiTypes: [],
+                        averageRating: 0.0,
+                        ratingCount: 0
+                    )
+                    completion(spot)
+                    return
+                }
+                
+                let collectionName = collections[currentCollectionIndex]
+                currentCollectionIndex += 1
+                
+                db.collection(collectionName).document(spotId).getDocument { snapshot, error in
                 DispatchQueue.main.async {
                     self.loadingSpots.remove(spotId)
                     
                     if let error = error {
-                        // Retry once for permission issues
-                        if retryCount == 0 && error.localizedDescription.contains("permissions") {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: DispatchWorkItem {
-                                attemptLoad(retryCount: 1)
-                            })
-                            return
-                        }
-                        
-                        let fallbackName = "Chai Spot #\(spotId.prefix(6))"
-                        let fallbackAddress = "Tap to view details"
-                        self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
-                        
-                        let spot = ChaiSpot(
-                            id: spotId,
-                            name: fallbackName,
-                            address: fallbackAddress,
-                            latitude: 0.0,
-                            longitude: 0.0,
-                            chaiTypes: [],
-                            averageRating: 0.0,
-                            ratingCount: 0
-                        )
-                        completion(spot)
+                        // Try the next collection if this one failed
+                        print("Failed to load from collection \(collections[currentCollectionIndex - 1]): \(error.localizedDescription)")
+                        tryNextCollection()
                         return
                     }
                     
@@ -243,21 +251,9 @@ struct FriendRatingsView: View {
                           let latitude = data["latitude"] as? Double,
                           let longitude = data["longitude"] as? Double,
                           let chaiTypes = data["chaiTypes"] as? [String] else {
-                        let fallbackName = "Chai Spot #\(spotId.prefix(6))"
-                        let fallbackAddress = "Tap to view details"
-                        self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
-                        
-                        let spot = ChaiSpot(
-                            id: spotId,
-                            name: fallbackName,
-                            address: fallbackAddress,
-                            latitude: 0.0,
-                            longitude: 0.0,
-                            chaiTypes: [],
-                            averageRating: 0.0,
-                            ratingCount: 0
-                        )
-                        completion(spot)
+                        // Data is missing, try the next collection
+                        print("Missing data from collection \(collections[currentCollectionIndex - 1])")
+                        tryNextCollection()
                         return
                     }
                     
@@ -339,7 +335,7 @@ struct FriendRatingCard: View {
                     
                     // Chai Strength Rating
                     HStack {
-                        Image(systemName: "leaf.fill")
+                        Image(systemName: "flame.fill")
                             .foregroundColor(DesignSystem.Colors.chaiStrengthRating)
                             .font(.caption)
                         if let chaiStrengthRating = rating.chaiStrengthRating {
@@ -353,49 +349,19 @@ struct FriendRatingCard: View {
                                 .italic()
                         }
                     }
-                }
-                
-                // Flavor Notes - always show with "NR" if missing
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text("Flavor Notes:")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
                     
+                    // Flavor Notes
                     if let flavorNotes = rating.flavorNotes, !flavorNotes.isEmpty {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 4) {
-                            ForEach(flavorNotes, id: \.self) { note in
-                                Text(note)
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(DesignSystem.Colors.flavorNotesRating)
-                                    .cornerRadius(DesignSystem.CornerRadius.small)
-                            }
+                        HStack {
+                            Image(systemName: "leaf.fill")
+                                .foregroundColor(DesignSystem.Colors.flavorNotesRating)
+                                .font(.caption)
+                            Text("Notes: \(flavorNotes.joined(separator: ", "))")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .lineLimit(2)
                         }
-                    } else {
-                        Text("NR")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .italic()
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(DesignSystem.Colors.border.opacity(0.3))
-                            .cornerRadius(DesignSystem.CornerRadius.small)
                     }
-                }
-                
-                if let comment = rating.comment, !comment.isEmpty {
-                    Text(comment)
-                        .font(DesignSystem.Typography.bodyMedium)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .lineLimit(3)
-                }
-                
-                if let timestamp = rating.timestamp {
-                    Text(timestamp, style: .relative)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
             }
             .padding(DesignSystem.Spacing.md)
@@ -408,52 +374,54 @@ struct FriendRatingCard: View {
         }
         .buttonStyle(PlainButtonStyle())
         .onAppear {
-            if !isLoading && (spotName == "Loading..." || spotAddress == "Loading...") {
-                loadSpotDetails()
-            }
+            loadSpotDetails()
         }
     }
     
     private func loadSpotDetails() {
-        guard !isLoading else { return }
-        isLoading = true
-        
+        // Load spot details from cache or fetch them
         let db = Firestore.firestore()
         
-        // Add retry logic for permission issues
-        func attemptLoad(retryCount: Int = 0) {
-            db.collection("chaiFinder").document(rating.spotId).getDocument { snapshot, error in
+        // Try both collections
+        let collections = ["chaiFinder", "chaiSpots"]
+        var currentCollectionIndex = 0
+        
+        func tryNextCollection() {
+            guard currentCollectionIndex < collections.count else {
+                // All collections failed, use fallback
+                spotName = "Unknown Spot"
+                spotAddress = "Tap to view details"
+                return
+            }
+            
+            let collectionName = collections[currentCollectionIndex]
+            currentCollectionIndex += 1
+            
+            db.collection(collectionName).document(rating.spotId).getDocument { snapshot, error in
                 DispatchQueue.main.async {
-                    self.isLoading = false
-                    
                     if let error = error {
-                        // Retry once for permission issues
-                        if retryCount == 0 && error.localizedDescription.contains("permissions") {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: DispatchWorkItem {
-                                attemptLoad(retryCount: 1)
-                            })
-                            return
-                        }
-                        
-                        self.spotName = "Chai Spot #\(self.rating.spotId.prefix(6))"
-                        self.spotAddress = "Tap to view details"
+                        print("Failed to load from collection \(collectionName): \(error.localizedDescription)")
+                        tryNextCollection()
                         return
                     }
                     
                     guard let data = snapshot?.data(),
                           let name = data["name"] as? String,
                           let address = data["address"] as? String else {
-                        self.spotName = "Chai Spot #\(self.rating.spotId.prefix(6))"
-                        self.spotAddress = "Tap to view details"
+                        print("Missing data from collection \(collectionName)")
+                        tryNextCollection()
                         return
                     }
                     
-                    self.spotName = name
-                    self.spotAddress = address
+                    // Successfully loaded spot details
+                    spotName = name
+                    spotAddress = address
                 }
             }
         }
         
-        attemptLoad()
+        tryNextCollection()
     }
+}
+
 } 
