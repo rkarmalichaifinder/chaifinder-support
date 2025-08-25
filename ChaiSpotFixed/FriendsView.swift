@@ -195,6 +195,14 @@ struct FriendsView: View {
                 }
                 
                 setupIncomingRequestsListener()
+                
+                // Re-apply search if there's active search text
+                if !searchText.isEmpty {
+                    print("🔍 Re-applying search on view appear: '\(searchText)'")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        performSearch(searchText)
+                    }
+                }
             }
             .sheet(isPresented: $showingFriendDetails) {
                 if let friend = selectedFriend {
@@ -1100,11 +1108,11 @@ struct FriendsView: View {
                     .font(.system(size: 14))
                     .accessibilityHidden(true)
                 
-                TextField("Search for users by name or email...", text: $searchText)
+                TextField("Search for users by name, email, or bio...", text: $searchText)
                     .font(DesignSystem.Typography.bodyMedium)
                     .foregroundColor(DesignSystem.Colors.textPrimary)
                     .accessibilityLabel("Search for users")
-                    .accessibilityHint("Type to search for users by name or email")
+                    .accessibilityHint("Type to search for users by name, email, or bio")
                     .onChange(of: searchText) { newValue in
                         // Debounced search
                         Task {
@@ -1118,6 +1126,12 @@ struct FriendsView: View {
                     }
                     .onSubmit {
                         performSearch(searchText)
+                    }
+                    .onTapGesture {
+                        // Show search suggestions when tapping the search field
+                        if searchText.isEmpty {
+                            // Could add search suggestions here
+                        }
                     }
                 
                 if isSearching {
@@ -1155,6 +1169,16 @@ struct FriendsView: View {
                     .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1)
             )
             
+            // Search feedback
+            if !searchText.isEmpty {
+                searchFeedbackView
+            }
+            
+            // Search suggestions (when search field is empty)
+            if searchText.isEmpty {
+                searchSuggestionsView
+            }
+            
             // Search Results
             if !searchText.isEmpty && !searchResults.isEmpty {
                 searchResultsSection
@@ -1162,6 +1186,98 @@ struct FriendsView: View {
                 noResultsSection
             }
         }
+    }
+    
+    // MARK: - Search Feedback View
+    private var searchFeedbackView: some View {
+        HStack {
+            Image(systemName: "info.circle.fill")
+                .foregroundColor(DesignSystem.Colors.primary)
+                .font(.system(size: 12))
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Found \(searchResults.count) results")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                
+                if !searchText.isEmpty {
+                    Text("Searching through \(users.count) local users + Firestore")
+                        .font(DesignSystem.Typography.caption2)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+            }
+            
+            Spacer()
+            
+            if searchResults.count > 0 {
+                Text("Tap to clear")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(DesignSystem.Colors.primary)
+                    .onTapGesture {
+                        withAnimation(DesignSystem.Animation.quick) {
+                            searchText = ""
+                            searchResults = []
+                        }
+                    }
+                }
+            }
+        .padding(.horizontal, 4)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+    
+    // MARK: - Search Suggestions View
+    private var searchSuggestionsView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("💡 Search tips")
+                .font(DesignSystem.Typography.caption)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .padding(.horizontal, 4)
+            
+            Text("• Try searching by name (e.g., 'John', 'Smith')")
+                .font(DesignSystem.Typography.caption2)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .padding(.horizontal, 4)
+            
+            Text("• Search by email (e.g., 'john@example.com')")
+                .font(DesignSystem.Typography.caption2)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .padding(.horizontal, 4)
+            
+            Text("• Use partial matches (e.g., 'joh' will find 'John')")
+                .font(DesignSystem.Typography.caption2)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .padding(.horizontal, 4)
+            
+            // Debug info (development only)
+            #if DEBUG
+            HStack {
+                Text("🔍 Debug:")
+                    .font(DesignSystem.Typography.caption2)
+                    .foregroundColor(DesignSystem.Colors.primary)
+                
+                Text("\(users.count) local users")
+                    .font(DesignSystem.Typography.caption2)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                Button("Test Search") {
+                    testSearchFunctionality()
+                }
+                .font(DesignSystem.Typography.caption2)
+                .foregroundColor(DesignSystem.Colors.primary)
+                .padding(.horizontal, 4)
+                
+                Button("Stats") {
+                    let stats = getSearchStats()
+                    print("🔍 FriendsView Search Stats: \(stats)")
+                }
+                .font(DesignSystem.Typography.caption2)
+                .foregroundColor(DesignSystem.Colors.primary)
+                .padding(.horizontal, 4)
+            }
+            .padding(.horizontal, 4)
+            #endif
+        }
+        .padding(.top, 4)
     }
     
     // MARK: - Search Results Section
@@ -1252,20 +1368,51 @@ struct FriendsView: View {
             return
         }
         
+        print("🔍 Performing search for: '\(query)'")
         isSearching = true
         
-        // Search in existing users first
-        let filteredUsers = users.filter { user in
-            let displayName = user.displayName.lowercased()
-            let email = user.email.lowercased()
-            let queryLower = query.lowercased()
-            
-            return displayName.contains(queryLower) || email.contains(queryLower)
+        // Enhanced search with multiple search strategies
+        let searchResults = performEnhancedSearch(query: query)
+        
+        // Update UI on main thread
+        DispatchQueue.main.async {
+            self.searchResults = searchResults
+            self.isSearching = false
+            print("🔍 Search completed: Found \(searchResults.count) results for '\(query)'")
+        }
+    }
+    
+    /// Enhanced search that combines multiple search strategies
+    private func performEnhancedSearch(query: String) -> [UserProfile] {
+        let queryLower = query.lowercased().trimmingCharacters(in: .whitespaces)
+        let searchWords = queryLower.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        
+        // If no valid search words, return empty results
+        if searchWords.isEmpty {
+            return []
         }
         
-        // Remove current user and already friends/requested users
+        print("🔍 Search words: \(searchWords)")
+        
+        // Strategy 1: Local search in existing users
+        let localResults = performLocalSearch(query: queryLower, searchWords: searchWords)
+        print("🔍 Local search results: \(localResults.count)")
+        
+        // Strategy 2: Firestore search for additional users
+        let firestoreResults = performFirestoreSearch(query: queryLower, searchWords: searchWords)
+        print("🔍 Firestore search results: \(firestoreResults.count)")
+        
+        // Combine and deduplicate results
+        var allResults = localResults
+        for firestoreUser in firestoreResults {
+            if !allResults.contains(where: { $0.uid == firestoreUser.uid }) {
+                allResults.append(firestoreUser)
+            }
+        }
+        
+        // Filter out current user and existing connections
         let currentUserId = currentUser?.uid ?? ""
-        let filteredResults = filteredUsers.filter { user in
+        let filteredResults = allResults.filter { user in
             user.uid != currentUserId &&
             !(currentUser?.friends?.contains(user.uid) ?? false) &&
             !sentRequests.contains(user.uid) &&
@@ -1273,41 +1420,57 @@ struct FriendsView: View {
             !outgoingRequests.contains { $0.uid == user.uid }
         }
         
-        // Also search in Firestore for users not in the current list
-        searchFirestoreUsers(query: query) { firestoreUsers in
-            DispatchQueue.main.async {
-                // Combine local and Firestore results, removing duplicates
-                var allResults = filteredResults
-                
-                for firestoreUser in firestoreUsers {
-                    if !allResults.contains(where: { $0.uid == firestoreUser.uid }) &&
-                       firestoreUser.uid != currentUserId &&
-                       !(self.currentUser?.friends?.contains(firestoreUser.uid) ?? false) &&
-                       !self.sentRequests.contains(firestoreUser.uid) &&
-                       !self.incomingRequests.contains { $0.uid == firestoreUser.uid } &&
-                       !self.outgoingRequests.contains { $0.uid == firestoreUser.uid } {
-                        allResults.append(firestoreUser)
-                    }
-                }
-                
-                self.searchResults = allResults
-                self.isSearching = false
+        print("🔍 Final filtered results: \(filteredResults.count)")
+        
+        // Sort results by relevance
+        return sortResultsByRelevance(filteredResults, searchWords: searchWords)
+    }
+    
+    /// Local search in existing users array
+    private func performLocalSearch(query: String, searchWords: [String]) -> [UserProfile] {
+        return users.filter { user in
+            // Create searchable text for the user
+            let searchableText = createSearchableText(for: user)
+            
+            // Check if ALL search words are found
+            let allWordsFound = searchWords.allSatisfy { searchWord in
+                searchableText.contains(searchWord)
             }
+            
+            return allWordsFound
         }
     }
     
-    private func searchFirestoreUsers(query: String, completion: @escaping ([UserProfile]) -> Void) {
+    /// Create comprehensive searchable text for a user
+    private func createSearchableText(for user: UserProfile) -> String {
+        var searchText = user.displayName.lowercased()
+        searchText += " " + user.email.lowercased()
+        
+        // Add additional searchable fields if available
+        if let bio = user.bio {
+            searchText += " " + bio.lowercased()
+        }
+        
+        return searchText
+    }
+    
+    /// Enhanced Firestore search with better query strategies
+    private func performFirestoreSearch(query: String, searchWords: [String]) -> [UserProfile] {
         let db = Firestore.firestore()
         var results: [UserProfile] = []
+        let group = DispatchGroup()
         
-        // Search by display name
+        // Search by display name (prefix search)
+        group.enter()
         db.collection("users")
             .whereField("displayName", isGreaterThanOrEqualTo: query)
-            .whereField("displayName", isLessThan: query + "z")
+            .whereField("displayName", isLessThan: query + "\u{f8ff}")
+            .limit(to: 20)
             .getDocuments { snapshot, error in
+                defer { group.leave() }
+                
                 if let error = error {
                     print("❌ Error searching users by name: \(error.localizedDescription)")
-                    completion(results)
                     return
                 }
                 
@@ -1318,32 +1481,113 @@ struct FriendsView: View {
                         }
                     }
                 }
+            }
+        
+        // Search by email (prefix search)
+        group.enter()
+        db.collection("users")
+            .whereField("email", isGreaterThanOrEqualTo: query)
+            .whereField("email", isLessThan: query + "\u{f8ff}")
+            .limit(to: 20)
+            .getDocuments { snapshot, error in
+                defer { group.leave() }
                 
-                // Search by email
-                db.collection("users")
-                    .whereField("email", isGreaterThanOrEqualTo: query)
-                    .whereField("email", isLessThan: query + "z")
-                    .getDocuments { snapshot, error in
-                        if let error = error {
-                            print("❌ Error searching users by email: \(error.localizedDescription)")
-                            completion(results)
-                            return
-                        }
-                        
-                        if let documents = snapshot?.documents {
-                            for document in documents {
-                                if let userProfile = self.createUserProfile(from: document) {
-                                    // Avoid duplicates
-                                    if !results.contains(where: { $0.uid == userProfile.uid }) {
-                                        results.append(userProfile)
-                                    }
-                                }
+                if let error = error {
+                    print("❌ Error searching users by email: \(error.localizedDescription)")
+                    return
+                }
+                
+                if let documents = snapshot?.documents {
+                    for document in documents {
+                        if let userProfile = self.createUserProfile(from: document) {
+                            // Avoid duplicates
+                            if !results.contains(where: { $0.uid == userProfile.uid }) {
+                                results.append(userProfile)
                             }
                         }
-                        
-                        completion(results)
                     }
+                }
             }
+        
+        // Wait for both queries to complete
+        group.wait()
+        return results
+    }
+    
+    /// Sort search results by relevance
+    private func sortResultsByRelevance(_ results: [UserProfile], searchWords: [String]) -> [UserProfile] {
+        return results.sorted { first, second in
+            let firstScore = calculateUserSearchRelevance(first, searchWords: searchWords)
+            let secondScore = calculateUserSearchRelevance(second, searchWords: searchWords)
+            return firstScore > secondScore
+        }
+    }
+    
+    /// Calculate search relevance score for a user
+    private func calculateUserSearchRelevance(_ user: UserProfile, searchWords: [String]) -> Int {
+        var score = 0
+        let searchText = searchWords.joined(separator: " ").lowercased()
+        
+        // Exact matches get highest scores
+        if user.displayName.lowercased().contains(searchText) { score += 100 }
+        if user.email.lowercased().contains(searchText) { score += 80 }
+        if let bio = user.bio, bio.lowercased().contains(searchText) { score += 60 }
+        
+        // Partial word matches get lower scores
+        for word in searchWords {
+            if user.displayName.lowercased().contains(word) { score += 10 }
+            if user.email.lowercased().contains(word) { score += 8 }
+            if let bio = user.bio, bio.lowercased().contains(word) { score += 6 }
+        }
+        
+        return score
+    }
+    
+    /// Test search functionality for debugging
+    private func testSearchFunctionality() {
+        print("🧪 Testing FriendsView search functionality...")
+        print("🧪 Current users count: \(users.count)")
+        print("🧪 Current search results count: \(searchResults.count)")
+        print("🧪 Current search text: '\(searchText)'")
+        
+        // Test with a simple search
+        let testQuery = "test"
+        print("🧪 Testing search for '\(testQuery)'")
+        performSearch(testQuery)
+        
+        // Test with first user's name
+        if let firstUser = users.first {
+            let searchTerm = String(firstUser.displayName.prefix(3))
+            print("🧪 Testing search for '\(searchTerm)' (first 3 chars of '\(firstUser.displayName)')")
+            performSearch(searchTerm)
+        } else {
+            print("🧪 No users available for testing")
+        }
+        
+        // Test with empty search
+        print("🧪 Testing empty search")
+        performSearch("")
+    }
+    
+    /// Get search statistics for debugging
+    private func getSearchStats() -> [String: Any] {
+        let currentUserId = currentUser?.uid ?? ""
+        let friendsCount = currentUser?.friends?.count ?? 0
+        let sentRequestsCount = sentRequests.count
+        let incomingRequestsCount = incomingRequests.count
+        let outgoingRequestsCount = outgoingRequests.count
+        
+        return [
+            "totalUsers": users.count,
+            "currentUser": currentUser?.displayName ?? "nil",
+            "friendsCount": friendsCount,
+            "sentRequestsCount": sentRequestsCount,
+            "incomingRequestsCount": incomingRequestsCount,
+            "outgoingRequestsCount": outgoingRequestsCount,
+            "searchResultsCount": searchResults.count,
+            "searchText": searchText,
+            "isSearching": isSearching
+        ]
     }
     
     private func createUserProfile(from document: QueryDocumentSnapshot) -> UserProfile? {

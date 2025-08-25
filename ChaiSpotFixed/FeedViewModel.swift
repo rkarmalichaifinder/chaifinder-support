@@ -27,6 +27,239 @@ class FeedViewModel: ObservableObject {
     private var loadingSpots: Set<String> = []
     private var hasLoadedData = false
     
+    // MARK: - Data Migration Functions
+    
+    /// Backfills existing ratings documents with default visibility and deleted fields
+    /// This should be run once to migrate old data to the new schema
+    func backfillRatingsDefaults(batchSize: Int = 300, completion: @escaping (Error?) -> Void) {
+        print("🔄 Starting ratings data migration...")
+        let db = Firestore.firestore()
+        var lastDoc: DocumentSnapshot?
+        var totalProcessed = 0
+        var totalUpdated = 0
+
+        func processBatch() {
+            var query: Query = db.collection("ratings")
+                .order(by: FieldPath.documentID())
+                .limit(to: batchSize)
+
+            if let last = lastDoc { 
+                query = query.start(afterDocument: last) 
+            }
+
+            query.getDocuments { snapshot, error in
+                if let error = error { 
+                    print("❌ Migration error: \(error.localizedDescription)")
+                    completion(error)
+                    return 
+                }
+                
+                guard let snapshot = snapshot, !snapshot.documents.isEmpty else { 
+                    print("✅ Migration completed! Total processed: \(totalProcessed), Total updated: \(totalUpdated)")
+                    completion(nil)
+                    return 
+                }
+
+                let batch = db.batch()
+                var batchUpdated = 0
+                
+                for doc in snapshot.documents {
+                    let data = doc.data()
+                    var needsUpdate = false
+                    var patch: [String: Any] = [:]
+
+                    // Add visibility field if missing (default to "public")
+                    if data["visibility"] == nil {
+                        patch["visibility"] = "public"
+                        needsUpdate = true
+                    }
+                    
+                    // Add deleted field if missing (default to false)
+                    if data["deleted"] == nil {
+                        patch["deleted"] = false
+                        needsUpdate = true
+                    }
+                    
+                    if needsUpdate { 
+                        batch.updateData(patch, forDocument: doc.reference)
+                        batchUpdated += 1
+                    }
+                }
+
+                if batchUpdated > 0 {
+                    batch.commit { batchError in
+                        if let batchError = batchError { 
+                            print("❌ Batch commit error: \(batchError.localizedDescription)")
+                            completion(batchError)
+                            return 
+                        }
+                        
+                        totalProcessed += snapshot.documents.count
+                        totalUpdated += batchUpdated
+                        print("🔄 Processed batch: \(snapshot.documents.count) docs, updated: \(batchUpdated). Total: \(totalProcessed)/\(totalUpdated)")
+                        
+                        lastDoc = snapshot.documents.last
+                        processBatch()
+                    }
+                } else {
+                    // No updates needed in this batch, continue to next
+                    totalProcessed += snapshot.documents.count
+                    lastDoc = snapshot.documents.last
+                    processBatch()
+                }
+            }
+        }
+        
+        processBatch()
+    }
+    
+    // MARK: - Enhanced Query Functions with Fallbacks
+    
+    /// Loads friend ratings with fallback to legacy data if filtered query returns no results
+    private func loadFriendRatingsWithFallback(currentUserId: String, friends: [String]) {
+        // First try the filtered query
+        let filteredQuery = db.collection("ratings")
+            .whereField("userId", in: friends)
+            .whereField("visibility", in: ["public", "friends"])
+            .whereField("deleted", isEqualTo: false)
+            .order(by: "timestamp", descending: true)
+            .limit(to: 20)
+        
+        filteredQuery.getDocuments { [weak self] snapshot, error in
+            if let error = error {
+                print("❌ Filtered friends query failed: \(error.localizedDescription)")
+                // Fallback to legacy query
+                self?.loadLegacyFriendRatings(currentUserId: currentUserId, friends: friends)
+                return
+            }
+            
+            guard let documents = snapshot?.documents, !documents.isEmpty else {
+                print("⚠️ Filtered friends query returned no results, trying legacy query...")
+                // Fallback to legacy query
+                self?.loadLegacyFriendRatings(currentUserId: currentUserId, friends: friends)
+                return
+            }
+            
+            // Success with filtered query
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                self?.isSwitchingFeedType = false
+                self?.processFriendRatingDocuments(documents)
+                self?.hasLoadedData = true
+                print("✅ Friend feed loaded successfully with \(documents.count) filtered ratings")
+            }
+        }
+    }
+    
+    /// Legacy fallback for friend ratings (no visibility/deleted filters)
+    private func loadLegacyFriendRatings(currentUserId: String, friends: [String]) {
+        print("🔄 Loading legacy friend ratings...")
+        let legacyQuery = db.collection("ratings")
+            .whereField("userId", in: friends)
+            .order(by: "timestamp", descending: true)
+            .limit(to: 20)
+        
+        legacyQuery.getDocuments { [weak self] snapshot, error in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                self?.isSwitchingFeedType = false
+                
+                if let error = error {
+                    self?.reviews = []
+                    self?.filteredReviews = []
+                    self?.error = "Unable to load friend reviews. Please try again."
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    self?.reviews = []
+                    self?.filteredReviews = []
+                    self?.error = "Your friends haven't posted any reviews yet."
+                    return
+                }
+                
+                if documents.isEmpty {
+                    self?.reviews = []
+                    self?.filteredReviews = []
+                    self?.error = "Your friends haven't posted any reviews yet."
+                    return
+                }
+                
+                self?.processFriendRatingDocuments(documents)
+                self?.hasLoadedData = true
+                print("✅ Friend feed loaded successfully with \(documents.count) legacy ratings")
+            }
+        }
+    }
+    
+    /// Loads community ratings with fallback to legacy data
+    private func loadCommunityRatingsWithFallback() {
+        let initialLimit = initialLoadComplete ? 20 : 10
+        
+        // Try filtered query first
+        let filteredQuery = db.collection("ratings")
+            .whereField("visibility", isEqualTo: "public")
+            .whereField("deleted", isEqualTo: false)
+            .order(by: "timestamp", descending: true)
+            .limit(to: initialLimit)
+        
+        filteredQuery.getDocuments { [weak self] snapshot, error in
+            if let error = error {
+                print("❌ Filtered community query failed: \(error.localizedDescription)")
+                // Fallback to legacy query
+                self?.loadLegacyCommunityRatings(limit: initialLimit)
+                return
+            }
+            
+            guard let documents = snapshot?.documents, !documents.isEmpty else {
+                print("⚠️ Filtered community query returned no results, trying legacy query...")
+                // Fallback to legacy query
+                self?.loadLegacyCommunityRatings(limit: initialLimit)
+                return
+            }
+            
+            // Success with filtered query
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                self?.isSwitchingFeedType = false
+            }
+            self?.processRatingDocuments(documents)
+            self?.hasLoadedData = true
+            self?.initialLoadComplete = true
+            print("✅ Community feed loaded successfully with \(documents.count) filtered ratings")
+        }
+    }
+    
+    /// Legacy fallback for community ratings
+    private func loadLegacyCommunityRatings(limit: Int) {
+        print("🔄 Loading legacy community ratings...")
+        db.collection("ratings")
+            .order(by: "timestamp", descending: true)
+            .limit(to: limit)
+            .getDocuments { [weak self] snapshot, error in
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                    self?.isSwitchingFeedType = false
+                    
+                    if let error = error {
+                        self?.error = error.localizedDescription
+                        return
+                    }
+                    
+                    guard let documents = snapshot?.documents else {
+                        self?.reviews = []
+                        self?.filteredReviews = []
+                        return
+                    }
+                    
+                    self?.processRatingDocuments(documents)
+                    self?.hasLoadedData = true
+                    self?.initialLoadComplete = true
+                    print("✅ Community feed loaded successfully with \(documents.count) legacy ratings")
+                }
+            }
+    }
+    
     // Add a method to refresh the feed
     func refreshFeed() {
         print("🔄 refreshFeed() called - clearing cache and reloading...")
@@ -40,6 +273,24 @@ class FeedViewModel: ObservableObject {
     func refreshAfterRatingSubmission() {
         print("🔄 Manually refreshing feed after rating submission...")
         refreshFeed()
+    }
+    
+    // MARK: - Debug and Migration Functions
+    
+    /// Triggers the data migration process (call this once to fix the feed switching issue)
+    func triggerDataMigration() {
+        print("🚀 Triggering data migration...")
+        backfillRatingsDefaults { error in
+            if let error = error {
+                print("❌ Migration failed: \(error.localizedDescription)")
+            } else {
+                print("✅ Migration completed successfully!")
+                // Refresh the feed after migration
+                DispatchQueue.main.async {
+                    self.refreshFeed()
+                }
+            }
+        }
     }
     
     // Add a method to listen for rating updates
@@ -224,42 +475,8 @@ class FeedViewModel: ObservableObject {
                     return
                 }
                 
-                // Load ratings from friends
-                self.db.collection("ratings")
-                    .whereField("userId", in: friends)
-                    .order(by: "timestamp", descending: true)
-                    .limit(to: 20)
-                    .getDocuments { snapshot, error in
-                        DispatchQueue.main.async(execute: DispatchWorkItem {
-                            self.isLoading = false
-                            self.isSwitchingFeedType = false
-                            
-                            if let error = error {
-                                self.reviews = []
-                                self.filteredReviews = []
-                                self.error = "Unable to load friend reviews. Please try again."
-                                return
-                            }
-                            
-                            guard let documents = snapshot?.documents else {
-                                self.reviews = []
-                                self.filteredReviews = []
-                                self.error = "Your friends haven't posted any reviews yet."
-                                return
-                            }
-                            
-                            if documents.isEmpty {
-                                self.reviews = []
-                                self.filteredReviews = []
-                                self.error = "Your friends haven't posted any reviews yet."
-                                return
-                            }
-                            
-                            self.processFriendRatingDocuments(documents)
-                            self.hasLoadedData = true
-                            print("✅ Friend feed loaded successfully with \(documents.count) ratings")
-                        })
-                    }
+                // Use enhanced query with fallback
+                self.loadFriendRatingsWithFallback(currentUserId: currentUserId, friends: friends)
             })
         }
     }
@@ -296,88 +513,15 @@ class FeedViewModel: ObservableObject {
                     return
                 }
                 
-                // Load ratings from friends (respect privacy settings)
-                self.db.collection("ratings")
-                    .whereField("userId", in: friends)
-                    .whereField("visibility", in: ["public", "friends"]) // Show public and friends-only reviews
-                    .order(by: "timestamp", descending: true)
-                    .limit(to: 20)
-                    .getDocuments { snapshot, error in
-                        DispatchQueue.main.async(execute: DispatchWorkItem {
-                            self.isLoading = false
-                            self.isSwitchingFeedType = false
-                            
-                            if let error = error {
-                                self.reviews = []
-                                self.filteredReviews = []
-                                self.error = "Unable to load friend reviews. Please try again."
-                                return
-                            }
-                            
-                            guard let documents = snapshot?.documents else {
-                                self.reviews = []
-                                self.filteredReviews = []
-                                self.error = "Your friends haven't posted any reviews yet."
-                                return
-                            }
-                            
-                            if documents.isEmpty {
-                                self.reviews = []
-                                self.filteredReviews = []
-                                self.error = "Your friends haven't posted any reviews yet."
-                                return
-                            }
-                            
-                            self.processFriendRatingDocuments(documents)
-                            self.hasLoadedData = true
-                            print("✅ Friend feed loaded successfully with \(documents.count) ratings")
-                        })
-                    }
+                // Use enhanced query with fallback
+                self.loadFriendRatingsWithFallback(currentUserId: currentUserId, friends: friends)
             })
         }
     }
     
     private func loadCommunityRatings() {
-        // Optimize initial load - start with smaller batch
-        let initialLimit = initialLoadComplete ? 20 : 10
-        
-        // Add a timeout to prevent hanging
-        let timeoutTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { _ in
-            DispatchQueue.main.async(execute: DispatchWorkItem {
-                if self.isLoading {
-                    self.isLoading = false
-                    self.isSwitchingFeedType = false
-                    self.reviews = []
-                    self.filteredReviews = []
-                    self.error = "Loading timeout - please try again"
-                }
-            })
-        }
-        
-        // 🔒 Filter by privacy settings - show public ratings and ratings without visibility field (legacy)
-        // First try to get public ratings, then fallback to all ratings if none found
-        db.collection("ratings")
-            .whereField("visibility", isEqualTo: "public")
-            .order(by: "timestamp", descending: true)
-            .limit(to: initialLimit)
-            .getDocuments { [weak self] snapshot, error in
-                timeoutTimer.invalidate() // Cancel timeout if we get a response
-                
-                if error != nil || snapshot?.documents.isEmpty == true {
-                    // Fallback: get all ratings without visibility filter
-                    self?.loadAllCommunityRatings(limit: initialLimit)
-                } else {
-                    // Process public ratings
-                    DispatchQueue.main.async(execute: DispatchWorkItem {
-                        self?.isLoading = false
-                        self?.isSwitchingFeedType = false
-                    })
-                    self?.processRatingDocuments(snapshot?.documents ?? [])
-                    self?.hasLoadedData = true
-                    self?.initialLoadComplete = true
-                    print("✅ Community feed loaded successfully with \(snapshot?.documents.count ?? 0) public ratings")
-                }
-            }
+        // Use enhanced query with fallback
+        loadCommunityRatingsWithFallback()
     }
     
     private func loadAllCommunityRatings(limit: Int) {
@@ -658,24 +802,213 @@ class FeedViewModel: ObservableObject {
         tryNextCollection()
     }
     
+    // MARK: - Search and Filtering
+    
+    /// Checks if all spot details are loaded and ready for search
+    var isSearchReady: Bool {
+        return !reviews.isEmpty && !reviews.contains { $0.spotName == "Loading..." || $0.spotAddress == "Loading..." }
+    }
+    
+    /// Gets search statistics for debugging
+    func getSearchStats() -> [String: Any] {
+        let totalReviews = reviews.count
+        let loadedReviews = reviews.filter { $0.spotName != "Loading..." && $0.spotAddress != "Loading..." }.count
+        let loadingReviews = totalReviews - loadedReviews
+        
+        return [
+            "totalReviews": totalReviews,
+            "loadedReviews": loadedReviews,
+            "loadingReviews": loadingReviews,
+            "searchReady": isSearchReady,
+            "cacheSize": spotDetailsCache.count,
+            "filteredReviewsCount": filteredReviews.count,
+            "reviewsArrayIds": reviews.map { $0.id },
+            "filteredReviewsArrayIds": filteredReviews.map { $0.id }
+        ]
+    }
+    
+    /// Forces refresh of spot details for better search functionality
+    func forceRefreshSpotDetails() {
+        print("🔄 Force refreshing spot details for \(reviews.count) reviews...")
+        
+        for review in reviews {
+            if review.spotName == "Loading..." || review.spotAddress == "Loading..." {
+                loadSpotDetails(for: review.spotId) { spotName, spotAddress in
+                    DispatchQueue.main.async {
+                        // Update both reviews and filteredReviews arrays
+                        if let index = self.reviews.firstIndex(where: { $0.id == review.id }) {
+                            self.reviews[index].spotName = spotName
+                            self.reviews[index].spotAddress = spotAddress
+                            
+                            // Also update filteredReviews if this item is still in the filtered list
+                            if let filteredIndex = self.filteredReviews.firstIndex(where: { $0.id == review.id }) {
+                                self.filteredReviews[filteredIndex].spotName = spotName
+                                self.filteredReviews[filteredIndex].spotAddress = spotAddress
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Handles search persistence when switching feed types
+    func handleFeedTypeChange(previousFeedType: FeedType, newFeedType: FeedType, currentSearchText: String) {
+        print("🔄 Feed type changed from \(previousFeedType) to \(newFeedType)")
+        
+        // If there's active search text, we need to re-apply the search to the new feed data
+        if !currentSearchText.isEmpty {
+            print("🔍 Re-applying search '\(currentSearchText)' to new feed type: \(newFeedType)")
+            
+            // Wait a moment for the new feed data to load, then re-apply search
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.filterReviews(currentSearchText)
+            }
+        }
+    }
+    
+    /// Test method to verify search functionality
+    func testSearch() {
+        print("🧪 Testing search functionality...")
+        print("🧪 Current reviews count: \(reviews.count)")
+        print("🧪 Current filteredReviews count: \(filteredReviews.count)")
+        
+        // Test with a simple search
+        filterReviews("test")
+        print("🧪 After 'test' search - filteredReviews count: \(filteredReviews.count)")
+        
+        // Test with empty search
+        filterReviews("")
+        print("🧪 After empty search - filteredReviews count: \(filteredReviews.count)")
+        
+        // Test with first review's spot name
+        if let firstReview = reviews.first {
+            let searchTerm = String(firstReview.spotName.prefix(3))
+            print("🧪 Testing search for '\(searchTerm)' (first 3 chars of '\(firstReview.spotName)')")
+            filterReviews(searchTerm)
+            print("🧪 After '\(searchTerm)' search - filteredReviews count: \(filteredReviews.count)")
+        }
+    }
+    
+    /// Simple test to verify UI updates
+    func testUIUpdate() {
+        print("🧪 Testing UI update...")
+        
+        // Manually set filtered reviews to first 2 reviews
+        if reviews.count >= 2 {
+            filteredReviews = Array(reviews.prefix(2))
+            print("🧪 Manually set filteredReviews to first 2 reviews")
+            print("🧪 filteredReviews count: \(filteredReviews.count)")
+            
+            // Force UI update
+            DispatchQueue.main.async {
+                self.objectWillChange.send()
+            }
+        } else {
+            print("🧪 Not enough reviews to test with")
+        }
+    }
+    
     func filterReviews(_ searchText: String) {
         if searchText.isEmpty {
             filteredReviews = reviews
-        } else {
-            let searchLower = searchText.lowercased()
-            filteredReviews = reviews.filter { review in
-                // Search through all relevant fields
-                review.spotName.localizedCaseInsensitiveContains(searchText) ||
-                review.spotAddress.localizedCaseInsensitiveContains(searchText) ||
-                review.username.localizedCaseInsensitiveContains(searchText) ||
-                (review.comment?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-                (review.chaiType?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-                // Also search for partial matches in comments
-                (review.comment?.lowercased().contains(searchLower) ?? false) ||
-                // Search for rating numbers
-                String(review.rating).contains(searchText)
+            return
+        }
+        
+        let searchLower = searchText.lowercased().trimmingCharacters(in: .whitespaces)
+        let searchWords = searchLower.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        
+        // If no valid search words, show all reviews
+        if searchWords.isEmpty {
+            filteredReviews = reviews
+            return
+        }
+        
+        filteredReviews = reviews.filter { review in
+            // Skip reviews that are still loading spot details
+            if review.spotName == "Loading..." || review.spotAddress == "Loading..." {
+                return false
+            }
+            
+            // Create comprehensive searchable text
+            let locationText = review.searchableLocationText
+            let reviewText = review.searchableReviewText
+            let combinedText = locationText + " " + reviewText
+            
+            // Check if ALL search words are found in the combined text
+            let allWordsFound = searchWords.allSatisfy { searchWord in
+                combinedText.contains(searchWord)
+            }
+            
+            if allWordsFound {
+                return true
+            }
+            
+            // Fallback: Check for partial matches in key fields
+            let keyFields = [
+                review.spotName.lowercased(),
+                review.spotAddress.lowercased(),
+                review.username.lowercased(),
+                review.cityName.lowercased(),
+                review.neighborhood.lowercased(),
+                review.state.lowercased(),
+                review.comment?.lowercased() ?? "",
+                review.chaiType?.lowercased() ?? ""
+            ]
+            
+            // Check if any search word matches any key field
+            return searchWords.contains { searchWord in
+                keyFields.contains { field in
+                    field.contains(searchWord)
+                }
             }
         }
+        
+        // Sort results by relevance (exact matches first, then partial matches)
+        filteredReviews.sort { first, second in
+            let firstScore = calculateSearchRelevance(first, searchWords: searchWords)
+            let secondScore = calculateSearchRelevance(second, searchWords: searchWords)
+            return firstScore > secondScore
+        }
+        
+        print("🔍 Search results: Found \(filteredReviews.count) reviews for '\(searchText)'")
+        print("🔍 Filtered reviews: \(filteredReviews.map { $0.spotName })")
+        
+        // Ensure UI updates on main thread
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+            print("🔍 UI update: filteredReviews count = \(self.filteredReviews.count)")
+        }
+    }
+    
+    /// Calculates search relevance score for sorting results
+    private func calculateSearchRelevance(_ review: ReviewFeedItem, searchWords: [String]) -> Int {
+        var score = 0
+        let searchText = searchWords.joined(separator: " ").lowercased()
+        
+        // Exact matches get highest scores
+        if review.spotName.lowercased().contains(searchText) { score += 100 }
+        if review.cityName.lowercased().contains(searchText) { score += 80 }
+        if review.username.lowercased().contains(searchText) { score += 70 }
+        if review.neighborhood.lowercased().contains(searchText) { score += 60 }
+        if review.state.lowercased().contains(searchText) { score += 50 }
+        if review.spotAddress.lowercased().contains(searchText) { score += 40 }
+        if review.chaiType?.lowercased().contains(searchText) ?? false { score += 30 }
+        if review.comment?.lowercased().contains(searchText) ?? false { score += 20 }
+        
+        // Partial word matches get lower scores
+        for word in searchWords {
+            if review.spotName.lowercased().contains(word) { score += 10 }
+            if review.cityName.lowercased().contains(word) { score += 8 }
+            if review.username.lowercased().contains(word) { score += 7 }
+            if review.neighborhood.lowercased().contains(word) { score += 6 }
+            if review.state.lowercased().contains(word) { score += 5 }
+            if review.spotAddress.lowercased().contains(word) { score += 4 }
+            if review.chaiType?.lowercased().contains(word) ?? false { score += 3 }
+            if review.comment?.lowercased().contains(word) ?? false { score += 2 }
+        }
+        
+        return score
     }
     
     // MARK: - Helper Methods
