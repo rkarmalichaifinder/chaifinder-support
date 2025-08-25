@@ -144,12 +144,18 @@ struct FriendRatingsView: View {
                     }
                     
                     self.friendRatings = documents.compactMap { document -> Rating? in
-                        guard let data = document.data() as? [String: Any],
-                              let spotId = data["spotId"] as? String,
+                        let data = document.data()
+                        
+                        guard let spotId = data["spotId"] as? String,
                               let userId = data["userId"] as? String,
                               let value = data["value"] as? Int else {
+                            print("⚠️ FriendRatingsView: Invalid rating document: \(document.documentID)")
+                            print("🔍 Debug info: data keys: \(Array(data.keys))")
+                            print("🔍 Debug info: spotId type: \(type(of: data["spotId"])), userId type: \(type(of: data["userId"])), value type: \(type(of: data["value"]))")
                             return nil
                         }
+                        
+                        print("🔍 FriendRatingsView: Processing rating for spotId: \(spotId), userId: \(userId), value: \(value)")
                         
                         let username = data["username"] as? String
                         let comment = data["comment"] as? String
@@ -174,8 +180,122 @@ struct FriendRatingsView: View {
                             flavorNotes: flavorNotes
                         )
                     }
+                    
+                    print("✅ FriendRatingsView: Loaded \(self.friendRatings.count) ratings")
+                    for rating in self.friendRatings {
+                        print("🔍 Rating: spotId=\(rating.spotId), value=\(rating.value)")
+                    }
+                    
+                    // Debug: Check what's actually in the collections
+                    self.debugCollections()
                 }
             }
+    }
+    
+    // MARK: - Debug Collections
+    private func debugCollections() {
+        let db = Firestore.firestore()
+        let collections = ["chaiFinder", "chaiSpots"]
+        
+        for collectionName in collections {
+            db.collection(collectionName).getDocuments { snapshot, error in
+                if let error = error {
+                    print("❌ Debug: Failed to load collection \(collectionName): \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    print("⚠️ Debug: No documents in collection \(collectionName)")
+                    return
+                }
+                
+                print("🔍 Debug: Collection \(collectionName) has \(documents.count) documents")
+                
+                // Show first few document IDs and names
+                for (index, document) in documents.prefix(5).enumerated() {
+                    let data = document.data()
+                    let name = data["name"] as? String ?? "No name"
+                    print("🔍 Debug: \(collectionName)[\(index)]: ID=\(document.documentID), Name=\(name)")
+                }
+                
+                if documents.count > 5 {
+                    print("🔍 Debug: ... and \(documents.count - 5) more documents")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Enhanced Spot Search
+    private func enhancedSpotSearch(for spotId: String, completion: @escaping (String, String) -> Void) {
+        let db = Firestore.firestore()
+        let collections = ["chaiFinder", "chaiSpots"]
+        
+        // First, try to find any rating that might reference this spot
+        db.collection("ratings")
+            .whereField("spotId", isEqualTo: spotId)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    print("❌ Enhanced search: Failed to search ratings: \(error.localizedDescription)")
+                    completion("Chai Spot (Details Unavailable)", "Location information not found")
+                    return
+                }
+                
+                guard let documents = snapshot?.documents, !documents.isEmpty else {
+                    print("⚠️ Enhanced search: No ratings found for spotId: \(spotId)")
+                    completion("Chai Spot (Details Unavailable)", "Location information not found")
+                    return
+                }
+                
+                // Look for any rating that might have additional spot information
+                for document in documents {
+                    let data = document.data()
+                    if let spotName = data["spotName"] as? String, !spotName.isEmpty {
+                        let address = data["spotAddress"] as? String ?? "Address not available"
+                        print("✅ Enhanced search: Found spot name from rating: \(spotName)")
+                        completion(spotName, address)
+                        return
+                    }
+                }
+                
+                // If no spot name in ratings, try collections
+                self.searchCollectionsForSpot(spotId: spotId, collections: collections, completion: completion)
+            }
+    }
+    
+    private func searchCollectionsForSpot(spotId: String, collections: [String], completion: @escaping (String, String) -> Void) {
+        var currentIndex = 0
+        
+        func tryNextCollection() {
+            guard currentIndex < collections.count else {
+                completion("Chai Spot (Details Unavailable)", "Location information not found")
+                return
+            }
+            
+            let collectionName = collections[currentIndex]
+            currentIndex += 1
+            
+            let db = Firestore.firestore()
+            db.collection(collectionName).document(spotId).getDocument { snapshot, error in
+                if let error = error {
+                    print("❌ Enhanced search: Failed to load from \(collectionName): \(error.localizedDescription)")
+                    tryNextCollection()
+                    return
+                }
+                
+                guard let data = snapshot?.data(),
+                      let name = data["name"] as? String,
+                      let address = data["address"] as? String else {
+                    print("⚠️ Enhanced search: Missing data from \(collectionName)")
+                    tryNextCollection()
+                    return
+                }
+                
+                print("✅ Enhanced search: Found spot in \(collectionName): \(name)")
+                completion(name, address)
+            }
+        }
+        
+        tryNextCollection()
     }
     
     private func loadSpotDetails(for spotId: String, completion: @escaping (ChaiSpot) -> Void) {
@@ -388,6 +508,8 @@ struct FriendRatingCard: View {
         // Load spot details from cache or fetch them
         let db = Firestore.firestore()
         
+        print("🔍 FriendRatingCard: Loading spot details for spotId: \(rating.spotId)")
+        
         // Try both collections
         let collections = ["chaiFinder", "chaiSpots"]
         var currentCollectionIndex = 0
@@ -395,43 +517,134 @@ struct FriendRatingCard: View {
         func tryNextCollection() {
             guard currentCollectionIndex < collections.count else {
                 // All collections failed, use fallback
-                spotName = "Chai Spot #\(rating.spotId.prefix(6))"
-                spotAddress = "Location details unavailable"
-                print("⚠️ Failed to load spot details for \(rating.spotId) from all collections in FriendRatingCard. Using fallback name: \(spotName)")
+                print("⚠️ FriendRatingCard: All fallback searches failed, using fallback")
+                spotName = "Chai Spot (Details Unavailable)"
+                spotAddress = "Location information not found"
                 return
             }
             
             let collectionName = collections[currentCollectionIndex]
             currentCollectionIndex += 1
             
-            print("🔍 FriendRatingCard attempting to load spot \(rating.spotId) from collection: \(collectionName)")
+            print("🔍 FriendRatingCard: Attempting to load spot \(rating.spotId) from collection: \(collectionName)")
             
             db.collection(collectionName).document(rating.spotId).getDocument { snapshot, error in
                 DispatchQueue.main.async {
                     if let error = error {
-                        print("❌ FriendRatingCard failed to load from collection \(collectionName): \(error.localizedDescription)")
+                        print("❌ FriendRatingCard: Failed to load from collection \(collectionName): \(error.localizedDescription)")
+                        print("🔍 Debug info: Error code: \(error._code), Error domain: \(error._domain)")
                         tryNextCollection()
                         return
                     }
                     
-                    guard let data = snapshot?.data(),
-                          let name = data["name"] as? String,
+                    guard let data = snapshot?.data() else {
+                        print("⚠️ FriendRatingCard: No data found in collection \(collectionName) for spot \(rating.spotId)")
+                        print("🔍 Debug info: Document exists: \(snapshot?.exists ?? false)")
+                        tryNextCollection()
+                        return
+                    }
+                    
+                    print("🔍 FriendRatingCard: Found document in \(collectionName) with fields: \(Array(data.keys))")
+                    
+                    guard let name = data["name"] as? String,
                           let address = data["address"] as? String else {
-                        print("⚠️ FriendRatingCard missing data from collection \(collectionName) for spot \(rating.spotId)")
+                        print("⚠️ FriendRatingCard: Missing name or address from collection \(collectionName) for spot \(rating.spotId)")
+                        print("🔍 Debug info: name type: \(type(of: data["name"])), address type: \(type(of: data["address"]))")
+                        print("🔍 Debug info: name value: \(data["name"] ?? "nil"), address value: \(data["address"] ?? "nil")")
                         tryNextCollection()
                         return
                     }
                     
                     // Successfully loaded spot details
-                    print("✅ FriendRatingCard successfully loaded spot details from \(collectionName): \(name)")
+                    print("✅ FriendRatingCard: Successfully loaded spot details from \(collectionName): \(name)")
                     spotName = name
                     spotAddress = address
                 }
             }
         }
         
+        // Fallback: Try to find spot by searching collections
+        func tryFallbackSearch() {
+            print("🔍 FriendRatingCard: Trying fallback search for spotId: \(rating.spotId)")
+            
+            // Try to find any spot that might match this ID
+            let searchCollections = ["chaiFinder", "chaiSpots"]
+            var searchIndex = 0
+            
+            func searchNextCollection() {
+                guard searchIndex < searchCollections.count else {
+                    // All searches failed, use fallback
+                    spotName = "Chai Spot (Details Unavailable)"
+                    spotAddress = "Location information not found"
+                    print("⚠️ FriendRatingCard: All fallback searches failed for \(rating.spotId). Using fallback name: \(spotName)")
+                    return
+                }
+                
+                let collectionName = searchCollections[searchIndex]
+                searchIndex += 1
+                
+                print("🔍 FriendRatingCard: Fallback searching in collection: \(collectionName)")
+                
+                // Try to find any document that might contain this spotId
+                db.collection(collectionName).getDocuments { snapshot, error in
+                    DispatchQueue.main.async {
+                        if let error = error {
+                            print("❌ FriendRatingCard: Fallback search failed in \(collectionName): \(error.localizedDescription)")
+                            searchNextCollection()
+                            return
+                        }
+                        
+                        guard let documents = snapshot?.documents else {
+                            print("⚠️ FriendRatingCard: No documents found in \(collectionName)")
+                            searchNextCollection()
+                            return
+                        }
+                        
+                        print("🔍 FriendRatingCard: Found \(documents.count) documents in \(collectionName)")
+                        
+                        // Look for any document that might be related
+                        for document in documents {
+                            let data = document.data()
+                            let docId = document.documentID
+                            
+                            // Check if this document ID contains our spotId or vice versa
+                            if docId.contains(rating.spotId) || rating.spotId.contains(docId) {
+                                if let name = data["name"] as? String, let address = data["address"] as? String {
+                                    print("✅ FriendRatingCard: Found matching spot in fallback search: \(name)")
+                                    spotName = name
+                                    spotAddress = address
+                                    return
+                                }
+                            }
+                            
+                            // Also check if the document has any identifying information that might match
+                            if let name = data["name"] as? String {
+                                // Check if the name contains any part of the spotId (in case spotId is a name fragment)
+                                let lowercasedName = name.lowercased()
+                                let lowercasedSpotId = rating.spotId.lowercased()
+                                
+                                if lowercasedName.contains(lowercasedSpotId) || lowercasedSpotId.contains(lowercasedName) {
+                                    if let address = data["address"] as? String {
+                                        print("✅ FriendRatingCard: Found spot by name similarity: \(name)")
+                                        spotName = name
+                                        spotAddress = address
+                                        return
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // No match found, try next collection
+                        searchNextCollection()
+                    }
+                }
+            }
+            
+            searchNextCollection()
+        }
+        
         tryNextCollection()
+        tryFallbackSearch()
     }
 }
-
-} 
+}
