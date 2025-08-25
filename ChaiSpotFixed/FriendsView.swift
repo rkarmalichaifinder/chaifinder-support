@@ -1266,6 +1266,14 @@ struct FriendsView: View {
                 .foregroundColor(DesignSystem.Colors.primary)
                 .padding(.horizontal, 4)
                 
+                Button("Simple Search") {
+                    let results = performSimpleSearch(query: "test")
+                    print("🧪 Simple search test results: \(results.count)")
+                }
+                .font(DesignSystem.Typography.caption2)
+                .foregroundColor(DesignSystem.Colors.primary)
+                .padding(.horizontal, 4)
+                
                 Button("Stats") {
                     let stats = getSearchStats()
                     print("🔍 FriendsView Search Stats: \(stats)")
@@ -1371,14 +1379,19 @@ struct FriendsView: View {
         print("🔍 Performing search for: '\(query)'")
         isSearching = true
         
-        // Enhanced search with multiple search strategies
-        let searchResults = performEnhancedSearch(query: query)
+        // Start with simple local search for immediate results
+        let localResults = performSimpleSearch(query: query)
+        searchResults = localResults
         
-        // Update UI on main thread
-        DispatchQueue.main.async {
-            self.searchResults = searchResults
-            self.isSearching = false
-            print("🔍 Search completed: Found \(searchResults.count) results for '\(query)'")
+        // Then try enhanced search with Firestore (asynchronous)
+        performEnhancedSearch(query: query)
+        
+        // Set a timeout to ensure search doesn't hang indefinitely
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            if self.isSearching {
+                print("⚠️ Search timeout reached, stopping search")
+                self.isSearching = false
+            }
         }
     }
     
@@ -1398,32 +1411,11 @@ struct FriendsView: View {
         let localResults = performLocalSearch(query: queryLower, searchWords: searchWords)
         print("🔍 Local search results: \(localResults.count)")
         
-        // Strategy 2: Firestore search for additional users
-        let firestoreResults = performFirestoreSearch(query: queryLower, searchWords: searchWords)
-        print("🔍 Firestore search results: \(firestoreResults.count)")
+        // Strategy 2: Firestore search for additional users (asynchronous)
+        performFirestoreSearch(query: queryLower, searchWords: searchWords)
         
-        // Combine and deduplicate results
-        var allResults = localResults
-        for firestoreUser in firestoreResults {
-            if !allResults.contains(where: { $0.uid == firestoreUser.uid }) {
-                allResults.append(firestoreUser)
-            }
-        }
-        
-        // Filter out current user and existing connections
-        let currentUserId = currentUser?.uid ?? ""
-        let filteredResults = allResults.filter { user in
-            user.uid != currentUserId &&
-            !(currentUser?.friends?.contains(user.uid) ?? false) &&
-            !sentRequests.contains(user.uid) &&
-            !incomingRequests.contains { $0.uid == user.uid } &&
-            !outgoingRequests.contains { $0.uid == user.uid }
-        }
-        
-        print("🔍 Final filtered results: \(filteredResults.count)")
-        
-        // Sort results by relevance
-        return sortResultsByRelevance(filteredResults, searchWords: searchWords)
+        // Return local results immediately, Firestore results will be added via completion
+        return localResults
     }
     
     /// Local search in existing users array
@@ -1458,46 +1450,43 @@ struct FriendsView: View {
     private func performFirestoreSearch(query: String, searchWords: [String]) -> [UserProfile] {
         let db = Firestore.firestore()
         var results: [UserProfile] = []
-        let group = DispatchGroup()
+        var completedQueries = 0
+        let totalQueries = 2
         
         // Search by display name (prefix search)
-        group.enter()
         db.collection("users")
             .whereField("displayName", isGreaterThanOrEqualTo: query)
             .whereField("displayName", isLessThan: query + "\u{f8ff}")
             .limit(to: 20)
             .getDocuments { snapshot, error in
-                defer { group.leave() }
-                
                 if let error = error {
                     print("❌ Error searching users by name: \(error.localizedDescription)")
-                    return
-                }
-                
-                if let documents = snapshot?.documents {
+                } else if let documents = snapshot?.documents {
                     for document in documents {
                         if let userProfile = self.createUserProfile(from: document) {
                             results.append(userProfile)
                         }
                     }
                 }
+                
+                completedQueries += 1
+                if completedQueries == totalQueries {
+                    // All queries completed, update results
+                    DispatchQueue.main.async {
+                        self.updateSearchResults(results: results)
+                    }
+                }
             }
         
         // Search by email (prefix search)
-        group.enter()
         db.collection("users")
             .whereField("email", isGreaterThanOrEqualTo: query)
             .whereField("email", isLessThan: query + "\u{f8ff}")
             .limit(to: 20)
             .getDocuments { snapshot, error in
-                defer { group.leave() }
-                
                 if let error = error {
                     print("❌ Error searching users by email: \(error.localizedDescription)")
-                    return
-                }
-                
-                if let documents = snapshot?.documents {
+                } else if let documents = snapshot?.documents {
                     for document in documents {
                         if let userProfile = self.createUserProfile(from: document) {
                             // Avoid duplicates
@@ -1507,11 +1496,81 @@ struct FriendsView: View {
                         }
                     }
                 }
+                
+                completedQueries += 1
+                if completedQueries == totalQueries {
+                    // All queries completed, update results
+                    DispatchQueue.main.async {
+                        self.updateSearchResults(results: results)
+                    }
+                }
             }
         
-        // Wait for both queries to complete
-        group.wait()
-        return results
+        // Return empty results initially - will be updated via completion
+        return []
+    }
+    
+    /// Update search results after Firestore queries complete
+    private func updateSearchResults(results: [UserProfile]) {
+        // Get current search results and combine with new Firestore results
+        var allResults = searchResults // Start with current results (which include local results)
+        
+        for firestoreUser in results {
+            if !allResults.contains(where: { $0.uid == firestoreUser.uid }) {
+                allResults.append(firestoreUser)
+            }
+        }
+        
+        // Filter out current user and existing connections
+        let currentUserId = currentUser?.uid ?? ""
+        let filteredResults = allResults.filter { user in
+            user.uid != currentUserId &&
+            !(currentUser?.friends?.contains(user.uid) ?? false) &&
+            !sentRequests.contains(user.uid) &&
+            !incomingRequests.contains { $0.uid == user.uid } &&
+            !outgoingRequests.contains { $0.uid == user.uid }
+        }
+        
+        // Sort by relevance and update UI
+        let searchWords = searchText.lowercased().components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        let sortedResults = sortResultsByRelevance(filteredResults, searchWords: searchWords)
+        
+        DispatchQueue.main.async {
+            self.searchResults = sortedResults
+            self.isSearching = false
+            print("🔍 Firestore search completed: Found \(sortedResults.count) total results")
+        }
+    }
+    
+    /// Simple fallback search that only uses local data (no Firestore)
+    private func performSimpleSearch(query: String) -> [UserProfile] {
+        let queryLower = query.lowercased().trimmingCharacters(in: .whitespaces)
+        let searchWords = queryLower.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        
+        if searchWords.isEmpty {
+            return []
+        }
+        
+        print("🔍 Performing simple local search for: '\(query)'")
+        
+        // Only search in existing users array
+        let localResults = performLocalSearch(query: queryLower, searchWords: searchWords)
+        
+        // Filter out current user and existing connections
+        let currentUserId = currentUser?.uid ?? ""
+        let filteredResults = localResults.filter { user in
+            user.uid != currentUserId &&
+            !(currentUser?.friends?.contains(user.uid) ?? false) &&
+            !sentRequests.contains(user.uid) &&
+            !incomingRequests.contains { $0.uid == user.uid } &&
+            !outgoingRequests.contains { $0.uid == user.uid }
+        }
+        
+        // Sort by relevance
+        let sortedResults = sortResultsByRelevance(filteredResults, searchWords: searchWords)
+        
+        print("🔍 Simple search completed: Found \(sortedResults.count) results")
+        return sortedResults
     }
     
     /// Sort search results by relevance
