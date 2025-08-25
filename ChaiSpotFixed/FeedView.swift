@@ -58,7 +58,7 @@ struct FeedView: View {
     
     // MARK: - Header Section
     private var headerSection: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
+        VStack(spacing: DesignSystem.Spacing.sm) {
             // Header with refresh button
             HStack {
                 Spacer()
@@ -91,7 +91,7 @@ struct FeedView: View {
                 .accessibilityLabel("App title: chai finder")
             
             // Feed Type Toggle
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                 Text("Feed Type")
                     .font(DesignSystem.Typography.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
@@ -116,7 +116,9 @@ struct FeedView: View {
             // Search Bar
             searchBarSection
         }
-        .padding(DesignSystem.Spacing.lg)
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+        .padding(.top, DesignSystem.Spacing.md)
+        .padding(.bottom, DesignSystem.Spacing.sm)
         .background(DesignSystem.Colors.background)
         .iPadOptimized()
     }
@@ -189,7 +191,7 @@ struct FeedView: View {
                 .foregroundColor(DesignSystem.Colors.textSecondary)
                 .padding(.horizontal, DesignSystem.Spacing.sm)
             
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: DesignSystem.Spacing.xs) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: DesignSystem.Spacing.xs) {
                 ForEach(["Masala Chai", "Cardamom", "Ginger", "Karak"], id: \.self) { suggestion in
                     Button(action: {
                         searchText = suggestion
@@ -213,12 +215,13 @@ struct FeedView: View {
         .cornerRadius(DesignSystem.CornerRadius.medium)
         .shadow(color: DesignSystem.Shadows.small.color, radius: DesignSystem.Shadows.small.radius, x: DesignSystem.Shadows.small.x, y: DesignSystem.Shadows.small.y)
         .transition(.opacity.combined(with: .move(edge: .top)))
+        .zIndex(1) // Ensure suggestions appear above other content
     }
     
     // MARK: - Feed Content
     private var feedContent: some View {
         ScrollView {
-            LazyVStack(spacing: DesignSystem.Spacing.md) {
+            LazyVStack(spacing: DesignSystem.Spacing.sm) {
                 ForEach(viewModel.reviews) { review in
                     ReviewCardView(review: review)
                         .iPadCardStyle()
@@ -249,7 +252,8 @@ struct FeedView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .padding(DesignSystem.Spacing.lg)
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.top, DesignSystem.Spacing.sm)
             .iPadOptimized()
         }
         .scrollIndicators(.hidden)
