@@ -3,6 +3,7 @@ import MapKit
 import CoreLocation
 import Firebase
 import FirebaseFirestore
+import FirebaseAuth
 
 struct PersonalizedMapView: View {
     @StateObject private var vm = PersonalizedMapViewModel()
@@ -50,12 +51,21 @@ struct PersonalizedMapView: View {
                 }
             }
             .background(DesignSystem.Colors.background)
-            .navigationTitle("My Chai Map")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarHidden(true) // Hide navigation bar since we have custom header
             .onAppear {
                 print("🎯 PersonalizedMapView appeared")
                 setupLocationManager()
                 vm.loadPersonalizedSpots()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .tasteSetupCompleted)) { _ in
+                Task {
+                    await vm.refreshPersonalization()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .ratingUpdated)) { _ in
+                Task {
+                    await vm.refreshPersonalization()
+                }
             }
             .task {
                 print("🚀 PersonalizedMapView task started")
@@ -87,28 +97,69 @@ struct PersonalizedMapView: View {
     
     // MARK: - Header Section
     private var headerSection: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
-            // View toggle
+        VStack(spacing: DesignSystem.Spacing.sm) { // Reduced spacing for more compact design
             HStack {
+                // Brand title - consistent with other pages
+                Text("chai finder")
+                    .font(DesignSystem.Typography.titleLarge)
+                    .fontWeight(.bold)
+                    .foregroundColor(DesignSystem.Colors.primary)
+                    .accessibilityLabel("App title: chai finder")
+                
+                Spacer()
+                
+                // Refresh personalization button
+                Button(action: {
+                    Task {
+                        await vm.refreshPersonalization()
+                    }
+                }) {
+                    if vm.isRefreshingPersonalization {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .frame(width: 32, height: 32)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
+                    }
+                }
+                .frame(width: 32, height: 32)
+                .background(DesignSystem.Colors.primary.opacity(0.1))
+                .cornerRadius(DesignSystem.CornerRadius.small)
+                .disabled(vm.isRefreshingPersonalization)
+                .accessibilityLabel("Refresh personalization")
+                .accessibilityHint("Double tap to refresh your personalized recommendations")
+            }
+            
+            // Search Bar - restored functionality
+            searchBarSection
+            
+            // View toggle - improved design
+            HStack(spacing: DesignSystem.Spacing.sm) {
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         vm.isShowingList = false
                     }
                 }) {
-                    HStack {
+                    HStack(spacing: 4) {
                         Image(systemName: "map")
+                            .font(.system(size: 14))
                         Text("Map")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
                     }
-                    .foregroundColor(vm.isShowingList ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.primary)
+                    .foregroundColor(vm.isShowingList ? DesignSystem.Colors.textSecondary : .white)
                     .padding(.horizontal, DesignSystem.Spacing.md)
                     .padding(.vertical, DesignSystem.Spacing.sm)
                     .background(
                         RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                            .fill(vm.isShowingList ? Color.clear : DesignSystem.Colors.primary.opacity(0.1))
+                            .fill(vm.isShowingList ? Color.clear : DesignSystem.Colors.primary)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                            .stroke(vm.isShowingList ? DesignSystem.Colors.border : DesignSystem.Colors.primary, lineWidth: 1)
+                            .stroke(vm.isShowingList ? DesignSystem.Colors.border.opacity(0.3) : Color.clear, lineWidth: 0.5)
                     )
                 }
                 
@@ -117,20 +168,23 @@ struct PersonalizedMapView: View {
                         vm.isShowingList = true
                     }
                 }) {
-                    HStack {
+                    HStack(spacing: 4) {
                         Image(systemName: "list.bullet")
+                            .font(.system(size: 14))
                         Text("List")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
                     }
-                    .foregroundColor(vm.isShowingList ? DesignSystem.Colors.primary : DesignSystem.Colors.textSecondary)
+                    .foregroundColor(vm.isShowingList ? .white : DesignSystem.Colors.textSecondary)
                     .padding(.horizontal, DesignSystem.Spacing.md)
                     .padding(.vertical, DesignSystem.Spacing.sm)
                     .background(
                         RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                            .fill(vm.isShowingList ? DesignSystem.Colors.primary.opacity(0.1) : Color.clear)
+                            .fill(vm.isShowingList ? DesignSystem.Colors.primary : Color.clear)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                            .stroke(vm.isShowingList ? DesignSystem.Colors.primary : DesignSystem.Colors.border, lineWidth: 1)
+                            .stroke(vm.isShowingList ? Color.clear : DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
                     )
                 }
                 
@@ -138,11 +192,12 @@ struct PersonalizedMapView: View {
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
             
-            // Personalization reason
+            // Personalization reason - improved styling
             if let reason = vm.reasonText {
-                HStack {
+                HStack(spacing: DesignSystem.Spacing.sm) {
                     Image(systemName: "lightbulb.fill")
                         .foregroundColor(DesignSystem.Colors.accent)
+                        .font(.caption)
                     Text(reason)
                         .font(DesignSystem.Typography.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
@@ -150,51 +205,291 @@ struct PersonalizedMapView: View {
                     Spacer()
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+                .background(DesignSystem.Colors.accent.opacity(0.1))
+                .cornerRadius(DesignSystem.CornerRadius.small)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+            }
+            
+            // Personalization stats when user has taste setup
+            if vm.userProfile?.hasTasteSetup == true {
+                let stats = vm.getPersonalizationStats()
+                HStack(spacing: DesignSystem.Spacing.md) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: "heart.fill")
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .font(.caption2)
+                        Text("\(stats["totalPersonalized"] as? Int ?? 0) personalized")
+                            .font(DesignSystem.Typography.caption2)
+                            .foregroundColor(DesignSystem.Colors.primary)
+                    }
+                    
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: "star.fill")
+                            .foregroundColor(DesignSystem.Colors.accent)
+                            .font(.caption2)
+                        Text("\(stats["totalRatings"] as? Int ?? 0) ratings")
+                            .font(DesignSystem.Typography.caption2)
+                            .foregroundColor(DesignSystem.Colors.accent)
+                    }
+                    
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: "person.2.fill")
+                            .foregroundColor(DesignSystem.Colors.info)
+                            .font(.caption2)
+                        Text("\(stats["totalFriends"] as? Int ?? 0) friends")
+                            .font(DesignSystem.Typography.caption2)
+                            .foregroundColor(DesignSystem.Colors.info)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+                .background(DesignSystem.Colors.cardBackground.opacity(0.8))
+                .cornerRadius(DesignSystem.CornerRadius.small)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
             }
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.vertical, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm) // Reduced from md to sm
         .background(DesignSystem.Colors.cardBackground)
+        .shadow(
+            color: Color.black.opacity(0.03), // Very subtle shadow
+            radius: 2,
+            x: 0,
+            y: 1
+        )
         .overlay(
             Rectangle()
-                .frame(height: 1)
-                .foregroundColor(DesignSystem.Colors.border),
+                .frame(height: 0.5) // Reduced from 1 to 0.5 for subtler border
+                .foregroundColor(DesignSystem.Colors.border.opacity(0.3)), // Reduced opacity
             alignment: .bottom
         )
+    }
+    
+    // MARK: - Search Bar Section
+    private var searchBarSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .font(.system(size: 14))
+                    .accessibilityHidden(true)
+                
+                TextField("Search chai spots or locations...", text: $vm.searchText)
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                    .accessibilityLabel("Search chai spots or locations")
+                    .accessibilityHint("Type to search through chai spots or search for a location to center the map")
+                    .onChange(of: vm.searchText) { newValue in
+                        // Debounced search
+                        Task {
+                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+                            await MainActor.run {
+                                if vm.searchText == newValue {
+                                    handleSearch(newValue)
+                                }
+                            }
+                        }
+                    }
+                    .onSubmit {
+                        // Handle search submission (Enter key)
+                        handleSearch(vm.searchText)
+                    }
+                    .disabled(vm.isSearchingLocation) // Disable while searching
+                
+                // Show loading indicator when searching for location
+                if vm.isSearchingLocation {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .frame(width: 28, height: 28)
+                } else if !vm.searchText.isEmpty {
+                    Button(action: { 
+                        withAnimation(DesignSystem.Animation.quick) {
+                            vm.searchText = ""
+                            vm.filterSpots("")
+                            // Clear any temporary search location
+                            vm.clearSearchLocation()
+                        }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .font(.system(size: 14))
+                            .frame(width: 28, height: 28)
+                    }
+                    .accessibilityLabel("Clear search")
+                    .accessibilityHint("Double tap to clear search text")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(DesignSystem.Colors.searchBackground)
+            .cornerRadius(DesignSystem.CornerRadius.medium)
+            .shadow(
+                color: Color.black.opacity(0.04), // Very subtle shadow
+                radius: 2,
+                x: 0,
+                y: 1
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                    .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1)
+            )
+        }
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+    }
+    
+    // MARK: - Search Handler
+    private func handleSearch(_ searchText: String) {
+        if searchText.isEmpty {
+            vm.filterSpots("")
+            vm.clearSearchLocation()
+            return
+        }
+        
+        // First try to filter existing spots
+        vm.filterSpots(searchText)
+        
+        // Check if the search text looks like a location (contains common location keywords)
+        if isLocationSearch(searchText) {
+            // Then try to search for the location to center the map
+            searchLocation(searchText)
+        }
+    }
+    
+    // MARK: - Location Search Detection
+    private func isLocationSearch(_ query: String) -> Bool {
+        let locationKeywords = [
+            "street", "avenue", "road", "drive", "lane", "boulevard", "place", "court",
+            "city", "town", "village", "neighborhood", "district", "area", "region",
+            "park", "mall", "center", "plaza", "square", "station", "airport",
+            "university", "college", "school", "hospital", "restaurant", "cafe",
+            "coffee", "chai", "tea", "shop", "store", "market"
+        ]
+        
+        let lowercasedQuery = query.lowercased()
+        return locationKeywords.contains { lowercasedQuery.contains($0) } ||
+               query.contains(",") || // Contains comma (likely address)
+               query.contains(" ") || // Multiple words (likely location)
+               query.count > 3 // Longer queries are more likely to be locations
+    }
+    
+    // MARK: - Location Search
+    private func searchLocation(_ query: String) {
+        // Set loading state
+        vm.isSearchingLocation = true
+        
+        let searchRequest = MKLocalSearch.Request()
+        searchRequest.naturalLanguageQuery = query
+        searchRequest.resultTypes = [.address, .pointOfInterest]
+        
+        let search = MKLocalSearch(request: searchRequest)
+        search.start { response, error in
+            DispatchQueue.main.async {
+                // Clear loading state
+                self.vm.isSearchingLocation = false
+                
+                if let error = error {
+                    print("❌ Location search error: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let response = response, !response.mapItems.isEmpty else {
+                    print("📍 No location found for query: \(query)")
+                    return
+                }
+                
+                // Use the first result to center the map
+                let firstResult = response.mapItems[0]
+                let coordinate = firstResult.placemark.coordinate
+                
+                print("📍 Found location: \(firstResult.name ?? query) at \(coordinate)")
+                
+                // Center the map on the found location
+                self.centerMapOnSearchResult(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+                
+                // Add a temporary search location marker
+                vm.setSearchLocation(coordinate)
+                
+                // Show temporary success feedback
+                self.showSearchSuccessMessage(firstResult.name ?? query)
+            }
+        }
+    }
+    
+    // MARK: - Search Success Feedback
+    private func showSearchSuccessMessage(_ locationName: String) {
+        // Show a temporary success message
+        withAnimation(.easeInOut(duration: 0.3)) {
+            // You could add a temporary overlay or toast message here
+            // For now, we'll just print to console
+            print("✅ Successfully centered map on: \(locationName)")
+        }
     }
     
     // MARK: - Map Legend
     private var mapLegend: some View {
         HStack(spacing: DesignSystem.Spacing.md) {
-            // Personalized spots legend
+            // Personalized spots legend with count
             HStack(spacing: DesignSystem.Spacing.xs) {
                 Image(systemName: "circle.fill")
                     .foregroundColor(DesignSystem.Colors.primary)
                     .font(.caption)
-                Text("🫖 Your Spots")
+                Text("🫖 Your Spots (\(vm.getPersonalizedSpotIds().count))")
                     .font(DesignSystem.Typography.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
             }
             
-            // Community spots legend
+            // Community spots legend with count
             HStack(spacing: DesignSystem.Spacing.xs) {
                 Image(systemName: "circle.fill")
                     .foregroundColor(DesignSystem.Colors.secondary)
                     .font(.caption)
-                Text("☕ Community Spots")
+                Text("☕ Community Spots (\(vm.allSpots.count - vm.getPersonalizedSpotIds().count))")
                     .font(DesignSystem.Typography.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
+            }
+            
+            // Search location legend (only show when search is active)
+            if !vm.searchText.isEmpty && vm.hasSearchLocation {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "mappin.circle.fill")
+                        .foregroundColor(DesignSystem.Colors.accent)
+                        .font(.caption)
+                    Text("🔍 Search Location")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+            }
+            
+            // Personalization summary
+            if vm.userProfile?.hasTasteSetup == true {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "heart.fill")
+                        .foregroundColor(DesignSystem.Colors.primary)
+                        .font(.caption)
+                    Text("\(vm.getPersonalizedSpotIds().count) personalized")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.primary)
+                }
             }
             
             Spacer()
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
         .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.cardBackground.opacity(0.8))
+        .background(DesignSystem.Colors.cardBackground.opacity(0.9))
         .cornerRadius(DesignSystem.CornerRadius.small)
+        .shadow(
+            color: Color.black.opacity(0.03), // Very subtle shadow
+            radius: 2,
+            x: 0,
+            y: 1
+        )
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1) // Reduced opacity and line width
         )
     }
     
@@ -227,6 +522,7 @@ struct PersonalizedMapView: View {
                             ratingCount: spot.ratingCount
                         )
                     },
+                    personalizedSpotIds: vm.getPersonalizedSpotIds(),
                     onTap: { coordinate in
                         // Handle map tap
                         print("📍 Map tapped at: \(coordinate)")
@@ -281,14 +577,26 @@ struct PersonalizedMapView: View {
                             .padding(.vertical, DesignSystem.Spacing.xs)
                             .background(DesignSystem.Colors.primary.opacity(0.9))
                             .cornerRadius(DesignSystem.CornerRadius.small)
+                            .shadow(
+                                color: Color.black.opacity(0.1),
+                                radius: 2,
+                                x: 0,
+                                y: 1
+                            )
                             
                             Text("\(selectedCoord.latitude, specifier: "%.4f"), \(selectedCoord.longitude, specifier: "%.4f")")
                                 .font(DesignSystem.Typography.caption2)
                                 .foregroundColor(.white)
                                 .padding(.horizontal, DesignSystem.Spacing.sm)
                                 .padding(.vertical, DesignSystem.Spacing.xs)
-                                .background(Color.black.opacity(0.7))
+                                .background(Color.black.opacity(0.6)) // Reduced from 0.7 for subtler appearance
                                 .cornerRadius(DesignSystem.CornerRadius.small)
+                                .shadow(
+                                    color: Color.black.opacity(0.1),
+                                    radius: 1,
+                                    x: 0,
+                                    y: 0.5
+                                )
                         }
                         .padding(.trailing, DesignSystem.Spacing.lg)
                         .padding(.bottom, DesignSystem.Spacing.sm)
@@ -320,7 +628,12 @@ struct PersonalizedMapView: View {
                             .frame(width: 56, height: 56)
                             .background(DesignSystem.Colors.primary)
                             .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                            .shadow(
+                                color: Color.black.opacity(0.15), // Reduced from 0.3 for subtler appearance
+                                radius: 6, // Reduced from 8
+                                x: 0,
+                                y: 3 // Reduced from 4
+                            )
                     }
                     .accessibilityLabel("Add new chai spot")
                     .accessibilityHint(selectedCoordinate != nil ? "Tap to add a new chai spot at the selected location" : "Tap to add a new chai spot at the map center")
@@ -377,14 +690,26 @@ struct PersonalizedMapView: View {
                             .padding(.vertical, DesignSystem.Spacing.xs)
                             .background(DesignSystem.Colors.primary.opacity(0.9))
                             .cornerRadius(DesignSystem.CornerRadius.small)
+                            .shadow(
+                                color: Color.black.opacity(0.1),
+                                radius: 2,
+                                x: 0,
+                                y: 1
+                            )
                             
                             Text("\(selectedCoord.latitude, specifier: "%.4f"), \(selectedCoord.longitude, specifier: "%.4f")")
                                 .font(DesignSystem.Typography.caption2)
                                 .foregroundColor(.white)
                                 .padding(.horizontal, DesignSystem.Spacing.sm)
                                 .padding(.vertical, DesignSystem.Spacing.xs)
-                                .background(Color.black.opacity(0.7))
+                                .background(Color.black.opacity(0.6)) // Reduced from 0.7 for subtler appearance
                                 .cornerRadius(DesignSystem.CornerRadius.small)
+                                .shadow(
+                                    color: Color.black.opacity(0.1),
+                                    radius: 1,
+                                    x: 0,
+                                    y: 0.5
+                                )
                         }
                         .padding(.trailing, DesignSystem.Spacing.lg)
                         .padding(.bottom, DesignSystem.Spacing.sm)
@@ -430,6 +755,7 @@ struct PersonalizedMapView: View {
                     }) {
                         Text(sortOrder.displayName)
                             .font(DesignSystem.Typography.caption)
+                            .fontWeight(.medium)
                             .foregroundColor(vm.currentSortOrder == sortOrder ? .white : DesignSystem.Colors.primary)
                             .padding(.horizontal, DesignSystem.Spacing.md)
                             .padding(.vertical, DesignSystem.Spacing.sm)
@@ -439,7 +765,16 @@ struct PersonalizedMapView: View {
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                                    .stroke(DesignSystem.Colors.primary, lineWidth: 1)
+                                    .stroke(
+                                        vm.currentSortOrder == sortOrder ? Color.clear : DesignSystem.Colors.primary.opacity(0.3), 
+                                        lineWidth: 0.5
+                                    )
+                            )
+                            .shadow(
+                                color: vm.currentSortOrder == sortOrder ? Color.black.opacity(0.1) : Color.clear,
+                                radius: 2,
+                                x: 0,
+                                y: 1
                             )
                     }
                 }
@@ -447,13 +782,20 @@ struct PersonalizedMapView: View {
             .padding(.horizontal, DesignSystem.Spacing.lg)
         }
         .padding(.vertical, DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.cardBackground)
+        .shadow(
+            color: Color.black.opacity(0.02),
+            radius: 1,
+            x: 0,
+            y: 0.5
+        )
     }
     
     private var spotsList: some View {
         ScrollView {
             LazyVStack(spacing: DesignSystem.Spacing.md) {
                 ForEach(vm.personalizedSpots) { spot in
-                    SpotCard(spot: spot) {
+                    SpotCard(spot: spot, onTap: {
                         // Handle spot selection - center map on selected spot and show details
                         print("📍 Spot selected from list: \(spot.name)")
                         selectedSpot = spot
@@ -463,7 +805,7 @@ struct PersonalizedMapView: View {
                         withAnimation(.easeInOut(duration: 0.3)) {
                             vm.isShowingList = false
                         }
-                    }
+                    }, viewModel: vm)
                 }
             }
             .padding(DesignSystem.Spacing.lg)
@@ -476,17 +818,36 @@ struct PersonalizedMapView: View {
                 .font(.system(size: 48))
                 .foregroundColor(DesignSystem.Colors.secondary)
             
-            Text("No Spots Found")
+            Text("No Personalized Spots Found")
                 .font(DesignSystem.Typography.headline)
                 .fontWeight(.bold)
                 .foregroundColor(DesignSystem.Colors.textPrimary)
             
-            Text("Try adjusting your preferences or check back later")
+            Text("Try these tips to get personalized recommendations:")
                 .font(DesignSystem.Typography.bodyMedium)
                 .foregroundColor(DesignSystem.Colors.textSecondary)
                 .multilineTextAlignment(.center)
+            
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                ForEach(vm.getPersonalizationSuggestions(), id: \.self) { suggestion in
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "lightbulb.fill")
+                            .foregroundColor(DesignSystem.Colors.accent)
+                            .font(.caption)
+                        Text(suggestion)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(DesignSystem.Colors.cardBackground)
+            .cornerRadius(DesignSystem.CornerRadius.small)
         }
         .padding(DesignSystem.Spacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DesignSystem.Colors.background)
     }
     
     // MARK: - Location Manager Setup
@@ -522,6 +883,20 @@ struct PersonalizedMapView: View {
         )
         
         withAnimation(.easeInOut(duration: 0.5)) {
+            mapView.setRegion(newRegion, animated: true)
+        }
+    }
+    
+    private func centerMapOnSearchResult(_ location: CLLocation) {
+        guard let mapView = mapViewRef else { return }
+        
+        // Use a wider zoom for search results to show more context
+        let newRegion = MKCoordinateRegion(
+            center: location.coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        )
+        
+        withAnimation(.easeInOut(duration: 0.8)) {
             mapView.setRegion(newRegion, animated: true)
         }
     }
@@ -572,6 +947,7 @@ struct PersonalizedMapView: View {
 struct SpotCard: View {
     let spot: ChaiSpot
     let onTap: () -> Void
+    let viewModel: PersonalizedMapViewModel
     
     var body: some View {
         Button(action: onTap) {
@@ -606,6 +982,38 @@ struct SpotCard: View {
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
                         }
                     }
+                    
+                    // Personalization score indicator
+                    let personalizationScore = viewModel.calculatePersonalizationScore(for: spot)
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        if personalizationScore >= 15.0 {
+                            Image(systemName: "heart.fill")
+                                .font(.caption)
+                                .foregroundColor(DesignSystem.Colors.primary)
+                            Text("Personalized")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.primary)
+                            
+                            // Info button to show why it's personalized
+                            Button(action: {
+                                // Show explanation in an alert or sheet
+                                print("Personalization explanation: \(viewModel.getPersonalizationExplanation(for: spot))")
+                            }) {
+                                Image(systemName: "info.circle")
+                                    .font(.caption2)
+                                    .foregroundColor(DesignSystem.Colors.primary)
+                            }
+                            .accessibilityLabel("Why this spot is personalized")
+                            .accessibilityHint("Double tap to see why this spot matches your preferences")
+                        } else {
+                            Image(systemName: "heart")
+                                .font(.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            Text("Score: \(Int(personalizationScore))")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                        }
+                    }
                 }
                 
                 Spacer()
@@ -617,9 +1025,15 @@ struct SpotCard: View {
             .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.cardBackground)
             .cornerRadius(DesignSystem.CornerRadius.medium)
+            .shadow(
+                color: Color.black.opacity(0.03), // Very subtle shadow
+                radius: 2,
+                x: 0,
+                y: 1
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                    .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                    .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1) // Reduced opacity and line width
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -633,6 +1047,7 @@ final class PersonalizedMapViewModel: ObservableObject {
     @Published var reasonText: String?
     @Published var mapView: TappableMapView?
     @Published var isLoading = false
+    @Published var isRefreshingPersonalization = false
     @Published var hasError = false
     @Published var errorMessage: String?
     @Published var isShowingList = false {
@@ -641,11 +1056,19 @@ final class PersonalizedMapViewModel: ObservableObject {
         }
     }
     @Published var userLocation: CLLocation? // Added this line
+    @Published var searchText: String = "" // Added this line
+    @Published var hasSearchLocation: Bool = false // Track if search location is active
+    @Published var isSearchingLocation: Bool = false // Track if location search is in progress
     
     // Filter state
     @Published var showFriendsFavorites = true
     @Published var showPersonalizedOnly = true
     @Published var currentSortOrder: SortOrder = .personalization
+    
+    // Personalization data
+    @Published var userProfile: UserProfile?
+    private var userRatings: [Rating] = []
+    private var friendRatings: [Rating] = []
     
     // Callback for spot selection
     private var onSpotSelected: ((ChaiSpot) -> Void)?
@@ -674,6 +1097,289 @@ final class PersonalizedMapViewModel: ObservableObject {
         self.userLocation = location
     }
     
+    // MARK: - Personalization Methods
+    
+    /// Load user profile and ratings for personalization
+    func loadUserData() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        
+        let db = Firestore.firestore()
+        
+        // Load user profile
+        do {
+            let profileDoc = try await db.collection("users").document(uid).getDocument()
+            if let data = profileDoc.data() {
+                self.userProfile = UserProfile(
+                    id: profileDoc.documentID,
+                    uid: data["uid"] as? String ?? uid,
+                    displayName: data["displayName"] as? String ?? "Unknown User",
+                    email: data["email"] as? String ?? "unknown",
+                    photoURL: data["photoURL"] as? String,
+                    friends: data["friends"] as? [String] ?? [],
+                    incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                    outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                    bio: data["bio"] as? String,
+                    hasTasteSetup: data["hasTasteSetup"] as? Bool ?? false,
+                    tasteVector: data["tasteVector"] as? [Int],
+                    topTasteTags: data["topTasteTags"] as? [String]
+                )
+            }
+        } catch {
+            print("❌ Failed to load user profile: \(error)")
+        }
+        
+        // Load user's ratings
+        do {
+            let ratingsSnapshot = try await db.collection("ratings")
+                .whereField("userId", isEqualTo: uid)
+                .getDocuments()
+            
+            self.userRatings = ratingsSnapshot.documents.compactMap { doc -> Rating? in
+                let data = doc.data()
+                guard let spotId = data["spotId"] as? String,
+                      let userId = data["userId"] as? String,
+                      let value = data["value"] as? Int else { return nil }
+                
+                return Rating(
+                    id: doc.documentID,
+                    spotId: spotId,
+                    userId: userId,
+                    username: data["username"] as? String,
+                    spotName: data["spotName"] as? String,
+                    value: value,
+                    comment: data["comment"] as? String,
+                    timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
+                    likes: data["likes"] as? Int,
+                    dislikes: data["dislikes"] as? Int,
+                    creaminessRating: data["creaminessRating"] as? Int,
+                    chaiStrengthRating: data["chaiStrengthRating"] as? Int,
+                    flavorNotes: data["flavorNotes"] as? [String]
+                )
+            }
+        } catch {
+            print("❌ Failed to load user ratings: \(error)")
+        }
+        
+        // Load friend ratings if user has friends
+        if let friends = userProfile?.friends, !friends.isEmpty {
+            do {
+                let friendRatingsSnapshot = try await db.collection("ratings")
+                    .whereField("userId", in: friends)
+                    .getDocuments()
+                
+                self.friendRatings = friendRatingsSnapshot.documents.compactMap { doc -> Rating? in
+                    let data = doc.data()
+                    guard let spotId = data["spotId"] as? String,
+                          let userId = data["userId"] as? String,
+                          let value = data["value"] as? Int else { return nil }
+                    
+                    return Rating(
+                        id: doc.documentID,
+                        spotId: spotId,
+                        userId: userId,
+                        username: data["username"] as? String,
+                        spotName: data["spotName"] as? String,
+                        value: value,
+                        comment: data["comment"] as? String,
+                        timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
+                        likes: data["likes"] as? Int,
+                        dislikes: data["dislikes"] as? Int,
+                        creaminessRating: data["creaminessRating"] as? Int,
+                        chaiStrengthRating: data["chaiStrengthRating"] as? Int,
+                        flavorNotes: data["flavorNotes"] as? [String]
+                    )
+                }
+            } catch {
+                print("❌ Failed to load friend ratings: \(error)")
+            }
+        }
+    }
+    
+    /// Calculate personalization score for a spot
+    func calculatePersonalizationScore(for spot: ChaiSpot) -> Double {
+        var score: Double = 0.0
+        
+        // Base score from user's taste preferences
+        if let tasteVector = userProfile?.tasteVector, tasteVector.count >= 2 {
+            let preferredCreaminess = tasteVector[0]
+            let preferredStrength = tasteVector[1]
+            
+            // Find user's rating for this spot to get their preferences
+            if let userRating = userRatings.first(where: { $0.spotId == spot.id }) {
+                if let creaminessRating = userRating.creaminessRating {
+                    let creaminessMatch = 5.0 - Double(abs(creaminessRating - preferredCreaminess))
+                    score += creaminessMatch * 2.0 // Weight creaminess preference
+                }
+                
+                if let strengthRating = userRating.chaiStrengthRating {
+                    let strengthMatch = 5.0 - Double(abs(strengthRating - preferredStrength))
+                    score += strengthMatch * 2.0 // Weight strength preference
+                }
+                
+                // Bonus for high user rating
+                score += Double(userRating.value) * 3.0
+            }
+            
+            // Flavor notes matching
+            if let topTasteTags = userProfile?.topTasteTags {
+                let matchingFlavors = spot.chaiTypes.filter { chaiType in
+                    topTasteTags.contains { tag in
+                        chaiType.localizedCaseInsensitiveContains(tag)
+                    }
+                }
+                score += Double(matchingFlavors.count) * 5.0
+            }
+        }
+        
+        // Friend recommendations bonus
+        let friendRatingsForSpot = friendRatings.filter { $0.spotId == spot.id }
+        if !friendRatingsForSpot.isEmpty {
+            let averageFriendRating = Double(friendRatingsForSpot.reduce(0) { $0 + $1.value }) / Double(friendRatingsForSpot.count)
+            score += averageFriendRating * 2.0 // Weight friend recommendations
+        }
+        
+        // Community rating bonus
+        score += spot.averageRating * 1.5
+        
+        // Rating count bonus (more ratings = more reliable)
+        score += min(Double(spot.ratingCount) * 0.5, 10.0)
+        
+        return score
+    }
+    
+    /// Get personalized spot IDs for map labeling
+    func getPersonalizedSpotIds() -> Set<String> {
+        let personalizedSpots = allSpots.filter { spot in
+            let score = calculatePersonalizationScore(for: spot)
+            return score >= 15.0 // Threshold for considering a spot "personalized"
+        }
+        return Set(personalizedSpots.map { $0.id })
+    }
+    
+    /// Get personalization breakdown for a specific spot
+    func getPersonalizationBreakdown(for spot: ChaiSpot) -> [String: Double] {
+        var breakdown: [String: Double] = [:]
+        
+        // Taste preference matching
+        if let tasteVector = userProfile?.tasteVector, tasteVector.count >= 2 {
+            let preferredCreaminess = tasteVector[0]
+            let preferredStrength = tasteVector[1]
+            
+            if let userRating = userRatings.first(where: { $0.spotId == spot.id }) {
+                if let creaminessRating = userRating.creaminessRating {
+                    let creaminessMatch = 5.0 - Double(abs(creaminessRating - preferredCreaminess))
+                    breakdown["Creaminess Match"] = creaminessMatch * 2.0
+                }
+                
+                if let strengthRating = userRating.chaiStrengthRating {
+                    let strengthMatch = 5.0 - Double(abs(strengthRating - preferredStrength))
+                    breakdown["Strength Match"] = strengthMatch * 2.0
+                }
+                
+                breakdown["Your Rating"] = Double(userRating.value) * 3.0
+            }
+            
+            // Flavor notes matching
+            if let topTasteTags = userProfile?.topTasteTags {
+                let matchingFlavors = spot.chaiTypes.filter { chaiType in
+                    topTasteTags.contains { tag in
+                        chaiType.localizedCaseInsensitiveContains(tag)
+                    }
+                }
+                breakdown["Flavor Match"] = Double(matchingFlavors.count) * 5.0
+            }
+        }
+        
+        // Friend recommendations
+        let friendRatingsForSpot = friendRatings.filter { $0.spotId == spot.id }
+        if !friendRatingsForSpot.isEmpty {
+            let averageFriendRating = Double(friendRatingsForSpot.reduce(0) { $0 + $1.value }) / Double(friendRatingsForSpot.count)
+            breakdown["Friend Recommendations"] = averageFriendRating * 2.0
+        }
+        
+        // Community rating
+        breakdown["Community Rating"] = spot.averageRating * 1.5
+        
+        // Rating count bonus
+        breakdown["Rating Count"] = min(Double(spot.ratingCount) * 0.5, 10.0)
+        
+        return breakdown
+    }
+    
+    /// Get explanation for why a spot is personalized
+    func getPersonalizationExplanation(for spot: ChaiSpot) -> String {
+        let breakdown = getPersonalizationBreakdown(for: spot)
+        var explanations: [String] = []
+        
+        if let creaminessMatch = breakdown["Creaminess Match"], creaminessMatch > 0 {
+            explanations.append("matches your creaminess preference")
+        }
+        
+        if let strengthMatch = breakdown["Strength Match"], strengthMatch > 0 {
+            explanations.append("matches your strength preference")
+        }
+        
+        if let flavorMatch = breakdown["Flavor Match"], flavorMatch > 0 {
+            explanations.append("has your favorite flavors")
+        }
+        
+        if let friendRecs = breakdown["Friend Recommendations"], friendRecs > 0 {
+            explanations.append("recommended by friends")
+        }
+        
+        if let communityRating = breakdown["Community Rating"], communityRating > 0 {
+            explanations.append("highly rated by community")
+        }
+        
+        if explanations.isEmpty {
+            return "Based on general popularity and ratings"
+        }
+        
+        return "Personalized because it " + explanations.joined(separator: ", ")
+    }
+    
+    /// Get suggestions for improving personalization
+    func getPersonalizationSuggestions() -> [String] {
+        var suggestions: [String] = []
+        
+        if userProfile?.hasTasteSetup != true {
+            suggestions.append("Complete taste onboarding to get personalized recommendations")
+        }
+        
+        if userRatings.isEmpty {
+            suggestions.append("Rate some chai spots to help us understand your preferences")
+        }
+        
+        if let friends = userProfile?.friends, friends.isEmpty {
+            suggestions.append("Add friends to see their recommendations")
+        }
+        
+        if suggestions.isEmpty {
+            suggestions.append("Your preferences are well set up! Try rating more spots for better recommendations")
+        }
+        
+        return suggestions
+    }
+    
+    /// Get personalization statistics for the user
+    func getPersonalizationStats() -> [String: Any] {
+        let personalizedIds = getPersonalizedSpotIds()
+        let personalizedSpots = allSpots.filter { personalizedIds.contains($0.id) }
+        
+        let totalScore = personalizedSpots.reduce(0.0) { $0 + calculatePersonalizationScore(for: $1) }
+        let averageScore = personalizedSpots.isEmpty ? 0.0 : totalScore / Double(personalizedSpots.count)
+        
+        return [
+            "totalPersonalized": personalizedSpots.count,
+            "totalSpots": allSpots.count,
+            "personalizationPercentage": allSpots.isEmpty ? 0.0 : Double(personalizedSpots.count) / Double(allSpots.count) * 100.0,
+            "averageScore": averageScore,
+            "hasTasteSetup": userProfile?.hasTasteSetup ?? false,
+            "totalRatings": userRatings.count,
+            "totalFriends": userProfile?.friends?.count ?? 0
+        ]
+    }
+    
     // MARK: - Filter Methods
     func toggleFriendsFavorites() {
         showFriendsFavorites.toggle()
@@ -689,10 +1395,10 @@ final class PersonalizedMapViewModel: ObservableObject {
         var filtered = allSpots
         
         if showPersonalizedOnly {
-            // Apply personalization logic here
+            // Apply personalization logic
             filtered = filtered.filter { spot in
-                // Add your personalization logic
-                return true
+                let score = calculatePersonalizationScore(for: spot)
+                return score >= 10.0 // Lower threshold for filtering
             }
         }
         
@@ -706,13 +1412,17 @@ final class PersonalizedMapViewModel: ObservableObject {
         
         switch sortOrder {
         case .personalization:
-            // Sort by personalization score (implement your logic)
-            personalizedSpots.sort { $0.name < $1.name }
+            // Sort by personalization score
+            personalizedSpots.sort { spot1, spot2 in
+                let score1 = calculatePersonalizationScore(for: spot1)
+                let score2 = calculatePersonalizationScore(for: spot2)
+                return score1 > score2
+            }
             
         case .distance:
             guard let userLocation = self.userLocation else {
-                // If no user location, fall back to name sorting
-                personalizedSpots.sort { $0.name < $1.name }
+                // If no user location, fall back to personalization sorting
+                sortSpots(by: .personalization)
                 return
             }
             
@@ -739,6 +1449,9 @@ final class PersonalizedMapViewModel: ObservableObject {
         await MainActor.run {
             isLoading = true
         }
+        
+        // Load user data for personalization
+        await loadUserData()
         
         let db = Firestore.firestore()
         var allSpots: [ChaiSpot] = []
@@ -789,17 +1502,101 @@ final class PersonalizedMapViewModel: ObservableObject {
         
         await MainActor.run {
             self.allSpots = uniqueSpots
-            self.personalizedSpots = uniqueSpots
             self.isLoading = false
+            self.loadPersonalizedSpots()
             self.applyFilters()
         }
     }
     
     func loadPersonalizedSpots() {
-        // This would implement your personalization logic
-        // For now, just use all spots
-        personalizedSpots = allSpots
-        reasonText = "Showing spots based on your preferences"
+        // Apply personalization logic
+        let personalizedIds = getPersonalizedSpotIds()
+        let personalizedSpots = allSpots.filter { personalizedIds.contains($0.id) }
+        
+        self.personalizedSpots = personalizedSpots
+        
+        // Generate reason text based on user preferences
+        if let tasteVector = userProfile?.tasteVector, tasteVector.count >= 2 {
+            let creaminess = tasteVector[0]
+            let strength = tasteVector[1]
+            
+            var reasons: [String] = []
+            
+            if creaminess >= 4 {
+                reasons.append("rich, creamy chai")
+            } else if creaminess <= 2 {
+                reasons.append("light, refreshing chai")
+            } else {
+                reasons.append("balanced creaminess")
+            }
+            
+            if strength >= 4 {
+                reasons.append("bold, intense flavors")
+            } else if strength <= 2 {
+                reasons.append("mild, gentle varieties")
+            } else {
+                reasons.append("moderately strong chai")
+            }
+            
+            if let topTasteTags = userProfile?.topTasteTags, !topTasteTags.isEmpty {
+                reasons.append("your favorite flavors: \(topTasteTags.joined(separator: ", "))")
+            }
+            
+            reasonText = "Showing spots with \(reasons.joined(separator: ", "))"
+        } else {
+            reasonText = "Showing spots based on community ratings and friend recommendations"
+        }
+    }
+    
+    func filterSpots(_ searchText: String) {
+        if searchText.isEmpty {
+            personalizedSpots = allSpots
+        } else {
+            personalizedSpots = allSpots.filter { spot in
+                spot.name.localizedCaseInsensitiveContains(searchText) ||
+                spot.address.localizedCaseInsensitiveContains(searchText) ||
+                spot.chaiTypes.contains(where: { $0.localizedCaseInsensitiveContains(searchText) })
+            }
+        }
+        sortSpots(by: currentSortOrder)
+    }
+    
+    func setSearchLocation(_ coordinate: CLLocationCoordinate2D) {
+        // This method is called when a location search result is found.
+        // It can be used to add a temporary annotation or marker to the map.
+        // For now, we'll just update the user location for distance sorting.
+        // If you want to show a temporary marker, you'd add it to the mapViewRef.
+        // For example:
+        // if let mapView = mapViewRef {
+        //     let annotation = MKPointAnnotation()
+        //     annotation.title = "Searched Location"
+        //     mapView.addAnnotation(annotation)
+        // }
+        hasSearchLocation = true
+        updateUserLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+    }
+    
+    func clearSearchLocation() {
+        // This method is called when the user clears the search text.
+        // It can be used to remove any temporary markers or reset user location.
+        // For now, we'll just clear the user location.
+        hasSearchLocation = false
+        updateUserLocation(CLLocation(latitude: 37.7749, longitude: -122.4194)) // Fallback to default
+    }
+    
+    /// Refresh personalization data and recalculate personalized spots
+    func refreshPersonalization() async {
+        await MainActor.run {
+            isRefreshingPersonalization = true
+        }
+        
+        await loadUserData()
+        
+        await MainActor.run {
+            loadPersonalizedSpots()
+            applyFilters()
+            isRefreshingPersonalization = false
+        }
     }
 }
 
