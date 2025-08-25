@@ -288,6 +288,9 @@ struct PersonalizedMapView: View {
                     .autocapitalization(.none)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
+                    .textCase(.lowercase)
+                    .keyboardType(.default)
+                    .submitLabel(.search)
                     .accessibilityLabel("Search chai spots or locations")
                     .accessibilityHint("Type to search through chai spots or search for a location to center the map")
                     .onChange(of: vm.searchText) { newValue in
