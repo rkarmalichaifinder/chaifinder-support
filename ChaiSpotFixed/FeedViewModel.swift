@@ -16,6 +16,7 @@ class FeedViewModel: ObservableObject {
     @Published var error: String?
     @Published var currentFeedType: FeedType = .friends
     @Published var initialLoadComplete = false
+    @Published var isSwitchingFeedType = false
     
     private lazy var db: Firestore = {
         // Only create Firestore instance when actually needed
@@ -30,6 +31,7 @@ class FeedViewModel: ObservableObject {
     func refreshFeed() {
         print("🔄 refreshFeed() called - clearing cache and reloading...")
         hasLoadedData = false
+        isSwitchingFeedType = false
         clearCache() // Clear spot details cache
         loadFeed()
     }
@@ -103,8 +105,8 @@ class FeedViewModel: ObservableObject {
     }
     
     func loadFeed() {
-        // Prevent multiple simultaneous loads
-        if isLoading && hasLoadedData {
+        // Prevent multiple simultaneous loads only if we're not switching feed types
+        if isLoading && hasLoadedData && !isSwitchingFeedType {
             return
         }
         
@@ -143,6 +145,7 @@ class FeedViewModel: ObservableObject {
         error = nil
         reviews = []
         filteredReviews = []
+        isSwitchingFeedType = true
         
         // Check if Firebase is initialized before accessing Auth
         if FirebaseApp.app() == nil {
@@ -170,6 +173,7 @@ class FeedViewModel: ObservableObject {
         spotDetailsCache.removeAll()
         loadingSpots.removeAll()
         hasLoadedData = false
+        isSwitchingFeedType = false
     }
     
     func handleFirebasePermissionError() {
@@ -202,6 +206,7 @@ class FeedViewModel: ObservableObject {
             DispatchQueue.main.async(execute: DispatchWorkItem {
                 if let error = error {
                     self.isLoading = false
+                    self.isSwitchingFeedType = false
                     self.reviews = []
                     self.filteredReviews = []
                     self.error = "Unable to load friends list. Please check your connection."
@@ -212,6 +217,7 @@ class FeedViewModel: ObservableObject {
                       let friends = data["friends"] as? [String],
                       !friends.isEmpty else {
                     self.isLoading = false
+                    self.isSwitchingFeedType = false
                     self.reviews = []
                     self.filteredReviews = []
                     self.error = "You don't have any friends yet. Add friends to see their reviews here!"
@@ -226,6 +232,7 @@ class FeedViewModel: ObservableObject {
                     .getDocuments { snapshot, error in
                         DispatchQueue.main.async(execute: DispatchWorkItem {
                             self.isLoading = false
+                            self.isSwitchingFeedType = false
                             
                             if let error = error {
                                 self.reviews = []
@@ -263,26 +270,29 @@ class FeedViewModel: ObservableObject {
             DispatchQueue.main.async(execute: DispatchWorkItem {
                 if let error = error {
                     self.isLoading = false
+                    self.isSwitchingFeedType = false
                     self.reviews = []
                     self.filteredReviews = []
-                    self.error = "Failed to load friends"
+                    self.error = "Unable to load friends list. Please check your connection."
                     return
                 }
                 
                 guard let data = snapshot?.data(),
                       let friends = data["friends"] as? [String] else {
                     self.isLoading = false
+                    self.isSwitchingFeedType = false
                     self.reviews = []
                     self.filteredReviews = []
-                    self.error = "No friends found"
+                    self.error = "You don't have any friends yet. Add friends to see their reviews here!"
                     return
                 }
                 
                 if friends.isEmpty {
                     self.isLoading = false
+                    self.isSwitchingFeedType = false
                     self.reviews = []
                     self.filteredReviews = []
-                    self.error = "No friends found"
+                    self.error = "You don't have any friends yet. Add friends to see their reviews here!"
                     return
                 }
                 
@@ -295,23 +305,32 @@ class FeedViewModel: ObservableObject {
                     .getDocuments { snapshot, error in
                         DispatchQueue.main.async(execute: DispatchWorkItem {
                             self.isLoading = false
+                            self.isSwitchingFeedType = false
                             
                             if let error = error {
                                 self.reviews = []
                                 self.filteredReviews = []
-                                self.error = "Failed to load friend ratings"
+                                self.error = "Unable to load friend reviews. Please try again."
                                 return
                             }
                             
                             guard let documents = snapshot?.documents else {
                                 self.reviews = []
                                 self.filteredReviews = []
-                                self.error = "No friend ratings found"
+                                self.error = "Your friends haven't posted any reviews yet."
+                                return
+                            }
+                            
+                            if documents.isEmpty {
+                                self.reviews = []
+                                self.filteredReviews = []
+                                self.error = "Your friends haven't posted any reviews yet."
                                 return
                             }
                             
                             self.processFriendRatingDocuments(documents)
                             self.hasLoadedData = true
+                            print("✅ Friend feed loaded successfully with \(documents.count) ratings")
                         })
                     }
             })
@@ -327,6 +346,7 @@ class FeedViewModel: ObservableObject {
             DispatchQueue.main.async(execute: DispatchWorkItem {
                 if self.isLoading {
                     self.isLoading = false
+                    self.isSwitchingFeedType = false
                     self.reviews = []
                     self.filteredReviews = []
                     self.error = "Loading timeout - please try again"
@@ -348,6 +368,10 @@ class FeedViewModel: ObservableObject {
                     self?.loadAllCommunityRatings(limit: initialLimit)
                 } else {
                     // Process public ratings
+                    DispatchQueue.main.async(execute: DispatchWorkItem {
+                        self?.isLoading = false
+                        self?.isSwitchingFeedType = false
+                    })
                     self?.processRatingDocuments(snapshot?.documents ?? [])
                     self?.hasLoadedData = true
                     self?.initialLoadComplete = true
@@ -364,6 +388,7 @@ class FeedViewModel: ObservableObject {
             .getDocuments { [weak self] snapshot, error in
                 DispatchQueue.main.async(execute: DispatchWorkItem {
                     self?.isLoading = false
+                    self?.isSwitchingFeedType = false
                     
                     if let error = error {
                         self?.error = error.localizedDescription
@@ -424,7 +449,8 @@ class FeedViewModel: ObservableObject {
                     hasPhoto: data["hasPhoto"] as? Bool ?? false,
                     gamificationScore: data["gamificationScore"] as? Int ?? 0,
                     isFirstReview: data["isFirstReview"] as? Bool ?? false,
-                    isNewSpot: data["isNewSpot"] as? Bool ?? false
+                    isNewSpot: data["isNewSpot"] as? Bool ?? false,
+                    reactions: data["reactions"] as? [String: Int] ?? [:]
                 )
                 
                 return feedItem
@@ -434,6 +460,8 @@ class FeedViewModel: ObservableObject {
             
             // Update UI on main thread
             DispatchQueue.main.async(execute: DispatchWorkItem {
+                self.isLoading = false
+                self.isSwitchingFeedType = false
                 self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
                 self.filteredReviews = self.reviews
                 
@@ -516,7 +544,8 @@ class FeedViewModel: ObservableObject {
                     hasPhoto: data["hasPhoto"] as? Bool ?? false,
                     gamificationScore: data["gamificationScore"] as? Int ?? 0,
                     isFirstReview: data["isFirstReview"] as? Bool ?? false,
-                    isNewSpot: data["isNewSpot"] as? Bool ?? false
+                    isNewSpot: data["isNewSpot"] as? Bool ?? false,
+                    reactions: data["reactions"] as? [String: Int] ?? [:]
                 )
                 
                 return feedItem
@@ -526,6 +555,8 @@ class FeedViewModel: ObservableObject {
             
             // Update UI on main thread
             DispatchQueue.main.async(execute: DispatchWorkItem {
+                self.isLoading = false
+                self.isSwitchingFeedType = false
                 self.reviews = feedItems.sorted { $0.timestamp > $1.timestamp }
                 self.filteredReviews = self.reviews
                 

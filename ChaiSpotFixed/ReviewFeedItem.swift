@@ -23,4 +23,7 @@ struct ReviewFeedItem: Identifiable {
     let gamificationScore: Int
     let isFirstReview: Bool
     let isNewSpot: Bool
+    
+    // 🎮 NEW: Social reactions field
+    let reactions: [String: Int]
 } 

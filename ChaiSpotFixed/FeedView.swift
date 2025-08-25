@@ -22,6 +22,15 @@ struct FeedView: View {
                     if viewModel.isLoading && viewModel.reviews.isEmpty {
                         LoadingView("Loading your feed...")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let error = viewModel.error, !viewModel.isLoading {
+                        EmptyStateView(
+                            icon: "exclamationmark.triangle.fill",
+                            title: "Error",
+                            message: error,
+                            actionTitle: "Try Again",
+                            action: { viewModel.refreshFeed() }
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if viewModel.reviews.isEmpty && !viewModel.isLoading {
                         EmptyStateView(
                             icon: "cup.and.saucer.fill",
@@ -58,7 +67,7 @@ struct FeedView: View {
     
     // MARK: - Header Section
     private var headerSection: some View {
-        VStack(spacing: DesignSystem.Spacing.sm) {
+        VStack(spacing: DesignSystem.Spacing.xs) {
             // Header with refresh button
             HStack {
                 Spacer()
@@ -117,19 +126,19 @@ struct FeedView: View {
             searchBarSection
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
-        .padding(.top, DesignSystem.Spacing.md)
-        .padding(.bottom, DesignSystem.Spacing.sm)
+        .padding(.top, DesignSystem.Spacing.xs)
+        .padding(.bottom, DesignSystem.Spacing.xs)
         .background(DesignSystem.Colors.background)
         .iPadOptimized()
     }
     
     // MARK: - Search Bar Section
     private var searchBarSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            HStack {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(DesignSystem.Colors.textSecondary)
-                    .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
+                    .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 18 : 14))
                     .accessibilityHidden(true)
                 
                 TextField("Search friends' reviews & community posts...", text: $searchText)
@@ -161,19 +170,20 @@ struct FeedView: View {
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 20 : 16))
-                            .frame(width: 44, height: 44)
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 18 : 14))
+                            .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("Clear search")
                     .accessibilityHint("Double tap to clear search text")
                 }
             }
-            .padding(DesignSystem.Spacing.md)
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs)
             .background(DesignSystem.Colors.searchBackground)
-            .cornerRadius(DesignSystem.CornerRadius.large)
+            .cornerRadius(DesignSystem.CornerRadius.medium)
             .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.large)
-                    .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                    .stroke(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.5)
             )
             
             // Search suggestions
@@ -210,7 +220,7 @@ struct FeedView: View {
                 }
             }
         }
-        .padding(DesignSystem.Spacing.sm)
+        .padding(DesignSystem.Spacing.xs)
         .background(DesignSystem.Colors.cardBackground)
         .cornerRadius(DesignSystem.CornerRadius.medium)
         .shadow(color: DesignSystem.Shadows.small.color, radius: DesignSystem.Shadows.small.radius, x: DesignSystem.Shadows.small.x, y: DesignSystem.Shadows.small.y)
@@ -221,7 +231,7 @@ struct FeedView: View {
     // MARK: - Feed Content
     private var feedContent: some View {
         ScrollView {
-            LazyVStack(spacing: DesignSystem.Spacing.sm) {
+            LazyVStack(spacing: DesignSystem.Spacing.xs) {
                 ForEach(viewModel.reviews) { review in
                     ReviewCardView(review: review)
                         .iPadCardStyle()
@@ -237,7 +247,7 @@ struct FeedView: View {
                             .font(DesignSystem.Typography.caption)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
                     }
-                    .padding(DesignSystem.Spacing.lg)
+                    .padding(DesignSystem.Spacing.md)
                     .frame(maxWidth: .infinity)
                 }
                 
@@ -248,12 +258,12 @@ struct FeedView: View {
                             .font(DesignSystem.Typography.caption)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
                     }
-                    .padding(DesignSystem.Spacing.lg)
+                    .padding(DesignSystem.Spacing.md)
                     .frame(maxWidth: .infinity)
                 }
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.top, DesignSystem.Spacing.sm)
+            .padding(.top, DesignSystem.Spacing.xs)
             .iPadOptimized()
         }
         .scrollIndicators(.hidden)

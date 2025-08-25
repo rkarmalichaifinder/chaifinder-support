@@ -27,6 +27,10 @@ struct PersonalizedMapView: View {
     // Map view reference for programmatic updates
     @State private var mapViewRef: MKMapView?
     
+    // Add location button state
+    @State private var showingAddForm = false
+    @State private var selectedCoordinate: CLLocationCoordinate2D?
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
@@ -61,6 +65,21 @@ struct PersonalizedMapView: View {
             .sheet(isPresented: $showingSpotDetail) {
                 if let spot = selectedSpot {
                     ChaiSpotDetailSheet(spot: spot, userLocation: locationManager.location)
+                }
+            }
+            .sheet(isPresented: $showingAddForm) {
+                if let coordinate = selectedCoordinate {
+                    AddChaiFinderForm(coordinate: coordinate) { name, address, rating, comments, chaiTypes, coordinate, creaminessRating, chaiStrengthRating, flavorNotes in
+                        // Handle form submission
+                        print("📍 Adding new chai spot: \(name) at \(coordinate)")
+                        // Here you would typically save to Firestore
+                        // For now, just dismiss the form and clear the selected coordinate
+                        showingAddForm = false
+                        selectedCoordinate = nil
+                        
+                        // TODO: Implement actual Firestore save
+                        // You can add the save logic here using the vm or a separate service
+                    }
                 }
             }
         }
@@ -213,6 +232,8 @@ struct PersonalizedMapView: View {
                         print("📍 Map tapped at: \(coordinate)")
                         // Set user interaction flag when map is tapped
                         isUserInteractingWithMap = true
+                        // Store the tapped coordinate for adding new spots
+                        selectedCoordinate = coordinate
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                             isUserInteractingWithMap = false
                         }
@@ -231,23 +252,171 @@ struct PersonalizedMapView: View {
                     }
                 )
             }
+            
+            // Floating Action Button for adding new locations
+            VStack {
+                Spacer()
+                
+                // Location selection indicator
+                if let selectedCoord = selectedCoordinate {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: DesignSystem.Spacing.xs) {
+                            HStack {
+                                Text("📍 Location Selected")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(.white)
+                                
+                                Button(action: {
+                                    selectedCoordinate = nil
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.white.opacity(0.8))
+                                        .font(.caption)
+                                }
+                                .accessibilityLabel("Clear selected location")
+                                .accessibilityHint("Tap to clear the selected location")
+                            }
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                            .background(DesignSystem.Colors.primary.opacity(0.9))
+                            .cornerRadius(DesignSystem.CornerRadius.small)
+                            
+                            Text("\(selectedCoord.latitude, specifier: "%.4f"), \(selectedCoord.longitude, specifier: "%.4f")")
+                                .font(DesignSystem.Typography.caption2)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, DesignSystem.Spacing.sm)
+                                .padding(.vertical, DesignSystem.Spacing.xs)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                        }
+                        .padding(.trailing, DesignSystem.Spacing.lg)
+                        .padding(.bottom, DesignSystem.Spacing.sm)
+                    }
+                }
+                
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        // Use the selected coordinate if available, otherwise use map center
+                        if let selectedCoord = selectedCoordinate {
+                            // Use the tapped location
+                            showingAddForm = true
+                        } else if let mapView = mapViewRef {
+                            // Use the center of the current map view
+                            let centerCoordinate = mapView.centerCoordinate
+                            selectedCoordinate = centerCoordinate
+                            showingAddForm = true
+                        } else {
+                            // Fallback to a default location if map view is not available
+                            selectedCoordinate = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+                            showingAddForm = true
+                        }
+                    }) {
+                        Image(systemName: selectedCoordinate != nil ? "mappin.circle.fill" : "plus")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(width: 56, height: 56)
+                            .background(DesignSystem.Colors.primary)
+                            .clipShape(Circle())
+                            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .accessibilityLabel("Add new chai spot")
+                    .accessibilityHint(selectedCoordinate != nil ? "Tap to add a new chai spot at the selected location" : "Tap to add a new chai spot at the map center")
+                    .padding(.trailing, DesignSystem.Spacing.lg)
+                    .padding(.bottom, DesignSystem.Spacing.lg)
+                }
+            }
         }
     }
     
     // MARK: - List View
     private var listView: some View {
-        VStack(spacing: 0) {
-            // Sort options
-            sortOptionsSection
+        ZStack {
+            VStack(spacing: 0) {
+                // Sort options
+                sortOptionsSection
+                
+                // Spots list
+                if vm.isLoading {
+                    LoadingView("Loading spots...")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if vm.personalizedSpots.isEmpty {
+                    emptyStateView
+                } else {
+                    spotsList
+                }
+            }
             
-            // Spots list
-            if vm.isLoading {
-                LoadingView("Loading spots...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if vm.personalizedSpots.isEmpty {
-                emptyStateView
-            } else {
-                spotsList
+            // Floating Action Button for adding new locations (also in list view)
+            VStack {
+                Spacer()
+                
+                // Location selection indicator
+                if let selectedCoord = selectedCoordinate {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: DesignSystem.Spacing.xs) {
+                            HStack {
+                                Text("📍 Location Selected")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(.white)
+                                
+                                Button(action: {
+                                    selectedCoordinate = nil
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.white.opacity(0.8))
+                                        .font(.caption)
+                                }
+                                .accessibilityLabel("Clear selected location")
+                                .accessibilityHint("Tap to clear the selected location")
+                            }
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                            .background(DesignSystem.Colors.primary.opacity(0.9))
+                            .cornerRadius(DesignSystem.CornerRadius.small)
+                            
+                            Text("\(selectedCoord.latitude, specifier: "%.4f"), \(selectedCoord.longitude, specifier: "%.4f")")
+                                .font(DesignSystem.Typography.caption2)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, DesignSystem.Spacing.sm)
+                                .padding(.vertical, DesignSystem.Spacing.xs)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                        }
+                        .padding(.trailing, DesignSystem.Spacing.lg)
+                        .padding(.bottom, DesignSystem.Spacing.sm)
+                    }
+                }
+                
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        // For list view, we'll use a default location or the user's current location
+                        if let userLocation = locationManager.location {
+                            selectedCoordinate = userLocation.coordinate
+                        } else {
+                            // Fallback to a default location
+                            selectedCoordinate = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+                        }
+                        showingAddForm = true
+                    }) {
+                        Image(systemName: selectedCoordinate != nil ? "mappin.circle.fill" : "plus")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(width: 56, height: 56)
+                            .background(DesignSystem.Colors.primary)
+                            .clipShape(Circle())
+                            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .accessibilityLabel("Add new chai spot")
+                    .accessibilityHint(selectedCoordinate != nil ? "Tap to add a new chai spot at the selected location" : "Tap to add a new chai spot")
+                    .padding(.trailing, DesignSystem.Spacing.lg)
+                    .padding(.bottom, DesignSystem.Spacing.lg)
+                }
             }
         }
     }

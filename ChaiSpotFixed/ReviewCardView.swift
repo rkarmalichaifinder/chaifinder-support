@@ -14,25 +14,35 @@ struct RatingBarView: View {
     let label: String
     
     var body: some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
+        HStack(spacing: DesignSystem.Spacing.sm) {
             Text(label)
-                .font(DesignSystem.Typography.bodySmall)
-                .foregroundColor(DesignSystem.Colors.textSecondary)
-                .frame(width: 65, alignment: .leading)
+                .font(DesignSystem.Typography.bodyMedium)
+                .foregroundColor(DesignSystem.Colors.textPrimary)
+                .fontWeight(.medium)
+                .frame(width: 80, alignment: .leading)
             
-            HStack(spacing: 1) {
+            HStack(spacing: 2) {
                 ForEach(1...maxRating, id: \.self) { i in
                     Image(systemName: i <= rating ? "\(iconName).fill" : iconName)
                         .foregroundColor(i <= rating ? activeColor : inactiveColor)
-                        .font(.system(size: 11))
+                        .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 16 : 14))
                 }
             }
             
             Text("\(rating)/\(maxRating)")
-                .font(DesignSystem.Typography.bodySmall)
+                .font(DesignSystem.Typography.bodyMedium)
                 .foregroundColor(activeColor)
-                .fontWeight(.medium)
+                .fontWeight(.semibold)
+                .frame(width: 35, alignment: .trailing)
         }
+        .padding(.vertical, DesignSystem.Spacing.xs)
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.small)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+        )
     }
 }
 
@@ -68,7 +78,7 @@ struct ReviewCardView: View {
         Button(action: {
             showingComments = true
         }) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                 // Header
                 HStack {
                     // Profile Icon
@@ -116,7 +126,7 @@ struct ReviewCardView: View {
                 
                 // 🎮 NEW: Photo Display
                 if let photoURL = review.photoURL, !photoURL.isEmpty {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 6) {
                         AsyncImage(url: URL(string: photoURL)) { image in
                             image
                                 .resizable()
@@ -145,8 +155,8 @@ struct ReviewCardView: View {
                                 .foregroundColor(.orange)
                                 .fontWeight(.medium)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
                         .background(Color.orange.opacity(0.1))
                         .cornerRadius(8)
                     }
@@ -192,14 +202,14 @@ struct ReviewCardView: View {
                 }
                 
                 // Improved Rating Information Layout
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     Text("Rating Details")
                         .font(DesignSystem.Typography.bodySmall)
                         .fontWeight(.semibold)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                     
                     // Compact rating layout with better spacing
-                    HStack(spacing: DesignSystem.Spacing.xl) {
+                    HStack(spacing: DesignSystem.Spacing.lg) {
                         // Creaminess Rating
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                             if let creaminessRating = review.creaminessRating {
@@ -446,11 +456,16 @@ struct ReviewCardView: View {
         guard let currentUserId = Auth.auth().currentUser?.uid else { return }
         
         let db = Firestore.firestore()
-        let reactionRef = db.collection("ratings").document(review.id).collection("reactions").document(currentUserId)
+        let ratingRef = db.collection("ratings").document(review.id)
         
         if selectedReaction == reactionType {
             // Remove reaction
-            reactionRef.delete { error in
+            let currentCount = userReactions[reactionType.rawValue] ?? 0
+            let newCount = max(0, currentCount - 1)
+            
+            ratingRef.updateData([
+                "reactions.\(reactionType.rawValue)": newCount
+            ]) { error in
                 DispatchQueue.main.async {
                     if let error = error {
                         print("❌ Error removing reaction: \(error.localizedDescription)")
@@ -462,10 +477,11 @@ struct ReviewCardView: View {
             }
         } else {
             // Add/change reaction
-            reactionRef.setData([
-                "userId": currentUserId,
-                "reactionType": reactionType.rawValue,
-                "timestamp": FieldValue.serverTimestamp()
+            let currentCount = userReactions[reactionType.rawValue] ?? 0
+            let newCount = currentCount + 1
+            
+            ratingRef.updateData([
+                "reactions.\(reactionType.rawValue)": newCount
             ]) { error in
                 DispatchQueue.main.async {
                     if let error = error {
@@ -498,38 +514,12 @@ struct ReviewCardView: View {
     
     // 🎮 NEW: Load reactions
     private func loadReactions() {
-        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        // Use reactions from the ReviewFeedItem
+        userReactions = review.reactions
         
-        let db = Firestore.firestore()
-        
-        // Load user's reaction
-        let userReactionRef = db.collection("ratings").document(review.id).collection("reactions").document(currentUserId)
-        userReactionRef.getDocument { document, error in
-            DispatchQueue.main.async {
-                if let document = document, document.exists,
-                   let reactionType = document.get("reactionType") as? String {
-                    self.selectedReaction = Rating.ReactionType(rawValue: reactionType)
-                }
-            }
-        }
-        
-        // Load all reactions
-        let reactionsRef = db.collection("ratings").document(review.id).collection("reactions")
-        reactionsRef.getDocuments { snapshot, error in
-            DispatchQueue.main.async {
-                if let snapshot = snapshot {
-                    var reactionCounts: [String: Int] = [:]
-                    
-                    for document in snapshot.documents {
-                        if let reactionType = document.get("reactionType") as? String {
-                            reactionCounts[reactionType, default: 0] += 1
-                        }
-                    }
-                    
-                    self.userReactions = reactionCounts
-                }
-            }
-        }
+        // Check if user has already reacted to this review
+        // This would need to be implemented separately if you want to track individual user reactions
+        // For now, we'll just display the total reaction counts
     }
     
     private func loadSpotInfo() {
