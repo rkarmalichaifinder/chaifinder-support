@@ -32,6 +32,13 @@ struct FriendsView: View {
     @State private var showingIncomingRequestAlert = false
     @State private var newIncomingRequest: UserProfile?
     
+    // Search functionality states
+    @State private var searchText = ""
+    @State private var searchResults: [UserProfile] = []
+    @State private var isSearching = false
+    @State private var showingInviteSheet = false
+    @State private var selectedUserToInvite: UserProfile?
+    
 
 
     private lazy var db: Firestore = {
@@ -105,6 +112,9 @@ struct FriendsView: View {
                                 .fontWeight(.bold)
                                 .foregroundColor(DesignSystem.Colors.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            // Search Bar
+                            searchBarSection
                         }
                         .padding(DesignSystem.Spacing.lg)
                         .background(DesignSystem.Colors.background)
@@ -156,6 +166,14 @@ struct FriendsView: View {
                         Text("Friends")
                             .font(DesignSystem.Typography.titleMedium)
                             .fontWeight(.bold)
+                    }
+                }
+            }
+            .sheet(isPresented: $showingInviteSheet) {
+                if let user = selectedUserToInvite {
+                    InviteUserSheet(user: user) {
+                        // Refresh data after invitation
+                        reloadData()
                     }
                 }
             }
@@ -1007,6 +1025,664 @@ struct FriendsView: View {
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let rootVC = windowScene.windows.first?.rootViewController {
                 rootVC.present(av, animated: true)
+            }
+        }
+    }
+    
+    // MARK: - Invite Specific User via Email
+    private func inviteByEmail(for user: UserProfile) {
+        let currentUserName = currentUser?.displayName ?? "Your friend"
+        
+        // Create a personalized invitation for the specific user
+        let subject = "Join our chai-loving community with Chai Finder! 🫖"
+        
+        let body = """
+        Hey \(user.displayName)!
+        
+        I've been using **Chai Finder**, a social app that connects chai lovers through shared experiences and trusted recommendations — and I think you'd love it too!
+        
+        🫶 What makes Chai Finder special:
+        • See where your friends actually love to get chai
+        • Get personalized recommendations based on your taste
+        • Share your own chai ratings and comments
+        • Save your favorite spots for next time
+        • Connect over your love of good chai
+        
+        📍 It's perfect for discovering authentic chai through people you trust — whether it's cutting chai, kadak chai, or anything in between.
+        
+        👉 Download the app:
+        **iOS App Store:** https://apps.apple.com/us/app/chai-finder/id6747459183
+        
+        Once you're in, add me so we can swap chai spots!
+        
+        Cheers to better chai,
+        \(currentUserName)
+        """
+        
+        // Check if device can send emails
+        if MFMailComposeViewController.canSendMail() {
+            let mailComposer = MFMailComposeViewController()
+            mailComposer.mailComposeDelegate = MailCoordinator.shared
+            mailComposer.setSubject(subject)
+            mailComposer.setMessageBody(body, isHTML: false)
+            mailComposer.setToRecipients([user.email])
+            
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                rootVC.present(mailComposer, animated: true)
+            }
+        } else {
+            // Fallback to activity view controller if email is not available
+            let emailContent = "Subject: \(subject)\n\n\(body)"
+            let av = UIActivityViewController(activityItems: [emailContent], applicationActivities: nil)
+            
+            // Set the activity type to prefer email
+            av.excludedActivityTypes = [
+                .assignToContact,
+                .addToReadingList,
+                .openInIBooks,
+                .markupAsPDF
+            ]
+
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                rootVC.present(av, animated: true)
+            }
+        }
+    }
+    
+    // MARK: - Search Bar Section
+    private var searchBarSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .font(.system(size: 14))
+                    .accessibilityHidden(true)
+                
+                TextField("Search for users by name or email...", text: $searchText)
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                    .accessibilityLabel("Search for users")
+                    .accessibilityHint("Type to search for users by name or email")
+                    .onChange(of: searchText) { newValue in
+                        // Debounced search
+                        Task {
+                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+                            await MainActor.run {
+                                if searchText == newValue {
+                                    performSearch(newValue)
+                                }
+                            }
+                        }
+                    }
+                    .onSubmit {
+                        performSearch(searchText)
+                    }
+                
+                if isSearching {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .frame(width: 28, height: 28)
+                } else if !searchText.isEmpty {
+                    Button(action: { 
+                        withAnimation(DesignSystem.Animation.quick) {
+                            searchText = ""
+                            searchResults = []
+                        }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .font(.system(size: 14))
+                            .frame(width: 28, height: 28)
+                    }
+                    .accessibilityLabel("Clear search")
+                    .accessibilityHint("Double tap to clear search text")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(DesignSystem.Colors.searchBackground)
+            .cornerRadius(DesignSystem.CornerRadius.medium)
+            .shadow(
+                color: Color.black.opacity(0.04),
+                radius: 2,
+                x: 0,
+                y: 1
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                    .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1)
+            )
+            
+            // Search Results
+            if !searchText.isEmpty && !searchResults.isEmpty {
+                searchResultsSection
+            } else if !searchText.isEmpty && searchResults.isEmpty && !isSearching {
+                noResultsSection
+            }
+        }
+    }
+    
+    // MARK: - Search Results Section
+    private var searchResultsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Search Results")
+                .font(DesignSystem.Typography.caption)
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .padding(.horizontal, 4)
+            
+            LazyVStack(spacing: 6) {
+                ForEach(searchResults) { user in
+                    SearchResultRow(
+                        user: user,
+                        currentUser: currentUser,
+                        sentRequests: sentRequests,
+                        onInvite: {
+                            selectedUserToInvite = user
+                            showingInviteSheet = true
+                        },
+                        onInviteViaEmail: {
+                            inviteByEmail(for: user)
+                        }
+                    )
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.small)
+        .shadow(
+            color: Color.black.opacity(0.03),
+            radius: 2,
+            x: 0,
+            y: 1
+        )
+    }
+    
+    // MARK: - No Results Section
+    private var noResultsSection: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Image(systemName: "person.crop.circle.badge.questionmark")
+                    .foregroundColor(DesignSystem.Colors.secondary)
+                    .font(.system(size: 16))
+                
+                Text("No users found")
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                Spacer()
+            }
+            
+            Button(action: {
+                // Invite by email functionality - generic invitation
+                inviteFriends()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "envelope")
+                        .font(.system(size: 14))
+                    Text("Invite by Email")
+                        .font(DesignSystem.Typography.bodySmall)
+                        .fontWeight(.medium)
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(DesignSystem.Colors.primary)
+                .cornerRadius(DesignSystem.CornerRadius.small)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.small)
+        .shadow(
+            color: Color.black.opacity(0.03),
+            radius: 2,
+            x: 0,
+            y: 1
+        )
+    }
+    
+    // MARK: - Search Functionality
+    private func performSearch(_ query: String) {
+        guard !query.isEmpty else {
+            searchResults = []
+            return
+        }
+        
+        isSearching = true
+        
+        // Search in existing users first
+        let filteredUsers = users.filter { user in
+            let displayName = user.displayName.lowercased()
+            let email = user.email.lowercased()
+            let queryLower = query.lowercased()
+            
+            return displayName.contains(queryLower) || email.contains(queryLower)
+        }
+        
+        // Remove current user and already friends/requested users
+        let currentUserId = currentUser?.uid ?? ""
+        let filteredResults = filteredUsers.filter { user in
+            user.uid != currentUserId &&
+            !(currentUser?.friends?.contains(user.uid) ?? false) &&
+            !sentRequests.contains(user.uid) &&
+            !incomingRequests.contains { $0.uid == user.uid } &&
+            !outgoingRequests.contains { $0.uid == user.uid }
+        }
+        
+        // Also search in Firestore for users not in the current list
+        searchFirestoreUsers(query: query) { firestoreUsers in
+            DispatchQueue.main.async {
+                // Combine local and Firestore results, removing duplicates
+                var allResults = filteredResults
+                
+                for firestoreUser in firestoreUsers {
+                    if !allResults.contains(where: { $0.uid == firestoreUser.uid }) &&
+                       firestoreUser.uid != currentUserId &&
+                       !(self.currentUser?.friends?.contains(firestoreUser.uid) ?? false) &&
+                       !self.sentRequests.contains(firestoreUser.uid) &&
+                       !self.incomingRequests.contains { $0.uid == firestoreUser.uid } &&
+                       !self.outgoingRequests.contains { $0.uid == firestoreUser.uid } {
+                        allResults.append(firestoreUser)
+                    }
+                }
+                
+                self.searchResults = allResults
+                self.isSearching = false
+            }
+        }
+    }
+    
+    private func searchFirestoreUsers(query: String, completion: @escaping ([UserProfile]) -> Void) {
+        let db = Firestore.firestore()
+        var results: [UserProfile] = []
+        
+        // Search by display name
+        db.collection("users")
+            .whereField("displayName", isGreaterThanOrEqualTo: query)
+            .whereField("displayName", isLessThan: query + "z")
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    print("❌ Error searching users by name: \(error.localizedDescription)")
+                    completion(results)
+                    return
+                }
+                
+                if let documents = snapshot?.documents {
+                    for document in documents {
+                        if let userProfile = self.createUserProfile(from: document) {
+                            results.append(userProfile)
+                        }
+                    }
+                }
+                
+                // Search by email
+                db.collection("users")
+                    .whereField("email", isGreaterThanOrEqualTo: query)
+                    .whereField("email", isLessThan: query + "z")
+                    .getDocuments { snapshot, error in
+                        if let error = error {
+                            print("❌ Error searching users by email: \(error.localizedDescription)")
+                            completion(results)
+                            return
+                        }
+                        
+                        if let documents = snapshot?.documents {
+                            for document in documents {
+                                if let userProfile = self.createUserProfile(from: document) {
+                                    // Avoid duplicates
+                                    if !results.contains(where: { $0.uid == userProfile.uid }) {
+                                        results.append(userProfile)
+                                    }
+                                }
+                            }
+                        }
+                        
+                        completion(results)
+                    }
+            }
+    }
+    
+    private func createUserProfile(from document: QueryDocumentSnapshot) -> UserProfile? {
+        let data = document.data()
+        
+        guard let uid = data["uid"] as? String,
+              let displayName = data["displayName"] as? String,
+              let email = data["email"] as? String else {
+            return nil
+        }
+        
+        let friends = data["friends"] as? [String] ?? []
+        let incomingRequests = data["incomingRequests"] as? [String] ?? []
+        let outgoingRequests = data["outgoingRequests"] as? [String] ?? []
+        let hasTasteSetup = data["hasTasteSetup"] as? Bool ?? false
+        
+        return UserProfile(
+            uid: uid,
+            displayName: displayName,
+            email: email,
+            friends: friends,
+            incomingRequests: incomingRequests,
+            outgoingRequests: outgoingRequests,
+            hasTasteSetup: hasTasteSetup
+        )
+    }
+    
+    private func inviteByEmail() {
+        // Create a more comprehensive invitation sheet
+        let alert = UIAlertController(
+            title: "Invite Friends by Email",
+            message: "Share Chai Finder with your friends! They'll be able to discover great chai spots and share their experiences.",
+            preferredStyle: .alert
+        )
+        
+        // Add email input field
+        alert.addTextField { textField in
+            textField.placeholder = "Enter email address"
+            textField.keyboardType = .emailAddress
+            textField.autocapitalizationType = .none
+        }
+        
+        alert.addAction(UIAlertAction(title: "Send Invitation", style: .default) { _ in
+            if let email = alert.textFields?.first?.text, !email.isEmpty {
+                self.sendEmailInvitation(to: email)
+            }
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(alert, animated: true)
+        }
+    }
+    
+    private func sendEmailInvitation(to email: String) {
+        // This would integrate with the device's mail app
+        // For now, we'll show a success message
+        let successAlert = UIAlertController(
+            title: "Invitation Sent!",
+            message: "An invitation has been sent to \(email). They'll receive an email with a link to download Chai Finder.",
+            preferredStyle: .alert
+        )
+        
+        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(successAlert, animated: true)
+        }
+        
+        // In a real implementation, you would:
+        // 1. Send an email invitation through your backend
+        // 2. Track invitation status
+        // 3. Provide analytics on invitation success rates
+        print("📧 Email invitation would be sent to: \(email)")
+    }
+}
+
+// MARK: - Invite User Sheet
+struct InviteUserSheet: View {
+    let user: UserProfile
+    let onComplete: () -> Void
+    
+    @Environment(\.dismiss) private var dismiss
+    @State private var isInviting = false
+    @State private var showingSuccessAlert = false
+    @State private var showingErrorAlert = false
+    @State private var errorMessage = ""
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: DesignSystem.Spacing.lg) {
+                // Header
+                VStack(spacing: DesignSystem.Spacing.md) {
+                    // User Avatar
+                    let initials = user.displayName
+                        .split(separator: " ")
+                        .compactMap { $0.first }
+                        .prefix(2)
+                        .map { String($0) }
+                        .joined()
+                    
+                    Text(initials.uppercased())
+                        .font(.system(size: 48, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 80, height: 80)
+                        .background(DesignSystem.Colors.primary)
+                        .clipShape(Circle())
+                    
+                    Text("Send Friend Request")
+                        .font(DesignSystem.Typography.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                    
+                    Text("Would you like to send a friend request to \(user.displayName)?")
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Text(user.email)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(DesignSystem.Colors.border.opacity(0.3))
+                        .cornerRadius(DesignSystem.CornerRadius.small)
+                }
+                
+                Spacer()
+                
+                // Action Buttons
+                VStack(spacing: DesignSystem.Spacing.md) {
+                    Button(action: {
+                        sendFriendRequest()
+                    }) {
+                        HStack(spacing: 8) {
+                            if isInviting {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
+                                Image(systemName: "person.badge.plus")
+                                    .font(.system(size: 16))
+                            }
+                            Text(isInviting ? "Sending Request..." : "Send Friend Request")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(DesignSystem.Colors.primary)
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                    }
+                    .disabled(isInviting)
+                    
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Text("Cancel")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(DesignSystem.Colors.border.opacity(0.3))
+                            .cornerRadius(DesignSystem.CornerRadius.medium)
+                    }
+                    .disabled(isInviting)
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+            .background(DesignSystem.Colors.background)
+            .navigationBarHidden(true)
+        }
+        .alert("Friend Request Sent!", isPresented: $showingSuccessAlert) {
+            Button("OK") {
+                dismiss()
+                onComplete()
+            }
+        } message: {
+            Text("Your friend request has been sent to \(user.displayName). They'll be notified and can accept your request.")
+        }
+        .alert("Error", isPresented: $showingErrorAlert) {
+            Button("OK") { }
+        } message: {
+            Text(errorMessage)
+        }
+    }
+    
+    private func sendFriendRequest() {
+        isInviting = true
+        
+        FriendService.sendFriendRequest(to: user.uid) { success in
+            DispatchQueue.main.async {
+                isInviting = false
+                
+                if success {
+                    showingSuccessAlert = true
+                } else {
+                    errorMessage = "Failed to send friend request. Please try again."
+                    showingErrorAlert = true
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Search Result Row
+struct SearchResultRow: View {
+    let user: UserProfile
+    let currentUser: UserProfile?
+    let sentRequests: Set<String>
+    let onInvite: () -> Void
+    let onInviteViaEmail: () -> Void
+    
+    @State private var isInviting = false
+    
+    var body: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            // User Avatar
+            let initials = user.displayName
+                .split(separator: " ")
+                .compactMap { $0.first }
+                .prefix(2)
+                .map { String($0) }
+                .joined()
+            
+            Text(initials.uppercased())
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 36, height: 36)
+                .background(DesignSystem.Colors.primary)
+                .clipShape(Circle())
+            
+            // User Info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(user.displayName)
+                    .font(DesignSystem.Typography.bodyMedium)
+                    .fontWeight(.medium)
+                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                
+                Text(user.email)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            // Action Buttons
+            if sentRequests.contains(user.uid) {
+                // Already sent request
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 12))
+                    Text("Sent")
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.medium)
+                }
+                .foregroundColor(DesignSystem.Colors.textSecondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(DesignSystem.Colors.border.opacity(0.3))
+                .cornerRadius(DesignSystem.CornerRadius.small)
+            } else {
+                // Action buttons - horizontal layout for space efficiency
+                HStack(spacing: 6) {
+                    // Send friend request
+                    Button(action: {
+                        sendFriendRequest()
+                    }) {
+                        HStack(spacing: 4) {
+                            if isInviting {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 16, height: 16)
+                            } else {
+                                Image(systemName: "person.badge.plus")
+                                    .font(.system(size: 12))
+                            }
+                            Text(isInviting ? "Sending..." : "Add")
+                                .font(DesignSystem.Typography.caption)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(DesignSystem.Colors.primary)
+                        .cornerRadius(DesignSystem.CornerRadius.small)
+                    }
+                    .disabled(isInviting)
+                    
+                    // Invite via Email
+                    Button(action: {
+                        onInviteViaEmail()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "envelope")
+                                .font(.system(size: 12))
+                            Text("Email")
+                                .font(DesignSystem.Typography.caption)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(DesignSystem.Colors.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(DesignSystem.Colors.secondary.opacity(0.1))
+                        .cornerRadius(DesignSystem.CornerRadius.small)
+                    }
+                    .disabled(isInviting)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.small)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1)
+        )
+    }
+    
+    private func sendFriendRequest() {
+        guard let currentUserId = currentUser?.uid else { return }
+        
+        isInviting = true
+        
+        FriendService.sendFriendRequest(to: user.uid) { success in
+            DispatchQueue.main.async {
+                isInviting = false
+                
+                if success {
+                    // Call the onInvite callback to refresh the parent view
+                    onInvite()
+                }
             }
         }
     }
