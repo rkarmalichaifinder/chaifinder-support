@@ -79,48 +79,78 @@ struct ReviewCardView: View {
             showingComments = true
         }) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                // 🎮 NEW: Social Reactions - Compact horizontal layout with no text wrapping
+                HStack(spacing: 6) {
+                    ForEach(Rating.ReactionType.allCases, id: \.self) { reactionType in
+                        ReactionButton(
+                            reactionType: reactionType,
+                            isSelected: selectedReaction == reactionType,
+                            onTap: {
+                                handleReaction(reactionType)
+                            }
+                        )
+                    }
+                    
+                    Spacer()
+                    
+                    // Show reaction counts if any exist
+                    if !userReactions.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(Array(userReactions.keys.sorted()), id: \.self) { reactionType in
+                                if let count = userReactions[reactionType], count > 0 {
+                                    HStack(spacing: 2) {
+                                        Text(Rating.ReactionType(rawValue: reactionType)?.emoji ?? "👍")
+                                            .font(.caption)
+                                        
+                                        Text("\(count)")
+                                            .font(DesignSystem.Typography.caption)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(Color.gray.opacity(0.1))
+                                    .cornerRadius(6)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 6)
+                
                 // Header
-                HStack {
+                HStack(alignment: .top, spacing: 8) {
                     // Profile Icon
                     Circle()
                         .fill(DesignSystem.Colors.primary)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 36, height: 36)
                         .overlay(
                             Text(String(review.username.prefix(1)).uppercased())
-                                .font(DesignSystem.Typography.bodyMedium)
+                                .font(DesignSystem.Typography.bodySmall)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
                         )
                     
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(review.username)
                             .font(DesignSystem.Typography.bodyMedium)
                             .fontWeight(.semibold)
                             .foregroundColor(DesignSystem.Colors.textPrimary)
                         
-                        Text(review.timestamp, style: .relative)
+                        Text(review.timestamp.timeAgoDisplay())
                             .font(DesignSystem.Typography.caption)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
                     }
                     
                     Spacer()
                     
-                    // Rating
-                    Text("\(review.rating)★")
-                        .font(DesignSystem.Typography.bodyMedium)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, DesignSystem.Spacing.sm)
-                        .padding(.vertical, DesignSystem.Spacing.xs)
-                        .background(DesignSystem.Colors.ratingGreen)
-                        .cornerRadius(DesignSystem.CornerRadius.small)
-                    
-                    // More options button
-                    Button(action: {
-                        showingActionSheet = true
-                    }) {
-                        Image(systemName: "ellipsis")
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    // Rating stars
+                    HStack(spacing: 1) {
+                        ForEach(1...5, id: \.self) { i in
+                            Image(systemName: i <= review.rating ? "star.fill" : "star")
+                                .foregroundColor(i <= review.rating ? .yellow : .gray.opacity(0.3))
+                                .font(.system(size: 10))
+                        }
                     }
                 }
                 
@@ -163,25 +193,21 @@ struct ReviewCardView: View {
                 }
                 
                 // Spot Information
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    HStack {
-                        Text(review.spotName == "Loading..." ? "Loading spot details..." : review.spotName)
-                            .font(DesignSystem.Typography.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(review.spotName == "Loading..." ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.primary)
-                            .multilineTextAlignment(.leading)
-                        
-                        if review.spotName == "Loading..." {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .padding(.leading, 4)
-                        }
-                    }
-                    
-                    Text(review.spotAddress == "Loading..." ? "Loading location..." : review.spotAddress)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(spotName == "Loading..." ? review.spotName : spotName)
                         .font(DesignSystem.Typography.bodyMedium)
-                        .foregroundColor(review.spotAddress == "Loading..." ? DesignSystem.Colors.textSecondary.opacity(0.7) : DesignSystem.Colors.textSecondary)
+                        .fontWeight(.semibold)
+                        .foregroundColor(DesignSystem.Colors.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    
+                    Text(spotAddress == "Loading..." ? review.spotAddress : spotAddress)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
                 }
+                .padding(.top, 4)
                 
                 // Chai Type
                 if let chaiType = review.chaiType, !chaiType.isEmpty {
@@ -201,85 +227,65 @@ struct ReviewCardView: View {
                     }
                 }
                 
-                // Improved Rating Information Layout
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                // Improved Rating Information Layout - More Compact
+                VStack(alignment: .leading, spacing: 6) {
                     Text("Rating Details")
                         .font(DesignSystem.Typography.bodySmall)
                         .fontWeight(.semibold)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                     
                     // Compact rating layout with better spacing
-                    HStack(spacing: DesignSystem.Spacing.lg) {
+                    VStack(spacing: 6) {
                         // Creaminess Rating
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                            if let creaminessRating = review.creaminessRating {
-                                RatingBarView(
-                                    rating: creaminessRating,
-                                    maxRating: 5,
-                                    iconName: "drop",
-                                    activeColor: DesignSystem.Colors.creaminessRating,
-                                    inactiveColor: DesignSystem.Colors.border,
-                                    label: "Creaminess"
-                                )
-                            } else {
-                                HStack(spacing: DesignSystem.Spacing.xs) {
-                                    Text("Creaminess")
-                                        .font(DesignSystem.Typography.bodySmall)
-                                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                                        .frame(width: 65, alignment: .leading)
-                                    
-                                    HStack(spacing: 1) {
-                                        ForEach(1...5, id: \.self) { i in
-                                            Image(systemName: "drop")
-                                                .foregroundColor(DesignSystem.Colors.border)
-                                                .font(.system(size: 11))
-                                        }
+                        if let creaminessRating = review.creaminessRating {
+                            HStack(spacing: 8) {
+                                Text("Creaminess")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                                    .frame(width: 70, alignment: .leading)
+                                
+                                HStack(spacing: 2) {
+                                    ForEach(1...5, id: \.self) { i in
+                                        Image(systemName: i <= creaminessRating ? "drop.fill" : "drop")
+                                            .foregroundColor(i <= creaminessRating ? .brown : .gray.opacity(0.3))
+                                            .font(.system(size: 10))
                                     }
-                                    
-                                    Text("NR")
-                                        .font(DesignSystem.Typography.bodySmall)
-                                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                                        .fontWeight(.medium)
                                 }
+                                
+                                Text("\(creaminessRating)/5")
+                                    .font(DesignSystem.Typography.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                                    .frame(width: 25, alignment: .trailing)
                             }
                         }
                         
                         // Chai Strength Rating
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                            if let chaiStrengthRating = review.chaiStrengthRating {
-                                RatingBarView(
-                                    rating: chaiStrengthRating,
-                                    maxRating: 5,
-                                    iconName: "leaf",
-                                    activeColor: DesignSystem.Colors.chaiStrengthRating,
-                                    inactiveColor: DesignSystem.Colors.border,
-                                    label: "Strength"
-                                )
-                            } else {
-                                HStack(spacing: DesignSystem.Spacing.xs) {
-                                    Text("Strength")
-                                        .font(DesignSystem.Typography.bodySmall)
-                                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                                        .frame(width: 65, alignment: .leading)
-                                    
-                                    HStack(spacing: 1) {
-                                        ForEach(1...5, id: \.self) { i in
-                                            Image(systemName: "leaf")
-                                                .foregroundColor(DesignSystem.Colors.border)
-                                                .font(.system(size: 11))
-                                        }
+                        if let chaiStrengthRating = review.chaiStrengthRating {
+                            HStack(spacing: 8) {
+                                Text("Strength")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                                    .frame(width: 70, alignment: .leading)
+                                
+                                HStack(spacing: 2) {
+                                    ForEach(1...5, id: \.self) { i in
+                                        Image(systemName: i <= chaiStrengthRating ? "leaf.fill" : "leaf")
+                                            .foregroundColor(i <= chaiStrengthRating ? .green : .gray.opacity(0.3))
+                                            .font(.system(size: 10))
                                     }
-                                    
-                                    Text("NR")
-                                        .font(DesignSystem.Typography.bodySmall)
-                                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                                        .fontWeight(.medium)
                                 }
+                                
+                                Text("\(chaiStrengthRating)/5")
+                                    .font(DesignSystem.Typography.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                                    .frame(width: 25, alignment: .trailing)
                             }
                         }
                     }
                 }
-                .padding(.top, DesignSystem.Spacing.xs)
+                .padding(.top, 6)
                 
                 // Flavor Notes - Always show with "NR" if missing
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
@@ -313,55 +319,13 @@ struct ReviewCardView: View {
                 }
                 .padding(.top, DesignSystem.Spacing.xs)
                 
-                // Review Comment
+                // Comment
                 if let comment = review.comment, !comment.isEmpty {
                     Text(comment)
                         .font(DesignSystem.Typography.bodyMedium)
                         .foregroundColor(DesignSystem.Colors.textPrimary)
                         .padding(.top, DesignSystem.Spacing.xs)
                 }
-                
-                // 🎮 NEW: Social Reactions - Improved Layout
-                VStack(spacing: 10) {
-                    // Reaction summary
-                    if !userReactions.isEmpty {
-                        HStack(spacing: 10) {
-                            ForEach(Array(userReactions.keys.sorted()), id: \.self) { reactionType in
-                                if let count = userReactions[reactionType], count > 0 {
-                                    HStack(spacing: 4) {
-                                        Text(Rating.ReactionType(rawValue: reactionType)?.emoji ?? "👍")
-                                            .font(.caption)
-                                        
-                                        Text("\(count)")
-                                            .font(DesignSystem.Typography.caption)
-                                            .fontWeight(.medium)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(12)
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Reaction buttons - Horizontal layout for better readability
-                    HStack(spacing: 10) {
-                        ForEach(Rating.ReactionType.allCases, id: \.self) { reactionType in
-                            ReactionButton(
-                                reactionType: reactionType,
-                                isSelected: selectedReaction == reactionType,
-                                onTap: {
-                                    handleReaction(reactionType)
-                                }
-                            )
-                        }
-                        
-                        Spacer()
-                    }
-                }
-                .padding(.top, DesignSystem.Spacing.sm)
                 
                 // Action Buttons
                 HStack(spacing: DesignSystem.Spacing.md) {
@@ -403,6 +367,10 @@ struct ReviewCardView: View {
             .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.cardBackground)
             .cornerRadius(DesignSystem.CornerRadius.medium)
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                    .stroke(DesignSystem.Colors.border.opacity(0.2), lineWidth: 0.3)
+            )
         }
         .buttonStyle(PlainButtonStyle())
         .sheet(isPresented: $showingComments) {
@@ -657,7 +625,7 @@ struct ReviewCardView: View {
     }
 }
 
-// 🎮 NEW: Reaction Button
+// MARK: - Reaction Button
 struct ReactionButton: View {
     let reactionType: Rating.ReactionType
     let isSelected: Bool
@@ -665,27 +633,34 @@ struct ReactionButton: View {
     
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 6) {
+            HStack(spacing: 3) {
                 Text(reactionType.emoji)
-                    .font(.title3)
+                    .font(.system(size: 12))
                 
                 Text(reactionType.displayName)
                     .font(DesignSystem.Typography.caption)
                     .fontWeight(.medium)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(isSelected ? Color.orange.opacity(0.2) : Color.gray.opacity(0.1))
-            .foregroundColor(isSelected ? .orange : .secondary)
-            .cornerRadius(20)
+            .foregroundColor(isSelected ? .white : DesignSystem.Colors.textSecondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .frame(minWidth: 60, maxWidth: 70)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.08))
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(isSelected ? Color.orange : Color.gray.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.2), lineWidth: 0.5)
             )
         }
         .buttonStyle(PlainButtonStyle())
         .scaleEffect(isSelected ? 1.05 : 1.0)
         .animation(.easeInOut(duration: 0.1), value: isSelected)
+        .accessibilityLabel("\(reactionType.displayName) reaction")
+        .accessibilityHint("Double tap to \(isSelected ? "remove" : "add") \(reactionType.displayName) reaction")
     }
 }
 
@@ -699,4 +674,13 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+} 
+
+// MARK: - Date Extension
+extension Date {
+    func timeAgoDisplay() -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: self, relativeTo: Date())
+    }
 } 

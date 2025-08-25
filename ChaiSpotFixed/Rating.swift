@@ -33,14 +33,14 @@ struct Rating: Identifiable, Codable {
     
     // 🎯 NEW: Reaction types
     enum ReactionType: String, CaseIterable, Codable {
-        case cheers = "cheers"
+        case disagree = "disagree"
         case love = "love"
         case wow = "wow"
         case helpful = "helpful"
         
         var emoji: String {
             switch self {
-            case .cheers: return "🥂"
+            case .disagree: return "👎"
             case .love: return "❤️"
             case .wow: return "😮"
             case .helpful: return "👍"
@@ -49,7 +49,7 @@ struct Rating: Identifiable, Codable {
         
         var displayName: String {
             switch self {
-            case .cheers: return "Cheers"
+            case .disagree: return "Disagree"
             case .love: return "Love"
             case .wow: return "Wow"
             case .helpful: return "Helpful"

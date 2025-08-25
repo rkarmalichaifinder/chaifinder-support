@@ -67,8 +67,8 @@ struct FeedView: View {
     
     // MARK: - Header Section
     private var headerSection: some View {
-        VStack(spacing: DesignSystem.Spacing.xs) {
-            // Header with refresh button
+        VStack(spacing: 8) {
+            // Header with refresh button - more compact
             HStack {
                 Spacer()
                 
@@ -81,7 +81,7 @@ struct FeedView: View {
                     Image(systemName: "arrow.clockwise")
                         .foregroundColor(DesignSystem.Colors.primary)
                         .font(.system(size: 16))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 40, height: 40)
                         .background(DesignSystem.Colors.primary.opacity(0.1))
                         .cornerRadius(DesignSystem.CornerRadius.medium)
                 }
@@ -89,9 +89,8 @@ struct FeedView: View {
                 .accessibilityLabel("Refresh feed")
                 .accessibilityHint("Double tap to refresh the feed")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Brand title
+            // Brand title - more compact
             Text("chai finder")
                 .font(DesignSystem.Typography.titleLarge)
                 .fontWeight(.bold)
@@ -99,8 +98,8 @@ struct FeedView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel("App title: chai finder")
             
-            // Feed Type Toggle
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            // Feed Type Toggle - more compact
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Feed Type")
                     .font(DesignSystem.Typography.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
@@ -125,20 +124,20 @@ struct FeedView: View {
             // Search Bar
             searchBarSection
         }
-        .padding(.horizontal, DesignSystem.Spacing.lg)
-        .padding(.top, DesignSystem.Spacing.xs)
-        .padding(.bottom, DesignSystem.Spacing.xs)
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
         .background(DesignSystem.Colors.background)
         .iPadOptimized()
     }
     
     // MARK: - Search Bar Section
     private var searchBarSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            HStack(spacing: DesignSystem.Spacing.sm) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(DesignSystem.Colors.textSecondary)
-                    .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 18 : 14))
+                    .font(.system(size: 14))
                     .accessibilityHidden(true)
                 
                 TextField("Search friends' reviews & community posts...", text: $searchText)
@@ -170,20 +169,20 @@ struct FeedView: View {
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 18 : 14))
-                            .frame(width: 32, height: 32)
+                            .font(.system(size: 14))
+                            .frame(width: 28, height: 28)
                     }
                     .accessibilityLabel("Clear search")
                     .accessibilityHint("Double tap to clear search text")
                 }
             }
-            .padding(.horizontal, DesignSystem.Spacing.sm)
-            .padding(.vertical, DesignSystem.Spacing.xs)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(DesignSystem.Colors.searchBackground)
             .cornerRadius(DesignSystem.CornerRadius.medium)
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                    .stroke(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.5)
+                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
             )
             
             // Search suggestions
@@ -195,13 +194,13 @@ struct FeedView: View {
     
     // MARK: - Search Suggestions
     private var searchSuggestionsView: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Popular searches")
                 .font(DesignSystem.Typography.caption)
                 .foregroundColor(DesignSystem.Colors.textSecondary)
-                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.horizontal, 12)
             
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: DesignSystem.Spacing.xs) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 6) {
                 ForEach(["Masala Chai", "Cardamom", "Ginger", "Karak"], id: \.self) { suggestion in
                     Button(action: {
                         searchText = suggestion
@@ -210,28 +209,27 @@ struct FeedView: View {
                     }) {
                         Text(suggestion)
                             .font(DesignSystem.Typography.caption)
-                            .foregroundColor(DesignSystem.Colors.primary)
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
-                            .background(DesignSystem.Colors.primary.opacity(0.1))
-                            .cornerRadius(DesignSystem.CornerRadius.small)
+                            .foregroundColor(DesignSystem.Colors.textPrimary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(DesignSystem.Colors.searchBackground)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+                            )
                     }
-                    .accessibilityLabel("Search for \(suggestion)")
                 }
             }
+            .padding(.horizontal, 12)
         }
-        .padding(DesignSystem.Spacing.xs)
-        .background(DesignSystem.Colors.cardBackground)
-        .cornerRadius(DesignSystem.CornerRadius.medium)
-        .shadow(color: DesignSystem.Shadows.small.color, radius: DesignSystem.Shadows.small.radius, x: DesignSystem.Shadows.small.x, y: DesignSystem.Shadows.small.y)
-        .transition(.opacity.combined(with: .move(edge: .top)))
-        .zIndex(1) // Ensure suggestions appear above other content
+        .padding(.top, 4)
     }
     
     // MARK: - Feed Content
     private var feedContent: some View {
         ScrollView {
-            LazyVStack(spacing: DesignSystem.Spacing.xs) {
+            LazyVStack(spacing: 8) {
                 ForEach(viewModel.reviews) { review in
                     ReviewCardView(review: review)
                         .iPadCardStyle()
@@ -247,26 +245,14 @@ struct FeedView: View {
                             .font(DesignSystem.Typography.caption)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
                     }
-                    .padding(DesignSystem.Spacing.md)
                     .frame(maxWidth: .infinity)
-                }
-                
-                // End of feed indicator
-                if !viewModel.reviews.isEmpty && !viewModel.isLoading {
-                    HStack {
-                        Text("You've reached the end")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                    }
-                    .padding(DesignSystem.Spacing.md)
-                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
                 }
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.top, DesignSystem.Spacing.xs)
-            .iPadOptimized()
+            .padding(.top, 8)
+            .padding(.bottom, 16)
         }
-        .scrollIndicators(.hidden)
     }
 }
 
