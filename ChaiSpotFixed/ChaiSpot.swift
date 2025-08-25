@@ -14,7 +14,7 @@ struct ChaiFinder: Identifiable, Codable {
 }
 
 // MARK: - Chai Spot Model for UI
-struct ChaiSpot: Identifiable, Equatable {
+struct ChaiSpot: Identifiable, Equatable, Hashable {
     let id: String
     let name: String
     let address: String
@@ -31,6 +31,11 @@ struct ChaiSpot: Identifiable, Equatable {
     // Implement Equatable
     static func == (lhs: ChaiSpot, rhs: ChaiSpot) -> Bool {
         return lhs.id == rhs.id
+    }
+    
+    // Implement Hashable
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }
 

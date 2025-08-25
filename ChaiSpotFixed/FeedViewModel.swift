@@ -580,7 +580,7 @@ class FeedViewModel: ObservableObject {
             currentCollectionIndex += 1
             
             db.collection(collectionName).document(spotId).getDocument { snapshot, error in
-                DispatchQueue.main.async(execute: DispatchWorkItem {
+                DispatchQueue.main.async {
                     if let error = error {
                         // Try the next collection if this one failed
                         print("Failed to load from collection \(collectionName): \(error.localizedDescription)")
