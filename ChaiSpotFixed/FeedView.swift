@@ -166,6 +166,10 @@ struct FeedView: View {
                 TextField("Search reviews, locations, cities, reviewers...", text: $searchText)
                     .font(DesignSystem.Typography.bodyMedium)
                     .foregroundColor(DesignSystem.Colors.textPrimary)
+                    .autocorrectionDisabled(true)
+                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
                     .accessibilityLabel("Search reviews")
                     .accessibilityHint("Type to search through reviews, locations, cities, and reviewers")
                     .onChange(of: searchText) { newValue in

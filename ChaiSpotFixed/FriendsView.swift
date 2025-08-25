@@ -1111,6 +1111,10 @@ struct FriendsView: View {
                 TextField("Search for users by name, email, or bio...", text: $searchText)
                     .font(DesignSystem.Typography.bodyMedium)
                     .foregroundColor(DesignSystem.Colors.textPrimary)
+                    .autocorrectionDisabled(true)
+                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
                     .accessibilityLabel("Search for users")
                     .accessibilityHint("Type to search for users by name, email, or bio")
                     .onChange(of: searchText) { newValue in
@@ -1308,6 +1312,10 @@ struct FriendsView: View {
                         },
                         onInviteViaEmail: {
                             inviteByEmail(for: user)
+                        },
+                        onTap: {
+                            selectedFriend = user
+                            showingFriendDetails = true
                         }
                     )
                 }
@@ -1864,113 +1872,120 @@ struct SearchResultRow: View {
     let sentRequests: Set<String>
     let onInvite: () -> Void
     let onInviteViaEmail: () -> Void
+    let onTap: () -> Void
     
     @State private var isInviting = false
     
     var body: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            // User Avatar
-            let initials = user.displayName
-                .split(separator: " ")
-                .compactMap { $0.first }
-                .prefix(2)
-                .map { String($0) }
-                .joined()
-            
-            Text(initials.uppercased())
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(.white)
-                .frame(width: 36, height: 36)
-                .background(DesignSystem.Colors.primary)
-                .clipShape(Circle())
-            
-            // User Info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(user.displayName)
-                    .font(DesignSystem.Typography.bodyMedium)
-                    .fontWeight(.medium)
-                    .foregroundColor(DesignSystem.Colors.textPrimary)
+        Button(action: onTap) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                // User Avatar
+                let initials = user.displayName
+                    .split(separator: " ")
+                    .compactMap { $0.first }
+                    .prefix(2)
+                    .map { String($0) }
+                    .joined()
                 
-                Text(user.email)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                    .lineLimit(1)
-            }
-            
-            Spacer()
-            
-            // Action Buttons
-            if sentRequests.contains(user.uid) {
-                // Already sent request
-                HStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 12))
-                    Text("Sent")
-                        .font(DesignSystem.Typography.caption)
+                Text(initials.uppercased())
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(DesignSystem.Colors.primary)
+                    .clipShape(Circle())
+                
+                // User Info
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(user.displayName)
+                        .font(DesignSystem.Typography.bodyMedium)
                         .fontWeight(.medium)
-                }
-                .foregroundColor(DesignSystem.Colors.textSecondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(DesignSystem.Colors.border.opacity(0.3))
-                .cornerRadius(DesignSystem.CornerRadius.small)
-            } else {
-                // Action buttons - horizontal layout for space efficiency
-                HStack(spacing: 6) {
-                    // Send friend request
-                    Button(action: {
-                        sendFriendRequest()
-                    }) {
-                        HStack(spacing: 4) {
-                            if isInviting {
-                                ProgressView()
-                                    .scaleEffect(0.6)
-                                    .frame(width: 16, height: 16)
-                            } else {
-                                Image(systemName: "person.badge.plus")
-                                    .font(.system(size: 12))
-                            }
-                            Text(isInviting ? "Sending..." : "Add")
-                                .font(DesignSystem.Typography.caption)
-                                .fontWeight(.medium)
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(DesignSystem.Colors.primary)
-                        .cornerRadius(DesignSystem.CornerRadius.small)
-                    }
-                    .disabled(isInviting)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
                     
-                    // Invite via Email
-                    Button(action: {
-                        onInviteViaEmail()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "envelope")
-                                .font(.system(size: 12))
-                            Text("Email")
-                                .font(DesignSystem.Typography.caption)
-                                .fontWeight(.medium)
-                        }
-                        .foregroundColor(DesignSystem.Colors.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(DesignSystem.Colors.secondary.opacity(0.1))
-                        .cornerRadius(DesignSystem.CornerRadius.small)
+                    Text(user.email)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                // Action Buttons - Prevent text wrapping with fixed widths
+                if sentRequests.contains(user.uid) {
+                    // Already sent request
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 12))
+                        Text("Sent")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.medium)
                     }
-                    .disabled(isInviting)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(DesignSystem.Colors.border.opacity(0.3))
+                    .cornerRadius(DesignSystem.CornerRadius.small)
+                    .frame(width: 60) // Fixed width to prevent wrapping
+                } else {
+                    // Action buttons - horizontal layout with fixed widths
+                    HStack(spacing: 6) {
+                        // Send friend request
+                        Button(action: {
+                            sendFriendRequest()
+                        }) {
+                            HStack(spacing: 4) {
+                                if isInviting {
+                                    ProgressView()
+                                        .scaleEffect(0.6)
+                                        .frame(width: 16, height: 16)
+                                } else {
+                                    Image(systemName: "person.badge.plus")
+                                        .font(.system(size: 12))
+                                }
+                                Text(isInviting ? "Sending..." : "Add")
+                                    .font(DesignSystem.Typography.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(DesignSystem.Colors.primary)
+                            .cornerRadius(DesignSystem.CornerRadius.small)
+                        }
+                        .disabled(isInviting)
+                        .frame(width: 70) // Fixed width to prevent wrapping
+                        
+                        // Invite via Email
+                        Button(action: {
+                            onInviteViaEmail()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "envelope")
+                                    .font(.system(size: 12))
+                                Text("Email")
+                                    .font(DesignSystem.Typography.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(DesignSystem.Colors.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(DesignSystem.Colors.secondary.opacity(0.1))
+                            .cornerRadius(DesignSystem.CornerRadius.small)
+                        }
+                        .disabled(isInviting)
+                        .frame(width: 60) // Fixed width to prevent wrapping
+                    }
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(DesignSystem.Colors.cardBackground)
+            .cornerRadius(DesignSystem.CornerRadius.small)
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                    .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1)
+            )
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(DesignSystem.Colors.cardBackground)
-        .cornerRadius(DesignSystem.CornerRadius.small)
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1)
-        )
+        .buttonStyle(PlainButtonStyle()) // Prevents button styling from interfering
     }
     
     private func sendFriendRequest() {

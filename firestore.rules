@@ -36,6 +36,11 @@ service cloud.firestore {
       allow read: if request.auth != null; // Allow authenticated users to read all ratings
       allow create: if request.auth != null && request.auth.uid == resource.data.userId;
       allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+      
+      // Allow users to update visibility and deleted fields for their own ratings
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.userId &&
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['visibility', 'deleted', 'updatedAt']));
     }
     
     // Chai spots collection

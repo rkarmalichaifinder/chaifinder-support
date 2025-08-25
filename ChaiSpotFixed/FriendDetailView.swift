@@ -314,10 +314,23 @@ struct FriendDetailView: View {
                 .cornerRadius(DesignSystem.CornerRadius.small)
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(rating.spotName ?? "Chai Spot #\(rating.spotId.prefix(6))")
-                    .font(DesignSystem.Typography.bodyMedium)
-                    .fontWeight(.medium)
-                    .foregroundColor(DesignSystem.Colors.textPrimary)
+                if let spotName = rating.spotName, !spotName.isEmpty {
+                    Text(spotName)
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .fontWeight(.medium)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                } else {
+                    HStack(spacing: 4) {
+                        Text("Chai Spot")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        
+                        Text("#\(rating.spotId.prefix(6))")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    }
+                }
                 
                 if let comment = rating.comment, !comment.isEmpty {
                     Text(comment)
@@ -450,7 +463,53 @@ struct FriendDetailView: View {
                     self.friendRatings = ratings
                     self.loadingRatings = false
                     print("✅ Loaded \(self.friendRatings.count) ratings for \(self.friend.displayName)")
+                    
+                    // Now fetch the actual chai spot names for ratings that don't have them
+                    self.fetchMissingChaiSpotNames()
                 }
             }
+    }
+    
+    private func fetchMissingChaiSpotNames() {
+        let ratingsWithoutNames = friendRatings.filter { $0.spotName == nil }
+        
+        if ratingsWithoutNames.isEmpty {
+            print("✅ All ratings already have spot names")
+            return
+        }
+        
+        print("🔍 Fetching missing chai spot names for \(ratingsWithoutNames.count) ratings")
+        
+        let group = DispatchGroup()
+        var updatedRatings = friendRatings
+        
+        for (index, rating) in ratingsWithoutNames.enumerated() {
+            group.enter()
+            
+            db.collection("chaiSpots").document(rating.spotId).getDocument { snapshot, error in
+                defer { group.leave() }
+                
+                if let error = error {
+                    print("❌ Error fetching chai spot \(rating.spotId): \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let data = snapshot?.data(),
+                      let spotName = data["name"] as? String else {
+                    print("⚠️ No name found for chai spot \(rating.spotId)")
+                    return
+                }
+                
+                print("✅ Found chai spot name: \(spotName) for ID: \(rating.spotId)")
+                
+                // Update the rating with the actual spot name
+                updatedRatings[index].spotName = spotName
+            }
+        }
+        
+        group.notify(queue: .main) {
+            self.friendRatings = updatedRatings
+            print("✅ Updated \(self.friendRatings.count) ratings with actual chai spot names")
+        }
     }
 } 

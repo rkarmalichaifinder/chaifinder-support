@@ -39,9 +39,15 @@ struct RatingBarView: View {
         .padding(.horizontal, DesignSystem.Spacing.sm)
         .background(DesignSystem.Colors.cardBackground)
         .cornerRadius(DesignSystem.CornerRadius.small)
+        .shadow(
+            color: Color.black.opacity(0.02), // Very subtle shadow
+            radius: 1,
+            x: 0,
+            y: 0.5
+        )
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+                .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1) // Reduced from 0.3 opacity and 0.5 lineWidth
         )
     }
 }
@@ -98,7 +104,7 @@ struct ReviewCardView: View {
                         HStack(spacing: 6) {
                             ForEach(Array(userReactions.keys.sorted()), id: \.self) { reactionType in
                                 if let count = userReactions[reactionType], count > 0 {
-                                    HStack(spacing: 2) {
+                                    HStack(spacing: 3) { // Increased from 2 to 3 for better spacing
                                         Text(Rating.ReactionType(rawValue: reactionType)?.emoji ?? "👍")
                                             .font(.caption)
                                         
@@ -107,16 +113,16 @@ struct ReviewCardView: View {
                                             .fontWeight(.medium)
                                             .foregroundColor(.secondary)
                                     }
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(6)
+                                    .padding(.horizontal, 6) // Increased from 4 to 6
+                                    .padding(.vertical, 3) // Increased from 2 to 3
+                                    .background(Color.gray.opacity(0.08)) // Reduced from 0.1 to 0.08 for subtler appearance
+                                    .cornerRadius(8) // Increased from 6 to 8 for consistency
                                 }
                             }
                         }
                     }
                 }
-                .padding(.bottom, 6)
+                .padding(.bottom, 4) // Reduced from 6 to 4 for more compact layout
                 
                 // Header
                 HStack(alignment: .top, spacing: 8) {
@@ -367,9 +373,15 @@ struct ReviewCardView: View {
             .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.cardBackground)
             .cornerRadius(DesignSystem.CornerRadius.medium)
+            .shadow(
+                color: Color.black.opacity(0.03), // Very subtle shadow
+                radius: 2,
+                x: 0,
+                y: 1
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                    .stroke(DesignSystem.Colors.border.opacity(0.2), lineWidth: 0.3)
+                    .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1) // Reduced from 0.15 opacity and 0.2 lineWidth
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -633,9 +645,9 @@ struct ReactionButton: View {
     
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 3) {
+            HStack(spacing: 4) { // Increased from 3 to 4 for better spacing
                 Text(reactionType.emoji)
-                    .font(.system(size: 12))
+                    .font(.system(size: 14)) // Increased from 12 to 14 for better visibility
                 
                 Text(reactionType.displayName)
                     .font(DesignSystem.Typography.caption)
@@ -644,23 +656,24 @@ struct ReactionButton: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
             .foregroundColor(isSelected ? .white : DesignSystem.Colors.textSecondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .frame(minWidth: 60, maxWidth: 70)
+            .padding(.horizontal, 8) // Increased from 6 to 8 for better touch target
+            .padding(.vertical, 6) // Increased from 4 to 6 for better touch target
+            .frame(minWidth: 64, maxWidth: 76) // Increased from 60/70 to 64/76 for better touch target
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.08))
+                RoundedRectangle(cornerRadius: 8) // Increased from 6 to 8 for better visual appeal
+                    .fill(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.06)) // Reduced from 0.08 to 0.06 for subtler appearance
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.2), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 8) // Increased from 6 to 8
+                    .stroke(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.15), lineWidth: 0.5) // Reduced from 0.2 to 0.15 for subtler appearance
             )
         }
         .buttonStyle(PlainButtonStyle())
-        .scaleEffect(isSelected ? 1.05 : 1.0)
-        .animation(.easeInOut(duration: 0.1), value: isSelected)
+        .scaleEffect(isSelected ? 1.02 : 1.0) // Reduced from 1.05 to 1.02 for subtler animation
+        .animation(.easeInOut(duration: 0.15), value: isSelected) // Increased from 0.1 to 0.15 for smoother animation
         .accessibilityLabel("\(reactionType.displayName) reaction")
         .accessibilityHint("Double tap to \(isSelected ? "remove" : "add") \(reactionType.displayName) reaction")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

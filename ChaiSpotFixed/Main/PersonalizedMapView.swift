@@ -60,17 +60,22 @@ struct PersonalizedMapView: View {
             .onReceive(NotificationCenter.default.publisher(for: .tasteSetupCompleted)) { _ in
                 Task {
                     await vm.refreshPersonalization()
+                    // Don't auto-center - let user control the map
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .ratingUpdated)) { _ in
                 Task {
                     await vm.refreshPersonalization()
+                    // Don't auto-center - let user control the map
                 }
             }
             .task {
                 print("🚀 PersonalizedMapView task started")
                 await vm.loadAllSpots()
                 print("🚀 PersonalizedMapView task completed")
+                
+                // Don't auto-center on load - let user control the map
+                // Only center if this is the very first time the view appears
             }
             .sheet(isPresented: $showingSpotDetail) {
                 if let spot = selectedSpot {
@@ -131,6 +136,45 @@ struct PersonalizedMapView: View {
                 .disabled(vm.isRefreshingPersonalization)
                 .accessibilityLabel("Refresh personalization")
                 .accessibilityHint("Double tap to refresh your personalized recommendations")
+                
+                // Add location button - moved from floating button to header
+                Button(action: {
+                    // Use user's current location or map center
+                    if let userLocation = locationManager.location {
+                        selectedCoordinate = userLocation.coordinate
+                    } else {
+                        // Fallback to a default location
+                        selectedCoordinate = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+                    }
+                    showingAddForm = true
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(DesignSystem.Colors.primary)
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .frame(width: 32, height: 32)
+                .background(DesignSystem.Colors.primary.opacity(0.1))
+                .cornerRadius(DesignSystem.CornerRadius.small)
+                .accessibilityLabel("Add new chai spot")
+                .accessibilityHint("Double tap to add a new chai spot")
+                
+                // Show My Spots button (only when not showing list)
+                if !vm.isShowingList && !vm.getPersonalizedSpotIds().isEmpty {
+                    Button(action: {
+                        fitMapToPersonalizedSpots()
+                    }) {
+                        Image(systemName: "heart.fill")
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
+                    }
+                    .frame(width: 32, height: 32)
+                    .background(DesignSystem.Colors.primary.opacity(0.1))
+                    .cornerRadius(DesignSystem.CornerRadius.small)
+                    .accessibilityLabel("Show my personalized spots")
+                    .accessibilityHint("Double tap to center the map on your personalized chai spots")
+                }
             }
             
             // Search Bar - restored functionality
@@ -210,46 +254,6 @@ struct PersonalizedMapView: View {
                 .cornerRadius(DesignSystem.CornerRadius.small)
                 .padding(.horizontal, DesignSystem.Spacing.lg)
             }
-            
-            // Personalization stats when user has taste setup
-            if vm.userProfile?.hasTasteSetup == true {
-                let stats = vm.getPersonalizationStats()
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    HStack(spacing: DesignSystem.Spacing.xs) {
-                        Image(systemName: "heart.fill")
-                            .foregroundColor(DesignSystem.Colors.primary)
-                            .font(.caption2)
-                        Text("\(stats["totalPersonalized"] as? Int ?? 0) personalized")
-                            .font(DesignSystem.Typography.caption2)
-                            .foregroundColor(DesignSystem.Colors.primary)
-                    }
-                    
-                    HStack(spacing: DesignSystem.Spacing.xs) {
-                        Image(systemName: "star.fill")
-                            .foregroundColor(DesignSystem.Colors.accent)
-                            .font(.caption2)
-                        Text("\(stats["totalRatings"] as? Int ?? 0) ratings")
-                            .font(DesignSystem.Typography.caption2)
-                            .foregroundColor(DesignSystem.Colors.accent)
-                    }
-                    
-                    HStack(spacing: DesignSystem.Spacing.xs) {
-                        Image(systemName: "person.2.fill")
-                            .foregroundColor(DesignSystem.Colors.info)
-                            .font(.caption2)
-                        Text("\(stats["totalFriends"] as? Int ?? 0) friends")
-                            .font(DesignSystem.Typography.caption2)
-                            .foregroundColor(DesignSystem.Colors.info)
-                    }
-                    
-                    Spacer()
-                }
-                .padding(.horizontal, DesignSystem.Spacing.lg)
-                .padding(.vertical, DesignSystem.Spacing.xs)
-                .background(DesignSystem.Colors.cardBackground.opacity(0.8))
-                .cornerRadius(DesignSystem.CornerRadius.small)
-                .padding(.horizontal, DesignSystem.Spacing.lg)
-            }
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm) // Reduced from md to sm
@@ -280,6 +284,10 @@ struct PersonalizedMapView: View {
                 TextField("Search chai spots or locations...", text: $vm.searchText)
                     .font(DesignSystem.Typography.bodyMedium)
                     .foregroundColor(DesignSystem.Colors.textPrimary)
+                    .autocorrectionDisabled(true)
+                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
                     .accessibilityLabel("Search chai spots or locations")
                     .accessibilityHint("Type to search through chai spots or search for a location to center the map")
                     .onChange(of: vm.searchText) { newValue in
@@ -430,28 +438,74 @@ struct PersonalizedMapView: View {
     
     // MARK: - Map Legend
     private var mapLegend: some View {
-        HStack(spacing: DesignSystem.Spacing.md) {
-            // Personalized spots legend with count
-            HStack(spacing: DesignSystem.Spacing.xs) {
-                Image(systemName: "circle.fill")
-                    .foregroundColor(DesignSystem.Colors.primary)
-                    .font(.caption)
-                Text("🫖 Your Spots (\(vm.getPersonalizedSpotIds().count))")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            // Legend toggles
+            HStack(spacing: DesignSystem.Spacing.md) {
+                // Personalized spots toggle
+                Button(action: {
+                    vm.showPersonalizedOnly.toggle()
+                }) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: vm.showPersonalizedOnly ? "heart.fill" : "heart")
+                            .foregroundColor(vm.showPersonalizedOnly ? DesignSystem.Colors.primary : DesignSystem.Colors.textSecondary)
+                            .font(.caption)
+                        Text("My Spots")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(vm.showPersonalizedOnly ? DesignSystem.Colors.primary : DesignSystem.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, DesignSystem.Spacing.xs)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                            .fill(vm.showPersonalizedOnly ? DesignSystem.Colors.primary.opacity(0.1) : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                            .stroke(vm.showPersonalizedOnly ? DesignSystem.Colors.primary.opacity(0.3) : DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+                    )
+                }
+                
+                // Community spots toggle
+                Button(action: {
+                    vm.showCommunitySpots.toggle()
+                }) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: vm.showCommunitySpots ? "cup.and.saucer.fill" : "cup.and.saucer")
+                            .foregroundColor(vm.showCommunitySpots ? DesignSystem.Colors.secondary : DesignSystem.Colors.textSecondary)
+                            .font(.caption)
+                        Text("Community")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(vm.showCommunitySpots ? DesignSystem.Colors.secondary : DesignSystem.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, DesignSystem.Spacing.xs)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                            .fill(vm.showCommunitySpots ? DesignSystem.Colors.secondary.opacity(0.1) : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                            .stroke(vm.showCommunitySpots ? DesignSystem.Colors.secondary.opacity(0.3) : DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+                    )
+                }
+                
+                Spacer()
+                
+                // Quick actions
+                Button("Show All") {
+                    fitMapToAllSpots()
+                }
+                .font(DesignSystem.Typography.caption2)
+                .foregroundColor(DesignSystem.Colors.primary)
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, 2)
+                .background(DesignSystem.Colors.primary.opacity(0.1))
+                .cornerRadius(DesignSystem.CornerRadius.small)
             }
             
-            // Community spots legend with count
-            HStack(spacing: DesignSystem.Spacing.xs) {
-                Image(systemName: "circle.fill")
-                    .foregroundColor(DesignSystem.Colors.secondary)
-                    .font(.caption)
-                Text("☕ Community Spots (\(vm.allSpots.count - vm.getPersonalizedSpotIds().count))")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-            }
-            
-            // Search location legend (only show when search is active)
+            // Search location indicator (only show when searching)
             if !vm.searchText.isEmpty && vm.hasSearchLocation {
                 HStack(spacing: DesignSystem.Spacing.xs) {
                     Image(systemName: "mappin.circle.fill")
@@ -460,36 +514,24 @@ struct PersonalizedMapView: View {
                     Text("🔍 Search Location")
                         .font(DesignSystem.Typography.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
+                    
+                    Spacer()
                 }
             }
-            
-            // Personalization summary
-            if vm.userProfile?.hasTasteSetup == true {
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    Image(systemName: "heart.fill")
-                        .foregroundColor(DesignSystem.Colors.primary)
-                        .font(.caption)
-                    Text("\(vm.getPersonalizedSpotIds().count) personalized")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundColor(DesignSystem.Colors.primary)
-                }
-            }
-            
-            Spacer()
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
         .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.cardBackground.opacity(0.9))
+        .background(DesignSystem.Colors.cardBackground.opacity(0.95))
         .cornerRadius(DesignSystem.CornerRadius.small)
         .shadow(
-            color: Color.black.opacity(0.03), // Very subtle shadow
-            radius: 2,
+            color: Color.black.opacity(0.05),
+            radius: 3,
             x: 0,
-            y: 1
+            y: 2
         )
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1) // Reduced opacity and line width
+                .stroke(DesignSystem.Colors.border.opacity(0.1), lineWidth: 0.5)
         )
     }
     
@@ -507,7 +549,7 @@ struct PersonalizedMapView: View {
                         .padding(.top, DesignSystem.Spacing.md)
                 }
             } else {
-                // Create map view with spots
+                // Create enhanced map view with spots
                 TappableMapView(
                     initialRegion: initialRegion,
                     chaiFinder: vm.allSpots.map { spot in
@@ -545,103 +587,82 @@ struct PersonalizedMapView: View {
                     onMapViewCreated: { mapView in
                         // Store reference to map view for programmatic updates
                         self.mapViewRef = mapView
+                    },
+                    showUserLocation: true,
+                    showCompass: true,
+                    showScale: true
+                )
+                
+                // Enhanced map controls overlay
+                MapControlsOverlay(
+                    mapViewRef: $mapViewRef,
+                    onLocationButtonTap: {
+                        centerMapOnUserLocation()
+                    },
+                    onZoomInTap: {
+                        zoomMapIn()
+                    },
+                    onZoomOutTap: {
+                        zoomMapOut()
+                    },
+                    onCompassTap: {
+                        resetMapOrientation()
                     }
                 )
-            }
-            
-            // Floating Action Button for adding new locations
-            VStack {
-                Spacer()
                 
-                // Location selection indicator
-                if let selectedCoord = selectedCoordinate {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: DesignSystem.Spacing.xs) {
-                            HStack {
-                                Text("📍 Location Selected")
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundColor(.white)
-                                
-                                Button(action: {
-                                    selectedCoordinate = nil
-                                }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.white.opacity(0.8))
-                                        .font(.caption)
-                                }
-                                .accessibilityLabel("Clear selected location")
-                                .accessibilityHint("Tap to clear the selected location")
-                            }
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
-                            .background(DesignSystem.Colors.primary.opacity(0.9))
-                            .cornerRadius(DesignSystem.CornerRadius.small)
-                            .shadow(
-                                color: Color.black.opacity(0.1),
-                                radius: 2,
-                                x: 0,
-                                y: 1
-                            )
-                            
-                            Text("\(selectedCoord.latitude, specifier: "%.4f"), \(selectedCoord.longitude, specifier: "%.4f")")
-                                .font(DesignSystem.Typography.caption2)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, DesignSystem.Spacing.sm)
-                                .padding(.vertical, DesignSystem.Spacing.xs)
-                                .background(Color.black.opacity(0.6)) // Reduced from 0.7 for subtler appearance
-                                .cornerRadius(DesignSystem.CornerRadius.small)
-                                .shadow(
-                                    color: Color.black.opacity(0.1),
-                                    radius: 1,
-                                    x: 0,
-                                    y: 0.5
-                                )
-                        }
-                        .padding(.trailing, DesignSystem.Spacing.lg)
-                        .padding(.bottom, DesignSystem.Spacing.sm)
+                // Quick navigation to personalized spots
+                VStack {
+                    // Personalized spots quick access
+                    if !vm.getPersonalizedSpotIds().isEmpty {
+                        personalizedSpotsQuickAccess
                     }
-                }
-                
-                HStack {
+                    
                     Spacer()
-                    Button(action: {
-                        // Use the selected coordinate if available, otherwise use map center
-                        if let selectedCoord = selectedCoordinate {
-                            // Use the tapped location
-                            showingAddForm = true
-                        } else if let mapView = mapViewRef {
-                            // Use the center of the current map view
-                            let centerCoordinate = mapView.centerCoordinate
-                            selectedCoordinate = centerCoordinate
-                            showingAddForm = true
-                        } else {
-                            // Fallback to a default location if map view is not available
-                            selectedCoordinate = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
-                            showingAddForm = true
-                        }
-                    }) {
-                        Image(systemName: selectedCoordinate != nil ? "mappin.circle.fill" : "plus")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .frame(width: 56, height: 56)
-                            .background(DesignSystem.Colors.primary)
-                            .clipShape(Circle())
-                            .shadow(
-                                color: Color.black.opacity(0.15), // Reduced from 0.3 for subtler appearance
-                                radius: 6, // Reduced from 8
-                                x: 0,
-                                y: 3 // Reduced from 4
-                            )
-                    }
-                    .accessibilityLabel("Add new chai spot")
-                    .accessibilityHint(selectedCoordinate != nil ? "Tap to add a new chai spot at the selected location" : "Tap to add a new chai spot at the map center")
-                    .padding(.trailing, DesignSystem.Spacing.lg)
-                    .padding(.bottom, DesignSystem.Spacing.lg)
                 }
             }
         }
+    }
+    
+    // MARK: - Personalized Spots Quick Access
+    private var personalizedSpotsQuickAccess: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                ForEach(vm.allSpots.filter { vm.getPersonalizedSpotIds().contains($0.id) }.prefix(5), id: \.id) { spot in
+                    Button(action: {
+                        centerMapOnSpot(spot)
+                    }) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "heart.fill")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                            
+                            Text(spot.name)
+                                .font(DesignSystem.Typography.caption2)
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .frame(maxWidth: 80)
+                        }
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, DesignSystem.Spacing.xs)
+                        .background(DesignSystem.Colors.primary)
+                        .cornerRadius(DesignSystem.CornerRadius.small)
+                        .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
+                    }
+                    .accessibilityLabel("Navigate to \(spot.name)")
+                    .accessibilityHint("Double tap to center the map on this personalized spot")
+                }
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .padding(.top, DesignSystem.Spacing.md)
+        }
+        .background(
+            LinearGradient(
+                colors: [Color.black.opacity(0.1), Color.clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
     }
     
     // MARK: - List View
@@ -659,88 +680,6 @@ struct PersonalizedMapView: View {
                     emptyStateView
                 } else {
                     spotsList
-                }
-            }
-            
-            // Floating Action Button for adding new locations (also in list view)
-            VStack {
-                Spacer()
-                
-                // Location selection indicator
-                if let selectedCoord = selectedCoordinate {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: DesignSystem.Spacing.xs) {
-                            HStack {
-                                Text("📍 Location Selected")
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundColor(.white)
-                                
-                                Button(action: {
-                                    selectedCoordinate = nil
-                                }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.white.opacity(0.8))
-                                        .font(.caption)
-                                }
-                                .accessibilityLabel("Clear selected location")
-                                .accessibilityHint("Tap to clear the selected location")
-                            }
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
-                            .background(DesignSystem.Colors.primary.opacity(0.9))
-                            .cornerRadius(DesignSystem.CornerRadius.small)
-                            .shadow(
-                                color: Color.black.opacity(0.1),
-                                radius: 2,
-                                x: 0,
-                                y: 1
-                            )
-                            
-                            Text("\(selectedCoord.latitude, specifier: "%.4f"), \(selectedCoord.longitude, specifier: "%.4f")")
-                                .font(DesignSystem.Typography.caption2)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, DesignSystem.Spacing.sm)
-                                .padding(.vertical, DesignSystem.Spacing.xs)
-                                .background(Color.black.opacity(0.6)) // Reduced from 0.7 for subtler appearance
-                                .cornerRadius(DesignSystem.CornerRadius.small)
-                                .shadow(
-                                    color: Color.black.opacity(0.1),
-                                    radius: 1,
-                                    x: 0,
-                                    y: 0.5
-                                )
-                        }
-                        .padding(.trailing, DesignSystem.Spacing.lg)
-                        .padding(.bottom, DesignSystem.Spacing.sm)
-                    }
-                }
-                
-                HStack {
-                    Spacer()
-                    Button(action: {
-                        // For list view, we'll use a default location or the user's current location
-                        if let userLocation = locationManager.location {
-                            selectedCoordinate = userLocation.coordinate
-                        } else {
-                            // Fallback to a default location
-                            selectedCoordinate = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
-                        }
-                        showingAddForm = true
-                    }) {
-                        Image(systemName: selectedCoordinate != nil ? "mappin.circle.fill" : "plus")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .frame(width: 56, height: 56)
-                            .background(DesignSystem.Colors.primary)
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
-                    }
-                    .accessibilityLabel("Add new chai spot")
-                    .accessibilityHint(selectedCoordinate != nil ? "Tap to add a new chai spot at the selected location" : "Tap to add a new chai spot")
-                    .padding(.trailing, DesignSystem.Spacing.lg)
-                    .padding(.bottom, DesignSystem.Spacing.lg)
                 }
             }
         }
@@ -856,7 +795,8 @@ struct PersonalizedMapView: View {
         locationDelegate = LocationManagerDelegate(
             viewModel: vm, 
             onLocationUpdate: { location in
-                self.centerMapOnLocation(location)
+                // Only update the user location, don't center the map
+                self.vm.updateUserLocation(location)
             },
             checkUserInteraction: {
                 self.isUserInteractingWithMap
@@ -867,10 +807,9 @@ struct PersonalizedMapView: View {
         locationManager.requestWhenInUseAuthorization()
         locationManager.startUpdatingLocation()
         
-        // If we already have location, center the map
+        // Don't auto-center on current location - let user control the map
         if let location = locationManager.location {
             vm.updateUserLocation(location)
-            centerMapOnLocation(location)
         }
     }
     
@@ -910,6 +849,167 @@ struct PersonalizedMapView: View {
         )
         
         withAnimation(.easeInOut(duration: 0.5)) {
+            mapView.setRegion(newRegion, animated: true)
+        }
+    }
+    
+    // MARK: - Enhanced Map Controls
+    private func centerMapOnUserLocation() {
+        guard let mapView = mapViewRef,
+              let userLocation = locationManager.location else { return }
+        
+        // Only center if user hasn't been interacting with the map recently
+        if !isUserInteractingWithMap {
+            let newRegion = MKCoordinateRegion(
+                center: userLocation.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
+            )
+            
+            withAnimation(.easeInOut(duration: 0.5)) {
+                mapView.setRegion(newRegion, animated: true)
+            }
+        } else {
+            // If user has been interacting, just update location without centering
+            print("📍 User has been interacting with map - not auto-centering")
+        }
+    }
+    
+    private func zoomMapIn() {
+        guard let mapView = mapViewRef else { return }
+        
+        let currentRegion = mapView.region
+        let newSpan = MKCoordinateSpan(
+            latitudeDelta: currentRegion.span.latitudeDelta * 0.5,
+            longitudeDelta: currentRegion.span.longitudeDelta * 0.5
+        )
+        
+        // Limit minimum zoom level
+        let minSpan = MKCoordinateSpan(latitudeDelta: 0.001, longitudeDelta: 0.001)
+        let clampedSpan = MKCoordinateSpan(
+            latitudeDelta: max(minSpan.latitudeDelta, newSpan.latitudeDelta),
+            longitudeDelta: max(minSpan.longitudeDelta, newSpan.longitudeDelta)
+        )
+        
+        let newRegion = MKCoordinateRegion(center: currentRegion.center, span: clampedSpan)
+        
+        withAnimation(.easeInOut(duration: 0.3)) {
+            mapView.setRegion(newRegion, animated: true)
+        }
+    }
+    
+    private func zoomMapOut() {
+        guard let mapView = mapViewRef else { return }
+        
+        let currentRegion = mapView.region
+        let newSpan = MKCoordinateSpan(
+            latitudeDelta: currentRegion.span.latitudeDelta * 2.0,
+            longitudeDelta: currentRegion.span.longitudeDelta * 2.0
+        )
+        
+        // Limit maximum zoom level
+        let maxSpan = MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)
+        let clampedSpan = MKCoordinateSpan(
+            latitudeDelta: min(maxSpan.latitudeDelta, newSpan.latitudeDelta),
+            longitudeDelta: min(maxSpan.longitudeDelta, newSpan.longitudeDelta)
+        )
+        
+        let newRegion = MKCoordinateRegion(center: currentRegion.center, span: clampedSpan)
+        
+        withAnimation(.easeInOut(duration: 0.3)) {
+            mapView.setRegion(newRegion, animated: true)
+        }
+    }
+    
+    private func resetMapOrientation() {
+        guard let mapView = mapViewRef else { return }
+        
+        // Reset map to north-up orientation
+        let currentRegion = mapView.region
+        let newRegion = MKCoordinateRegion(
+            center: currentRegion.center,
+            span: currentRegion.span
+        )
+        
+        withAnimation(.easeInOut(duration: 0.3)) {
+            mapView.setRegion(newRegion, animated: true)
+        }
+    }
+    
+    // MARK: - Smart Region Management
+    private func fitMapToPersonalizedSpots() {
+        guard let mapView = mapViewRef,
+              !vm.getPersonalizedSpotIds().isEmpty else { return }
+        
+        let personalizedSpots = vm.allSpots.filter { vm.getPersonalizedSpotIds().contains($0.id) }
+        
+        if personalizedSpots.count == 1 {
+            // Single spot - center on it with appropriate zoom
+            centerMapOnSpot(personalizedSpots[0])
+        } else if personalizedSpots.count > 1 {
+            // Multiple spots - fit all in view
+            let coordinates = personalizedSpots.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+            
+            var minLat = coordinates[0].latitude
+            var maxLat = coordinates[0].latitude
+            var minLon = coordinates[0].longitude
+            var maxLon = coordinates[0].longitude
+            
+            for coordinate in coordinates {
+                minLat = min(minLat, coordinate.latitude)
+                maxLat = max(maxLat, coordinate.latitude)
+                minLon = min(minLon, coordinate.longitude)
+                maxLon = max(maxLon, coordinate.longitude)
+            }
+            
+            let center = CLLocationCoordinate2D(
+                latitude: (minLat + maxLat) / 2,
+                longitude: (minLon + maxLon) / 2
+            )
+            
+            let span = MKCoordinateSpan(
+                latitudeDelta: (maxLat - minLat) * 1.5, // Add padding
+                longitudeDelta: (maxLon - minLon) * 1.5
+            )
+            
+            let newRegion = MKCoordinateRegion(center: center, span: span)
+            
+            withAnimation(.easeInOut(duration: 0.8)) {
+                mapView.setRegion(newRegion, animated: true)
+            }
+        }
+    }
+
+    private func fitMapToAllSpots() {
+        guard let mapView = mapViewRef,
+              !vm.allSpots.isEmpty else { return }
+        
+        let coordinates = vm.allSpots.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+        
+        var minLat = coordinates[0].latitude
+        var maxLat = coordinates[0].latitude
+        var minLon = coordinates[0].longitude
+        var maxLon = coordinates[0].longitude
+        
+        for coordinate in coordinates {
+            minLat = min(minLat, coordinate.latitude)
+            maxLat = max(maxLat, coordinate.latitude)
+            minLon = min(minLon, coordinate.longitude)
+            maxLon = max(maxLon, coordinate.longitude)
+        }
+        
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        
+        let span = MKCoordinateSpan(
+            latitudeDelta: (maxLat - minLat) * 1.5, // Add padding
+            longitudeDelta: (maxLon - minLon) * 1.5
+        )
+        
+        let newRegion = MKCoordinateRegion(center: center, span: span)
+        
+        withAnimation(.easeInOut(duration: 0.8)) {
             mapView.setRegion(newRegion, animated: true)
         }
     }
@@ -1063,6 +1163,7 @@ final class PersonalizedMapViewModel: ObservableObject {
     // Filter state
     @Published var showFriendsFavorites = true
     @Published var showPersonalizedOnly = true
+    @Published var showCommunitySpots = true // Added this line
     @Published var currentSortOrder: SortOrder = .personalization
     
     // Personalization data
@@ -1390,15 +1491,26 @@ final class PersonalizedMapViewModel: ObservableObject {
         showPersonalizedOnly.toggle()
         applyFilters()
     }
+
+    func toggleCommunitySpots() {
+        showCommunitySpots.toggle()
+        applyFilters()
+    }
     
     private func applyFilters() {
         var filtered = allSpots
         
-        if showPersonalizedOnly {
-            // Apply personalization logic
+        if !showPersonalizedOnly {
             filtered = filtered.filter { spot in
                 let score = calculatePersonalizationScore(for: spot)
-                return score >= 10.0 // Lower threshold for filtering
+                return score < 15.0 // Exclude personalized spots
+            }
+        }
+        
+        if !showCommunitySpots {
+            filtered = filtered.filter { spot in
+                let score = calculatePersonalizationScore(for: spot)
+                return score >= 15.0 // Only show personalized spots
             }
         }
         
@@ -1542,9 +1654,9 @@ final class PersonalizedMapViewModel: ObservableObject {
                 reasons.append("your favorite flavors: \(topTasteTags.joined(separator: ", "))")
             }
             
-            reasonText = "Showing spots with \(reasons.joined(separator: ", "))"
+            reasonText = "Personalized for you"
         } else {
-            reasonText = "Showing spots based on community ratings and friend recommendations"
+            reasonText = "Based on community ratings and friend recommendations"
         }
     }
     

@@ -319,6 +319,10 @@ struct AddChaiFinderForm: View {
                     TextField("Type to search chai types (e.g., Masala, Ginger...)", text: $chaiType, onEditingChanged: { began in
                         showChaiTypeDropdown = began && !chaiType.isEmpty
                     })
+                    .autocorrectionDisabled(true)
+                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
                     .onChange(of: chaiType) { newValue in
                         showChaiTypeDropdown = !newValue.isEmpty
                     }

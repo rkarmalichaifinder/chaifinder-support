@@ -40,7 +40,7 @@ struct Rating: Identifiable, Codable {
         
         var emoji: String {
             switch self {
-            case .disagree: return "👎"
+            case .disagree: return "👎🏽"
             case .love: return "❤️"
             case .wow: return "😮"
             case .helpful: return "👍"
