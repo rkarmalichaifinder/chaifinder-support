@@ -68,14 +68,20 @@ class SessionStore: NSObject, ObservableObject,
         let u = Auth.auth().currentUser
         DispatchQueue.main.async {
             self.currentUser = u
-            self.isLoading = false // Set loading to false immediately for better UX
             if let u { 
-                // Load user profile asynchronously without blocking UI
+                // Keep loading true until profile is loaded
+                self.isLoading = true
+                // Load user profile asynchronously
                 Task { 
-                    await self.loadUserProfileAsync(uid: u.uid) 
+                    await self.loadUserProfileAsync(uid: u.uid)
+                    // Set loading to false after profile is loaded
+                    await MainActor.run {
+                        self.isLoading = false
+                    }
                 }
             } else { 
-                self.userProfile = nil 
+                self.userProfile = nil
+                self.isLoading = false
             }
         }
 
@@ -84,13 +90,19 @@ class SessionStore: NSObject, ObservableObject,
             guard let self else { return }
             DispatchQueue.main.async {
                 self.currentUser = user
-                self.isLoading = false
                 if let user { 
+                    // Keep loading true until profile is loaded
+                    self.isLoading = true
                     Task { 
-                        await self.loadUserProfileAsync(uid: user.uid) 
+                        await self.loadUserProfileAsync(uid: user.uid)
+                        // Set loading to false after profile is loaded
+                        await MainActor.run {
+                            self.isLoading = false
+                        }
                     }
                 } else { 
-                    self.userProfile = nil 
+                    self.userProfile = nil
+                    self.isLoading = false
                 }
                 print("👤 Auth state changed. user: \(user?.uid ?? "nil")")
             }
@@ -107,7 +119,20 @@ class SessionStore: NSObject, ObservableObject,
         let u = Auth.auth().currentUser
         DispatchQueue.main.async {
             self.currentUser = u
-            self.isLoading = false
+            if let u {
+                // Keep loading true until profile is loaded
+                self.isLoading = true
+                Task {
+                    await self.loadUserProfileAsync(uid: u.uid)
+                    // Set loading to false after profile is loaded
+                    await MainActor.run {
+                        self.isLoading = false
+                    }
+                }
+            } else {
+                self.userProfile = nil
+                self.isLoading = false
+            }
             print("🔎 checkCurrentUser: \(u?.uid ?? "nil")")
         }
     }
@@ -135,12 +160,15 @@ class SessionStore: NSObject, ObservableObject,
                 friends: data["friends"] as? [String] ?? [],
                 incomingRequests: data["incomingRequests"] as? [String] ?? [],
                 outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
-                bio: data["bio"] as? String
+                bio: data["bio"] as? String,
+                hasTasteSetup: data["hasTasteSetup"] as? Bool ?? false,
+                tasteVector: data["tasteVector"] as? [Int],
+                topTasteTags: data["topTasteTags"] as? [String]
             )
             
             await MainActor.run {
                 self.userProfile = profile
-                print("✅ User profile loaded async with bio: \(profile.bio ?? "nil")")
+                print("✅ User profile loaded async with bio: \(profile.bio ?? "nil"), hasTasteSetup: \(profile.hasTasteSetup)")
             }
         } catch {
             print("❌ Failed to load user profile async: \(error.localizedDescription)")
@@ -158,7 +186,10 @@ class SessionStore: NSObject, ObservableObject,
             "friends": [],
             "incomingRequests": [],
             "outgoingRequests": [],
-            "bio": NSNull()
+            "bio": NSNull(),
+            "hasTasteSetup": false,
+            "tasteVector": NSNull(),
+            "topTasteTags": NSNull()
         ]
         
         do {
@@ -189,7 +220,10 @@ class SessionStore: NSObject, ObservableObject,
                     "friends": [],
                     "incomingRequests": [],
                     "outgoingRequests": [],
-                    "bio": NSNull()
+                    "bio": NSNull(),
+                    "hasTasteSetup": false,
+                    "tasteVector": NSNull(),
+                    "topTasteTags": NSNull()
                 ]
                 Firestore.firestore().collection("users").document(uid).setData(newProfile, merge: true) { err in
                     if let err { print("❌ Auto-create user profile failed: \(err.localizedDescription)") ; return }
@@ -209,11 +243,14 @@ class SessionStore: NSObject, ObservableObject,
                 friends: data["friends"] as? [String] ?? [],
                 incomingRequests: data["incomingRequests"] as? [String] ?? [],
                 outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
-                bio: data["bio"] as? String
+                bio: data["bio"] as? String,
+                hasTasteSetup: data["hasTasteSetup"] as? Bool ?? false,
+                tasteVector: data["tasteVector"] as? [Int],
+                topTasteTags: data["topTasteTags"] as? [String]
             )
             DispatchQueue.main.async {
                 self.userProfile = profile
-                print("✅ User profile loaded with bio: \(profile.bio ?? "nil")")
+                print("✅ User profile loaded with bio: \(profile.bio ?? "nil"), hasTasteSetup: \(profile.hasTasteSetup)")
             }
         }
     }
@@ -295,7 +332,16 @@ class SessionStore: NSObject, ObservableObject,
 
                 DispatchQueue.main.async {
                     self.currentUser = authResult.user
-                    self.isLoading = false
+                    // Keep loading true until profile is loaded
+                    self.isLoading = true
+                    // Load user profile asynchronously
+                    Task {
+                        await self.loadUserProfileAsync(uid: authResult.user.uid)
+                        // Set loading to false after profile is loaded
+                        await MainActor.run {
+                            self.isLoading = false
+                        }
+                    }
                     self.appleSignInCompletion?(true)
                     self.appleSignInCompletion = nil
                 }
@@ -362,7 +408,20 @@ class SessionStore: NSObject, ObservableObject,
                 }
                 DispatchQueue.main.async {
                     self.currentUser = authResult?.user
-                    self.isLoading = false
+                    if let user = authResult?.user {
+                        // Keep loading true until profile is loaded
+                        self.isLoading = true
+                        // Load user profile asynchronously
+                        Task {
+                            await self.loadUserProfileAsync(uid: user.uid)
+                            // Set loading to false after profile is loaded
+                            await MainActor.run {
+                                self.isLoading = false
+                            }
+                        }
+                    } else {
+                        self.isLoading = false
+                    }
                     completion(true)
                 }
             }
@@ -377,8 +436,16 @@ class SessionStore: NSObject, ObservableObject,
             let result = try await Auth.auth().signIn(withEmail: email, password: password)
             await MainActor.run {
                 self.currentUser = result.user
-                self.isLoading = false
-                self.loadUserProfile(uid: result.user.uid)
+                // Keep loading true until profile is loaded
+                self.isLoading = true
+                // Load user profile asynchronously
+                Task {
+                    await self.loadUserProfileAsync(uid: result.user.uid)
+                    // Set loading to false after profile is loaded
+                    await MainActor.run {
+                        self.isLoading = false
+                    }
+                }
             }
             print("✅ Signed in with email: \(result.user.uid)")
         } catch {
@@ -400,24 +467,25 @@ class SessionStore: NSObject, ObservableObject,
                 "friends": [],
                 "incomingRequests": [],
                 "outgoingRequests": [],
-                "bio": NSNull()
+                "bio": NSNull(),
+                "hasTasteSetup": false,
+                "tasteVector": NSNull(),
+                "topTasteTags": NSNull()
             ]
             try await Firestore.firestore().collection("users").document(result.user.uid).setData(doc, merge: true)
 
             await MainActor.run {
                 self.currentUser = result.user
-                self.userProfile = UserProfile(
-                    id: result.user.uid,
-                    uid: result.user.uid,
-                    displayName: doc["displayName"] as? String ?? "User",
-                    email: email,
-                    photoURL: nil,
-                    friends: [],
-                    incomingRequests: [],
-                    outgoingRequests: [],
-                    bio: nil
-                )
-                self.isLoading = false
+                // Keep loading true until profile is loaded from Firestore
+                self.isLoading = true
+                // Load user profile asynchronously to ensure consistency
+                Task {
+                    await self.loadUserProfileAsync(uid: result.user.uid)
+                    // Set loading to false after profile is loaded
+                    await MainActor.run {
+                        self.isLoading = false
+                    }
+                }
             }
             print("✅ Signed up with email: \(result.user.uid)")
         } catch {
@@ -505,9 +573,17 @@ class SessionStore: NSObject, ObservableObject,
             try await Firestore.firestore().collection("users").document(uid).updateData(tasteData)
             print("✅ Taste profile saved successfully")
             
-            // Reload user profile to include taste data
+            // Update the local userProfile immediately to reflect the changes
             await MainActor.run {
-                self.loadUserProfile(uid: uid)
+                if var currentProfile = self.userProfile {
+                    currentProfile.hasTasteSetup = true
+                    currentProfile.tasteVector = [creaminess, strength]
+                    currentProfile.topTasteTags = flavorNotes
+                    self.userProfile = currentProfile
+                }
+                
+                // Post notification that taste setup is complete
+                NotificationCenter.default.post(name: .tasteSetupCompleted, object: nil)
             }
             return true
         } catch {

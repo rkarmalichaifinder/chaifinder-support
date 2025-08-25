@@ -2,11 +2,17 @@ import SwiftUI
 
 struct RootRouter: View {
     @EnvironmentObject var session: SessionStore
-    @State private var didCompleteTasteSetup = false
     @State private var isLoadingProfile = false
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var showingSplash = true
+    
+    // Compute taste setup completion from the actual user profile
+    private var didCompleteTasteSetup: Bool {
+        let result = session.userProfile?.hasTasteSetup ?? false
+        print("🔍 Taste setup check: userProfile=\(session.userProfile?.hasTasteSetup ?? false), result=\(result)")
+        return result
+    }
 
     var body: some View {
         Group {
@@ -35,8 +41,11 @@ struct RootRouter: View {
                 OnboardingExplainerView()
             } else if !didCompleteTasteSetup {
                 TasteOnboardingView(onDone: { 
-                    withAnimation(.easeInOut(duration: 0.5)) {
-                        didCompleteTasteSetup = true
+                    // Force a profile reload to update the UI
+                    if let uid = session.currentUser?.uid {
+                        session.loadUserProfile(uid: uid) { _ in
+                            // Profile reloaded, UI should update automatically
+                        }
                     }
                 })
             } else {
@@ -46,6 +55,12 @@ struct RootRouter: View {
         }
         .onAppear {
             loadUserProfileIfNeeded()
+            setupNotificationListeners()
+        }
+        .onChange(of: session.userProfile) { newProfile in
+            // Force view refresh when user profile changes
+            // This ensures the taste onboarding logic re-evaluates
+            print("🔄 User profile changed: hasTasteSetup=\(newProfile?.hasTasteSetup ?? false)")
         }
         .alert("Profile Error", isPresented: $showingError) {
             Button("Try Again") {
@@ -93,6 +108,7 @@ struct RootRouter: View {
     private func loadUserProfileIfNeeded() {
         guard session.isAuthenticated && !isLoadingProfile else { return }
         
+        print("🔄 Loading user profile for: \(session.currentUser?.uid ?? "nil")")
         isLoadingProfile = true
         errorMessage = nil
         
@@ -101,12 +117,39 @@ struct RootRouter: View {
                 isLoadingProfile = false
                 
                 if let profile = profile {
-                    didCompleteTasteSetup = profile.hasTasteSetup
+                    print("✅ Profile loaded successfully: hasTasteSetup=\(profile.hasTasteSetup)")
                 } else {
                     // Profile loading failed
                     errorMessage = "Failed to load user profile"
                     showingError = true
+                    print("❌ Profile loading failed")
                 }
+            }
+        }
+    }
+    
+    private func setupNotificationListeners() {
+        print("🔔 Setting up notification listeners")
+        // Listen for taste setup completion
+        NotificationCenter.default.addObserver(
+            forName: .tasteSetupCompleted,
+            object: nil,
+            queue: .main
+        ) { _ in
+            print("🔔 Taste setup completed notification received")
+            // Force a profile reload to update the UI state
+            if let uid = session.currentUser?.uid {
+                print("🔄 Reloading profile after taste setup completion")
+                session.loadUserProfile(uid: uid) { profile in
+                    // Profile reloaded, UI should update automatically
+                    if let profile = profile {
+                        print("✅ Profile reloaded after taste setup: hasTasteSetup=\(profile.hasTasteSetup)")
+                    } else {
+                        print("❌ Profile reload failed after taste setup")
+                    }
+                }
+            } else {
+                print("❌ No current user found for profile reload")
             }
         }
     }

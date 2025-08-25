@@ -436,6 +436,7 @@ struct TasteOnboardingView: View {
     }
     
     private func completeOnboarding() {
+        print("🔄 Starting taste onboarding completion...")
         isLoading = true
         
         // Save preferences to user profile
@@ -450,14 +451,17 @@ struct TasteOnboardingView: View {
                 await MainActor.run {
                     isLoading = false
                     if success {
+                        print("✅ Taste profile saved successfully, calling onDone")
                         onDone()
                     } else {
+                        print("❌ Failed to save taste profile")
                         errorMessage = "Failed to save preferences. Please try again."
                     }
                 }
             } catch {
                 await MainActor.run {
                     isLoading = false
+                    print("❌ Error saving taste profile: \(error.localizedDescription)")
                     errorMessage = "Failed to save preferences: \(error.localizedDescription)"
                 }
             }

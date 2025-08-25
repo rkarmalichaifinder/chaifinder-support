@@ -59,13 +59,8 @@ struct FeedView: View {
     // MARK: - Header Section
     private var headerSection: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
-            // Breadcrumb / subtitle
+            // Header with refresh button
             HStack {
-                Text("Home Page")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                    .accessibilityLabel("Current page: Home Page")
-                
                 Spacer()
                 
                 // Refresh button

@@ -429,34 +429,48 @@ class RecommendationEngine: ObservableObject {
     }
     
     private func getAllChaiSpots() async -> [ChaiSpot] {
-        do {
-            let snapshot = try await db.collection("chaiFinder").getDocuments()
-            return snapshot.documents.compactMap { document in
-                let data = document.data()
-                let id = data["id"] as? String ?? document.documentID
-                let name = data["name"] as? String ?? "Unknown Spot"
-                let address = data["address"] as? String ?? "Unknown Address"
-                let latitude = data["latitude"] as? Double ?? 0.0
-                let longitude = data["longitude"] as? Double ?? 0.0
-                let chaiTypes = data["chaiTypes"] as? [String] ?? []
-                let averageRating = data["averageRating"] as? Double ?? 0.0
-                let ratingCount = data["ratingCount"] as? Int ?? 0
+        var allSpots: [ChaiSpot] = []
+        
+        // Try both collections - chaiFinder and chaiSpots
+        let collections = ["chaiFinder", "chaiSpots"]
+        
+        for collectionName in collections {
+            do {
+                let snapshot = try await db.collection(collectionName).getDocuments()
+                let spots = snapshot.documents.compactMap { document in
+                    let data = document.data()
+                    let id = data["id"] as? String ?? document.documentID
+                    let name = data["name"] as? String ?? "Unknown Spot"
+                    let address = data["address"] as? String ?? "Unknown Address"
+                    let latitude = data["latitude"] as? Double ?? 0.0
+                    let longitude = data["longitude"] as? Double ?? 0.0
+                    let chaiTypes = data["chaiTypes"] as? [String] ?? []
+                    let averageRating = data["averageRating"] as? Double ?? 0.0
+                    let ratingCount = data["ratingCount"] as? Int ?? 0
+                    
+                    return ChaiSpot(
+                        id: id,
+                        name: name,
+                        address: address,
+                        latitude: latitude,
+                        longitude: longitude,
+                        chaiTypes: chaiTypes,
+                        averageRating: averageRating,
+                        ratingCount: ratingCount
+                    )
+                }
                 
-                return ChaiSpot(
-                    id: id,
-                    name: name,
-                    address: address,
-                    latitude: latitude,
-                    longitude: longitude,
-                    chaiTypes: chaiTypes,
-                    averageRating: averageRating,
-                    ratingCount: ratingCount
-                )
+                allSpots.append(contentsOf: spots)
+                
+            } catch {
+                print("Error fetching chai spots from \(collectionName): \(error)")
+                continue
             }
-        } catch {
-            print("Error fetching chai spots: \(error)")
-            return []
         }
+        
+        // Remove duplicates based on spot ID
+        let uniqueSpots = Array(Set(allSpots))
+        return uniqueSpots
     }
     
     private func getVisitedSpotIds(for userId: String) async -> Set<String> {

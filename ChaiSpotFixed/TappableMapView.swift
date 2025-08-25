@@ -10,12 +10,13 @@ extension Color {
 }
 
 struct TappableMapView: UIViewRepresentable {
-    @Binding var region: MKCoordinateRegion
+    var initialRegion: MKCoordinateRegion
     var chaiFinder: [ChaiFinder]
     var personalizedSpotIds: Set<String> = []  // 🆕 Track which spots are personalized
     var onTap: (CLLocationCoordinate2D) -> Void
     var onAnnotationTap: ((String) -> Void)? = nil
     var tempSearchCoordinate: CLLocationCoordinate2D? = nil
+    var onMapViewCreated: ((MKMapView) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -23,19 +24,25 @@ struct TappableMapView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
-        mapView.setRegion(region, animated: false)
+        mapView.setRegion(initialRegion, animated: false)
         mapView.delegate = context.coordinator
 
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         tapGesture.cancelsTouchesInView = false
         mapView.addGestureRecognizer(tapGesture)
+        
+        // Notify parent that map view is created
+        onMapViewCreated?(mapView)
 
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
         print("🗺️ TappableMapView updating with \(chaiFinder.count) spots")
-        mapView.setRegion(region, animated: true)
+        
+        // NEVER update the region after initial setup - preserve user interactions
+        // Only update annotations when spots change
+        
         mapView.removeAnnotations(mapView.annotations)
 
         for spot in chaiFinder {
@@ -47,9 +54,9 @@ struct TappableMapView: UIViewRepresentable {
         print("✅ TappableMapView updated with \(mapView.annotations.count) annotations")
 
         // 🆕 Add temp search pin if available
-        if let tempCoord = tempSearchCoordinate {
+        if let tempSearchCoordinate = tempSearchCoordinate {
             let tempPin = MKPointAnnotation()
-            tempPin.coordinate = tempCoord
+            tempPin.coordinate = tempSearchCoordinate
             tempPin.title = "Search Location"
             mapView.addAnnotation(tempPin)
         }
@@ -125,5 +132,7 @@ struct TappableMapView: UIViewRepresentable {
 
             return annotationView
         }
+        
+
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 import FirebaseFirestore
 
-struct UserProfile: Identifiable, Codable {
+struct UserProfile: Identifiable, Codable, Equatable {
     var id: String?
     var uid: String
     var displayName: String
@@ -56,7 +56,7 @@ struct UserProfile: Identifiable, Codable {
 }
 
 // 🎖️ NEW: Badge and Achievement Models
-struct Badge: Identifiable, Codable {
+struct Badge: Identifiable, Codable, Equatable {
     var id: String
     var name: String
     var description: String
@@ -91,7 +91,7 @@ struct Badge: Identifiable, Codable {
     }
 }
 
-struct Achievement: Identifiable, Codable {
+struct Achievement: Identifiable, Codable, Equatable {
     var id: String
     var name: String
     var description: String
@@ -104,7 +104,7 @@ struct Achievement: Identifiable, Codable {
 
 
 
-struct PrivacyDefaults: Codable {
+struct PrivacyDefaults: Codable, Equatable {
     var reviewsDefaultVisibility: String = "public"  // "public", "friends", "private"
     var allowFriendsSeeAll: Bool = true
 }

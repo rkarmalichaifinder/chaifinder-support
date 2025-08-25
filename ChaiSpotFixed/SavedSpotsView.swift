@@ -3,6 +3,8 @@ import Firebase
 import FirebaseAuth
 import FirebaseFirestore
 
+// Notification names for saved spots updates
+
 struct SavedSpotsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var savedSpots: [ChaiSpot] = []
@@ -155,39 +157,60 @@ struct SavedSpotsView: View {
         for spotId in savedSpotIds {
             group.enter()
             
-            db.collection("chaiFinder").document(spotId).getDocument { snapshot, error in
-                defer { group.leave() }
-                
-                if let error = error {
-                    loadError = "Failed to load spot data: \(error.localizedDescription)"
+            // Try both collections - chaiFinder and chaiSpots
+            let collections = ["chaiFinder", "chaiSpots"]
+            var currentCollectionIndex = 0
+            
+            func tryNextCollection() {
+                guard currentCollectionIndex < collections.count else {
+                    // All collections failed, use fallback
+                    group.leave()
                     return
                 }
                 
-                guard let data = snapshot?.data(),
-                      let name = data["name"] as? String,
-                      let latitude = data["latitude"] as? Double,
-                      let longitude = data["longitude"] as? Double,
-                      let address = data["address"] as? String else {
-                    return
+                let collectionName = collections[currentCollectionIndex]
+                currentCollectionIndex += 1
+                
+                db.collection(collectionName).document(spotId).getDocument { snapshot, error in
+                    if let error = error {
+                        // Try the next collection if this one failed
+                        print("Failed to load from collection \(collectionName): \(error.localizedDescription)")
+                        tryNextCollection()
+                        return
+                    }
+                    
+                    guard let data = snapshot?.data(),
+                          let name = data["name"] as? String,
+                          let latitude = data["latitude"] as? Double,
+                          let longitude = data["longitude"] as? Double,
+                          let address = data["address"] as? String else {
+                        // Data is missing, try the next collection
+                        print("Missing data from collection \(collectionName)")
+                        tryNextCollection()
+                        return
+                    }
+                    
+                    let chaiTypes = data["chaiTypes"] as? [String] ?? []
+                    let averageRating = data["averageRating"] as? Double ?? 0.0
+                    let ratingCount = data["ratingCount"] as? Int ?? 0
+                    
+                    let spot = ChaiSpot(
+                        id: spotId,
+                        name: name,
+                        address: address,
+                        latitude: latitude,
+                        longitude: longitude,
+                        chaiTypes: chaiTypes,
+                        averageRating: averageRating,
+                        ratingCount: ratingCount
+                    )
+                    
+                    loadedSpots.append(spot)
+                    group.leave()
                 }
-                
-                let chaiTypes = data["chaiTypes"] as? [String] ?? []
-                let averageRating = data["averageRating"] as? Double ?? 0.0
-                let ratingCount = data["ratingCount"] as? Int ?? 0
-                
-                let spot = ChaiSpot(
-                    id: spotId,
-                    name: name,
-                    address: address,
-                    latitude: latitude,
-                    longitude: longitude,
-                    chaiTypes: chaiTypes,
-                    averageRating: averageRating,
-                    ratingCount: ratingCount
-                )
-                
-                loadedSpots.append(spot)
             }
+            
+            tryNextCollection()
         }
         
         group.notify(queue: .main) {
@@ -311,6 +334,8 @@ struct SavedSpotCard: View {
             if let error = error {
                 // Handle error silently
             } else {
+                // Post notification to update profile count
+                NotificationCenter.default.post(name: .savedSpotsChanged, object: nil)
                 onRemove()
             }
         }

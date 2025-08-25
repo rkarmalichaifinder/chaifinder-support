@@ -334,32 +334,52 @@ class FeedViewModel: ObservableObject {
             })
         }
         
-        // 🔒 Filter by privacy settings - only show public ratings in community feed
+        // 🔒 Filter by privacy settings - show public ratings and ratings without visibility field (legacy)
+        // First try to get public ratings, then fallback to all ratings if none found
         db.collection("ratings")
-            .whereField("visibility", isEqualTo: "public") // Only show public reviews
+            .whereField("visibility", isEqualTo: "public")
             .order(by: "timestamp", descending: true)
-            .limit(to: initialLimit) // Use optimized limit for initial load
-            .getDocuments { snapshot, error in
+            .limit(to: initialLimit)
+            .getDocuments { [weak self] snapshot, error in
                 timeoutTimer.invalidate() // Cancel timeout if we get a response
                 
+                if error != nil || snapshot?.documents.isEmpty == true {
+                    // Fallback: get all ratings without visibility filter
+                    self?.loadAllCommunityRatings(limit: initialLimit)
+                } else {
+                    // Process public ratings
+                    self?.processRatingDocuments(snapshot?.documents ?? [])
+                    self?.hasLoadedData = true
+                    self?.initialLoadComplete = true
+                    print("✅ Community feed loaded successfully with \(snapshot?.documents.count ?? 0) public ratings")
+                }
+            }
+    }
+    
+    private func loadAllCommunityRatings(limit: Int) {
+        // Fallback: load all ratings without visibility filter for legacy support
+        db.collection("ratings")
+            .order(by: "timestamp", descending: true)
+            .limit(to: limit)
+            .getDocuments { [weak self] snapshot, error in
                 DispatchQueue.main.async(execute: DispatchWorkItem {
-                    self.isLoading = false
+                    self?.isLoading = false
                     
                     if let error = error {
-                        self.error = error.localizedDescription
+                        self?.error = error.localizedDescription
                         return
                     }
                     
                     guard let documents = snapshot?.documents else {
-                        self.reviews = []
-                        self.filteredReviews = []
+                        self?.reviews = []
+                        self?.filteredReviews = []
                         return
                     }
                     
-                    self.processRatingDocuments(documents)
-                    self.hasLoadedData = true
-                    self.initialLoadComplete = true
-                    print("✅ Community feed loaded successfully with \(documents.count) public ratings")
+                    self?.processRatingDocuments(documents)
+                    self?.hasLoadedData = true
+                    self?.initialLoadComplete = true
+                    print("✅ Community feed loaded successfully with \(documents.count) ratings (legacy mode)")
                 })
             }
     }
@@ -542,47 +562,50 @@ class FeedViewModel: ObservableObject {
         
         loadingSpots.insert(spotId)
         
-        // Add retry logic for permission issues
-        func attemptLoad(retryCount: Int = 0) {
-            db.collection("chaiFinder").document(spotId).getDocument { snapshot, error in
+        // Try both collections - chaiFinder and chaiSpots
+        let collections = ["chaiFinder", "chaiSpots"]
+        var currentCollectionIndex = 0
+        
+        func tryNextCollection() {
+            guard currentCollectionIndex < collections.count else {
+                // All collections failed, use fallback
+                let fallbackName = "Chai Spot #\(spotId.prefix(6))"
+                let fallbackAddress = "Location details unavailable"
+                self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
+                completion(fallbackName, fallbackAddress)
+                return
+            }
+            
+            let collectionName = collections[currentCollectionIndex]
+            currentCollectionIndex += 1
+            
+            db.collection(collectionName).document(spotId).getDocument { snapshot, error in
                 DispatchQueue.main.async(execute: DispatchWorkItem {
-                    self.loadingSpots.remove(spotId)
-                    
                     if let error = error {
-                        // Retry once for permission issues
-                        if retryCount == 0 && error.localizedDescription.contains("permissions") {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: DispatchWorkItem {
-                                attemptLoad(retryCount: 1)
-                            })
-                            return
-                        }
-                        
-                        // Provide a more user-friendly fallback name
-                        let fallbackName = "Chai Spot"
-                        let fallbackAddress = "Location details unavailable"
-                        self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
-                        completion(fallbackName, fallbackAddress)
+                        // Try the next collection if this one failed
+                        print("Failed to load from collection \(collectionName): \(error.localizedDescription)")
+                        tryNextCollection()
                         return
                     }
                     
                     guard let data = snapshot?.data(),
                           let name = data["name"] as? String,
                           let address = data["address"] as? String else {
-                        // Provide a more user-friendly fallback name
-                        let fallbackName = "Chai Spot"
-                        let fallbackAddress = "Location details unavailable"
-                        self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
-                        completion(fallbackName, fallbackAddress)
+                        // Data is missing, try the next collection
+                        print("Missing data from collection \(collectionName)")
+                        tryNextCollection()
                         return
                     }
                     
+                    // Successfully loaded spot details
+                    self.loadingSpots.remove(spotId)
                     self.spotDetailsCache[spotId] = (name, address)
                     completion(name, address)
-                })
+                }
             }
         }
         
-        attemptLoad()
+        tryNextCollection()
     }
     
     func filterReviews(_ searchText: String) {

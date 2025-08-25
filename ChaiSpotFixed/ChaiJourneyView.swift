@@ -699,33 +699,50 @@ class ChaiJourneyViewModel: ObservableObject {
     }
     
     private func getSpotDetails(spotId: String) async -> ChaiSpot? {
-        do {
-            let document = try await db.collection("chaiFinder").document(spotId).getDocument()
-            guard let data = document.data() else { return nil }
-            
-            let id = data["id"] as? String ?? spotId
-            let name = data["name"] as? String ?? "Unknown Spot"
-            let address = data["address"] as? String ?? "Unknown Address"
-            let latitude = data["latitude"] as? Double ?? 0.0
-            let longitude = data["longitude"] as? Double ?? 0.0
-            let chaiTypes = data["chaiTypes"] as? [String] ?? []
-            let averageRating = data["averageRating"] as? Double ?? 0.0
-            let ratingCount = data["ratingCount"] as? Int ?? 0
-            
-            return ChaiSpot(
-                id: id,
-                name: name,
-                address: address,
-                latitude: latitude,
-                longitude: longitude,
-                chaiTypes: chaiTypes,
-                averageRating: averageRating,
-                ratingCount: ratingCount
-            )
-        } catch {
-            print("Error fetching spot details: \(error)")
-            return nil
+        // Try both collections - chaiFinder and chaiSpots
+        let collections = ["chaiFinder", "chaiSpots"]
+        
+        for collectionName in collections {
+            do {
+                let document = try await db.collection(collectionName).document(spotId).getDocument()
+                guard let data = document.data() else { continue }
+                
+                let id = data["id"] as? String ?? spotId
+                let name = data["name"] as? String ?? "Unknown Spot"
+                let address = data["address"] as? String ?? "Unknown Address"
+                let latitude = data["latitude"] as? Double ?? 0.0
+                let longitude = data["longitude"] as? Double ?? 0.0
+                let chaiTypes = data["chaiTypes"] as? [String] ?? []
+                let averageRating = data["averageRating"] as? Double ?? 0.0
+                let ratingCount = data["ratingCount"] as? Int ?? 0
+                
+                return ChaiSpot(
+                    id: id,
+                    name: name,
+                    address: address,
+                    latitude: latitude,
+                    longitude: longitude,
+                    chaiTypes: chaiTypes,
+                    averageRating: averageRating,
+                    ratingCount: ratingCount
+                )
+            } catch {
+                print("Error fetching spot details from \(collectionName): \(error)")
+                continue
+            }
         }
+        
+        // If all collections failed, return a fallback spot
+        return ChaiSpot(
+            id: spotId,
+            name: "Chai Spot #\(spotId.prefix(6))",
+            address: "Location details unavailable",
+            latitude: 0.0,
+            longitude: 0.0,
+            chaiTypes: [],
+            averageRating: 0.0,
+            ratingCount: 0
+        )
     }
 }
 

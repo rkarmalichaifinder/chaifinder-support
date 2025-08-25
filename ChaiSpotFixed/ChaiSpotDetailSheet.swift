@@ -459,6 +459,8 @@ struct ChaiSpotDetailSheet: View {
                 } else {
                     self.addToListMessage = "✅ \(self.spot.name) added to your list!"
                     self.showingAddToListAlert = true
+                    // Post notification to update profile count
+                    NotificationCenter.default.post(name: .savedSpotsChanged, object: nil)
                 }
             }
         }
@@ -479,6 +481,8 @@ struct ChaiSpotDetailSheet: View {
                 } else {
                     self.addToListMessage = "✅ \(self.spot.name) added to your list!"
                     self.showingAddToListAlert = true
+                    // Post notification to update profile count
+                    NotificationCenter.default.post(name: .savedSpotsChanged, object: nil)
                 }
             }
         }

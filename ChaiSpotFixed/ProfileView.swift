@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseFirestore // Added for Firestore
 
 struct ProfileView: View {
     @EnvironmentObject var sessionStore: SessionStore
@@ -13,6 +14,7 @@ struct ProfileView: View {
     @State private var showingTermsOfService = false
     @State private var showingBadges = false
     @State private var showingAchievements = false
+    @State private var showingScoreDetails = false
     @State private var showingNotificationSettings = false
     @State private var showingPrivacySettings = false
     @State private var showingWeeklyChallenge = false
@@ -56,9 +58,6 @@ struct ProfileView: View {
                     // 🔒 Privacy & Settings
                     privacySettingsSection
                     
-                    // 👥 Friends
-                    friendsSection
-                    
                     // ⚙️ Settings
                     settingsSection
                 }
@@ -95,6 +94,9 @@ struct ProfileView: View {
             LeaderboardView()
                 .environmentObject(sessionStore)
         }
+        .sheet(isPresented: $showingScoreDetails) {
+            ScoreDetailsView(gamificationService: gamificationService)
+        }
         .sheet(isPresented: $showingWeeklyChallenge) {
             WeeklyChallengeView()
         }
@@ -121,6 +123,9 @@ struct ProfileView: View {
         }
         .onAppear {
             loadProfileData()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .savedSpotsChanged)) { _ in
+            loadSavedSpotsCount()
         }
     }
     
@@ -234,8 +239,7 @@ struct ProfileView: View {
     private var statsSection: some View {
         HStack(spacing: DesignSystem.Spacing.md) {
             Button(action: {
-                // TODO: Navigate to detailed score view
-                print("Score tapped: \(gamificationService.totalScore)")
+                showingScoreDetails = true
             }) {
                 StatCard(
                     title: "Score",
@@ -259,8 +263,7 @@ struct ProfileView: View {
             .buttonStyle(PlainButtonStyle())
             
             Button(action: {
-                // TODO: Navigate to friends list view
-                print("Friends tapped: \(sessionStore.userProfile?.friends?.count ?? 0)")
+                showingFriends = true
             }) {
                 StatCard(
                     title: "Friends",
@@ -556,63 +559,6 @@ struct ProfileView: View {
         .iPadCardStyle()
     }
     
-    // MARK: - Friends Section
-    private var friendsSection: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
-            HStack {
-                Text("👥 Friends")
-                    .font(DesignSystem.Typography.headline)
-                    .fontWeight(.semibold)
-                
-                Spacer()
-                
-                Button("View All") {
-                    showingFriends = true
-                }
-                .font(DesignSystem.Typography.caption)
-                .foregroundColor(DesignSystem.Colors.primary)
-                .accessibilityLabel("View all friends")
-            }
-            
-            Button(action: {
-                showingFriends = true
-            }) {
-                HStack {
-                    Image(systemName: "person.3.fill")
-                        .foregroundColor(DesignSystem.Colors.primary)
-                        .accessibilityHidden(true)
-                    
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        Text("\(sessionStore.userProfile?.friends?.count ?? 0) friends")
-                            .font(DesignSystem.Typography.bodyMedium)
-                            .fontWeight(.medium)
-                        
-                        Text("Tap to manage your connections")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .accessibilityHidden(true)
-                }
-                .padding(DesignSystem.Spacing.md)
-                .background(DesignSystem.Colors.cardBackground)
-                .cornerRadius(DesignSystem.CornerRadius.medium)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                        .stroke(DesignSystem.Colors.border, lineWidth: 1)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel("View friends")
-            .accessibilityHint("Double tap to manage your friend connections")
-        }
-        .iPadCardStyle()
-    }
-    
     // MARK: - Settings Section
     private var settingsSection: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
@@ -668,8 +614,30 @@ struct ProfileView: View {
     
     // MARK: - Helper Functions
     private func loadProfileData() {
-        // Load profile data - placeholder for now
-        savedSpotsCount = 0 // TODO: Implement actual saved spots count
+        loadSavedSpotsCount()
+    }
+    
+    private func loadSavedSpotsCount() {
+        guard let userId = sessionStore.userProfile?.uid else { return }
+        
+        let db = Firestore.firestore()
+        db.collection("users").document(userId).getDocument { snapshot, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("Failed to load saved spots count: \(error.localizedDescription)")
+                    self.savedSpotsCount = 0
+                    return
+                }
+                
+                guard let data = snapshot?.data(),
+                      let savedSpotIds = data["savedSpots"] as? [String] else {
+                    self.savedSpotsCount = 0
+                    return
+                }
+                
+                self.savedSpotsCount = savedSpotIds.count
+            }
+        }
     }
     
     private func refreshProfile() async {
@@ -681,6 +649,7 @@ struct ProfileView: View {
         await MainActor.run {
             isRefreshing = false
             loadProfileData()
+            loadSavedSpotsCount() // Reload saved spots count on refresh
         }
     }
 }

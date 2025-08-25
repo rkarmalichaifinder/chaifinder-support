@@ -2,6 +2,8 @@ import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
 
+// Notification names for saved spots updates
+
 // MARK: - Rating Bar View
 struct RatingBarView: View {
     let rating: Int
@@ -63,7 +65,10 @@ struct ReviewCardView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+        Button(action: {
+            showingComments = true
+        }) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             // Header
             HStack {
                 // Profile Icon
@@ -108,65 +113,60 @@ struct ReviewCardView: View {
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
             }
-            
-            // 🎮 NEW: Photo Display
-            if let photoURL = review.photoURL, !photoURL.isEmpty {
-                VStack(spacing: 8) {
-                    AsyncImage(url: URL(string: photoURL)) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(height: 200)
-                            .clipped()
-                            .cornerRadius(12)
-                    } placeholder: {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(height: 200)
-                            .overlay(
-                                ProgressView()
-                                    .scaleEffect(1.2)
-                            )
-                    }
-                    
-                    // Photo bonus indicator
-                    HStack(spacing: 6) {
-                        Image(systemName: "camera.fill")
-                            .foregroundColor(.orange)
-                            .font(.caption)
-                        
-                        Text("Photo included (+15 points)")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundColor(.orange)
-                            .fontWeight(.medium)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.orange.opacity(0.1))
-                    .cornerRadius(8)
-                }
-            }
-            
-            // Spot Information
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Button(action: {
-                    showingComments = true
-                }) {
-                    HStack {
-                        Text(review.spotName == "Loading..." ? "Loading spot details..." : review.spotName)
-                            .font(DesignSystem.Typography.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(review.spotName == "Loading..." ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.primary)
-                            .multilineTextAlignment(.leading)
-                        
-                        if review.spotName == "Loading..." {
+        
+        // 🎮 NEW: Photo Display
+        if let photoURL = review.photoURL, !photoURL.isEmpty {
+            VStack(spacing: 8) {
+                AsyncImage(url: URL(string: photoURL)) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 200)
+                        .clipped()
+                        .cornerRadius(12)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 200)
+                        .overlay(
                             ProgressView()
-                                .scaleEffect(0.8)
-                                .padding(.leading, 4)
-                        }
+                                .scaleEffect(1.2)
+                        )
+                }
+                
+                // Photo bonus indicator
+                HStack(spacing: 6) {
+                    Image(systemName: "camera.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                    
+                    Text("Photo included (+15 points)")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(.orange)
+                        .fontWeight(.medium)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
+            }
+        }
+        
+        // Spot Information
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack {
+                Text(review.spotName == "Loading..." ? "Loading spot details..." : review.spotName)
+                    .font(DesignSystem.Typography.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(review.spotName == "Loading..." ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.primary)
+                        .multilineTextAlignment(.leading)
+                    
+                    if review.spotName == "Loading..." {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .padding(.leading, 4)
                     }
                 }
-                .buttonStyle(PlainButtonStyle())
                 
                 Text(review.spotAddress == "Loading..." ? "Loading location..." : review.spotAddress)
                     .font(DesignSystem.Typography.bodyMedium)
@@ -434,6 +434,8 @@ struct ReviewCardView: View {
             checkLikeState()
             loadReactions()
         }
+        }
+        .buttonStyle(PlainButtonStyle())
     }
     
     // 🎮 NEW: Handle reaction
@@ -533,18 +535,49 @@ struct ReviewCardView: View {
         isLoadingSpotInfo = true
         let db = Firestore.firestore()
         
-        db.collection("chaiFinder").document(review.spotId).getDocument { document, error in
-            DispatchQueue.main.async {
-                isLoadingSpotInfo = false
-                hasLoadedSpotInfo = true
-                
-                if let document = document, document.exists {
-                    let data = document.data()
-                    spotName = data?["name"] as? String ?? review.spotName
-                    spotAddress = data?["address"] as? String ?? review.spotAddress
+        // Try both collections - chaiFinder and chaiSpots
+        let collections = ["chaiFinder", "chaiSpots"]
+        var currentCollectionIndex = 0
+        
+        func tryNextCollection() {
+            guard currentCollectionIndex < collections.count else {
+                // All collections failed, use fallback
+                DispatchQueue.main.async {
+                    isLoadingSpotInfo = false
+                    hasLoadedSpotInfo = true
+                    spotName = review.spotName
+                    spotAddress = review.spotAddress
+                }
+                return
+            }
+            
+            let collectionName = collections[currentCollectionIndex]
+            currentCollectionIndex += 1
+            
+            db.collection(collectionName).document(review.spotId).getDocument { document, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        // Try the next collection if this one failed
+                        print("Failed to load from collection \(collectionName): \(error.localizedDescription)")
+                        tryNextCollection()
+                        return
+                    }
+                    
+                    if let document = document, document.exists {
+                        let data = document.data()
+                        spotName = data?["name"] as? String ?? review.spotName
+                        spotAddress = data?["address"] as? String ?? review.spotAddress
+                        isLoadingSpotInfo = false
+                        hasLoadedSpotInfo = true
+                    } else {
+                        // Document doesn't exist, try the next collection
+                        tryNextCollection()
+                    }
                 }
             }
         }
+        
+        tryNextCollection()
     }
     
     private func blockUser() {
@@ -573,6 +606,8 @@ struct ReviewCardView: View {
                         // Also remove from user's saved spots list
                         let userRef = db.collection("users").document(currentUserId)
                         userRef.setData(["savedSpots": FieldValue.arrayRemove([self.review.spotId])], merge: true)
+                        // Post notification to update profile count
+                        NotificationCenter.default.post(name: .savedSpotsChanged, object: nil)
                     }
                 }
             }
@@ -592,6 +627,8 @@ struct ReviewCardView: View {
                         // Also add to user's saved spots list
                         let userRef = db.collection("users").document(currentUserId)
                         userRef.setData(["savedSpots": FieldValue.arrayUnion([self.review.spotId])], merge: true)
+                        // Post notification to update profile count
+                        NotificationCenter.default.post(name: .savedSpotsChanged, object: nil)
                     }
                 }
             }

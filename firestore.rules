@@ -33,17 +33,7 @@ service cloud.firestore {
     
     // Ratings collection
     match /ratings/{ratingId} {
-      allow read: if request.auth != null && (
-        // Public ratings can be read by anyone
-        resource.data.visibility == "public" ||
-        // Private ratings can only be read by the owner
-        (resource.data.visibility == "private" && request.auth.uid == resource.data.userId) ||
-        // Friends-only ratings can be read by friends
-        (resource.data.visibility == "friends" && (
-          request.auth.uid == resource.data.userId ||
-          request.auth.uid in get(/databases/$(database)/documents/users/$(resource.data.userId)).data.friends
-        ))
-      );
+      allow read: if request.auth != null; // Allow authenticated users to read all ratings
       allow create: if request.auth != null && request.auth.uid == resource.data.userId;
       allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
     }
@@ -52,6 +42,12 @@ service cloud.firestore {
     match /chaiSpots/{spotId} {
       allow read: if true; // Public read access
       allow write: if request.auth != null; // Authenticated users can write
+    }
+    
+    // ChaiFinder collection (current)
+    match /chaiFinder/{spotId} {
+      allow read: if true; // Public read access - no authentication required
+      allow write: if request.auth != null; // Only authenticated users can write
     }
     
     // Friends collection (if using separate collection)

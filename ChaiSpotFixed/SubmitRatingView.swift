@@ -82,7 +82,7 @@ struct SubmitRatingView: View {
         if !chaiType.isEmpty { score += 5 }
         
         // 📸 Photo bonus
-        if selectedPhotoData != nil { score += 15 }
+        if selectedPhotoData != nil || photoURL != nil { score += 15 }
         
         // Comment bonus
         if !comment.isEmpty {
@@ -767,6 +767,9 @@ struct SubmitRatingView: View {
         
         Task {
             do {
+                // Photo functionality temporarily disabled due to FirebaseStorage dependency
+                let finalPhotoURL = photoURL
+                
                 let ratingData: [String: Any] = [
                     "spotId": spotId,
                     "userId": sessionStore.userProfile?.id ?? "",
@@ -777,7 +780,8 @@ struct SubmitRatingView: View {
                     "chaiStrengthRating": chaiStrengthRating,
                     "flavorNotes": Array(selectedFlavorNotes),
                     "chaiType": chaiType.isEmpty ? nil : chaiType,
-                    "photoURL": photoURL, // Add photoURL to the data
+                    "photoURL": finalPhotoURL, // Use uploaded photo URL
+                    "hasPhoto": finalPhotoURL != nil,
                     "timestamp": FieldValue.serverTimestamp(),
                     "gamificationScore": totalGamificationScore,
                     "visibility": reviewVisibility // 🔒 Add privacy setting
@@ -804,7 +808,7 @@ struct SubmitRatingView: View {
                         chaiStrengthRating: chaiStrengthRating,
                         flavorNotes: Array(selectedFlavorNotes),
                         chaiType: chaiType.isEmpty ? nil : chaiType,
-                        photoURL: photoURL
+                        photoURL: finalPhotoURL
                     )
                 )
                 let newAchievements = await gamificationService.checkAndAwardAchievements(
@@ -819,7 +823,7 @@ struct SubmitRatingView: View {
                         chaiStrengthRating: chaiStrengthRating,
                         flavorNotes: Array(selectedFlavorNotes),
                         chaiType: chaiType.isEmpty ? nil : chaiType,
-                        photoURL: photoURL
+                        photoURL: finalPhotoURL
                     )
                 )
                 
@@ -847,6 +851,8 @@ struct SubmitRatingView: View {
             }
         }
     }
+    
+
     
     // MARK: - Helper Functions
     

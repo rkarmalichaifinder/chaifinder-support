@@ -214,7 +214,7 @@ struct FriendRatingsView: View {
                 guard currentCollectionIndex < collections.count else {
                     // All collections failed, use fallback
                     let fallbackName = "Chai Spot #\(spotId.prefix(6))"
-                    let fallbackAddress = "Tap to view details"
+                    let fallbackAddress = "Location details unavailable"
                     self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
                     
                     let spot = ChaiSpot(
@@ -389,8 +389,8 @@ struct FriendRatingCard: View {
         func tryNextCollection() {
             guard currentCollectionIndex < collections.count else {
                 // All collections failed, use fallback
-                spotName = "Unknown Spot"
-                spotAddress = "Tap to view details"
+                spotName = "Chai Spot #\(rating.spotId.prefix(6))"
+                spotAddress = "Location details unavailable"
                 return
             }
             
