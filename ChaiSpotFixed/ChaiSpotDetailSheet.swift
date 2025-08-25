@@ -77,6 +77,8 @@ struct ChaiSpotDetailSheet: View {
         .sheet(isPresented: $showingRatingSheet) {
             SubmitRatingView(
                 spotId: spot.id,
+                spotName: spot.name,
+                spotAddress: spot.address,
                 existingRating: nil,
                 onComplete: {
                     showingRatingSheet = false

@@ -482,6 +482,16 @@ class FeedViewModel: ObservableObject {
                 let timestamp = data["timestamp"] as? Timestamp
                 let chaiType = data["chaiType"] as? String
                 
+                // Check if spot details are already stored in the rating
+                let spotName = data["spotName"] as? String
+                let spotAddress = data["spotAddress"] as? String
+                
+                if let storedName = spotName, let storedAddress = spotAddress {
+                    print("✅ Rating for spot \(spotId) already has stored details: \(storedName)")
+                } else {
+                    print("⚠️ Rating for spot \(spotId) missing stored details, will need to fetch from collections")
+                }
+                
                 // Extract rating details with robust type handling
                 let creaminessRating = self.extractCreaminessRating(from: data["creaminessRating"])
                 let chaiStrengthRating = self.extractChaiStrengthRating(from: data["chaiStrengthRating"])
@@ -491,8 +501,8 @@ class FeedViewModel: ObservableObject {
                 let feedItem = ReviewFeedItem(
                     id: document.documentID,
                     spotId: spotId,
-                    spotName: "Loading...",
-                    spotAddress: "Loading...",
+                    spotName: spotName ?? "Loading...",
+                    spotAddress: spotAddress ?? "Loading...",
                     userId: userId,
                     username: username,
                     rating: value,
@@ -528,20 +538,25 @@ class FeedViewModel: ObservableObject {
                 
                 // Load spot details asynchronously after initial load
                 for feedItem in feedItems {
-                    self.loadSpotDetails(for: feedItem.spotId) { spotName, spotAddress in
-                        DispatchQueue.main.async(execute: DispatchWorkItem {
-                            // Update both reviews and filteredReviews arrays
-                            if let index = self.reviews.firstIndex(where: { $0.id == feedItem.id }) {
-                                self.reviews[index].spotName = spotName
-                                self.reviews[index].spotAddress = spotAddress
-                                
-                                // Also update filteredReviews if this item is still in the filtered list
-                                if let filteredIndex = self.filteredReviews.firstIndex(where: { $0.id == feedItem.id }) {
-                                    self.filteredReviews[filteredIndex].spotName = spotName
-                                    self.filteredReviews[filteredIndex].spotAddress = spotAddress
+                    // Only fetch if we don't already have the details
+                    if feedItem.spotName == "Loading..." {
+                        self.loadSpotDetails(for: feedItem.spotId) { spotName, spotAddress in
+                            DispatchQueue.main.async(execute: DispatchWorkItem {
+                                // Update both reviews and filteredReviews arrays
+                                if let index = self.reviews.firstIndex(where: { $0.id == feedItem.id }) {
+                                    self.reviews[index].spotName = spotName
+                                    self.reviews[index].spotAddress = spotAddress
+                                    
+                                    // Also update filteredReviews if this item is still in the filtered list
+                                    if let filteredIndex = self.filteredReviews.firstIndex(where: { $0.id == feedItem.id }) {
+                                        self.filteredReviews[filteredIndex].spotName = spotName
+                                        self.filteredReviews[filteredIndex].spotAddress = spotAddress
+                                    }
                                 }
-                            }
-                        })
+                            })
+                        }
+                    } else {
+                        print("✅ Skipping spot details fetch for \(feedItem.spotId) - already have: \(feedItem.spotName)")
                     }
                 }
             })
@@ -572,6 +587,7 @@ class FeedViewModel: ObservableObject {
                 let fallbackName = "Chai Spot #\(spotId.prefix(6))"
                 let fallbackAddress = "Location details unavailable"
                 self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
+                print("⚠️ FeedViewModel failed to load spot details for \(spotId) from all collections. Using fallback name: \(fallbackName)")
                 completion(fallbackName, fallbackAddress)
                 return
             }
@@ -579,11 +595,13 @@ class FeedViewModel: ObservableObject {
             let collectionName = collections[currentCollectionIndex]
             currentCollectionIndex += 1
             
+            print("🔍 FeedViewModel attempting to load spot \(spotId) from collection: \(collectionName)")
+            
             db.collection(collectionName).document(spotId).getDocument { snapshot, error in
                 DispatchQueue.main.async {
                     if let error = error {
                         // Try the next collection if this one failed
-                        print("Failed to load from collection \(collectionName): \(error.localizedDescription)")
+                        print("❌ FeedViewModel failed to load from collection \(collectionName): \(error.localizedDescription)")
                         tryNextCollection()
                         return
                     }
@@ -592,12 +610,13 @@ class FeedViewModel: ObservableObject {
                           let name = data["name"] as? String,
                           let address = data["address"] as? String else {
                         // Data is missing, try the next collection
-                        print("Missing data from collection \(collectionName)")
+                        print("⚠️ FeedViewModel missing data from collection \(collectionName) for spot \(spotId)")
                         tryNextCollection()
                         return
                     }
                     
                     // Successfully loaded spot details
+                    print("✅ FeedViewModel successfully loaded spot details from \(collectionName): \(name)")
                     self.loadingSpots.remove(spotId)
                     self.spotDetailsCache[spotId] = (name, address)
                     completion(name, address)

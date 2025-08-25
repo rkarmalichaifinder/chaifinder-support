@@ -314,7 +314,7 @@ struct FriendDetailView: View {
                 .cornerRadius(DesignSystem.CornerRadius.small)
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(rating.spotName ?? "Unknown Spot")
+                Text(rating.spotName ?? "Chai Spot #\(rating.spotId.prefix(6))")
                     .font(DesignSystem.Typography.bodyMedium)
                     .fontWeight(.medium)
                     .foregroundColor(DesignSystem.Colors.textPrimary)
@@ -411,20 +411,39 @@ struct FriendDetailView: View {
                     
                     let ratings = documents.compactMap { doc -> Rating? in
                         let data = doc.data()
+                        let spotId = data["spotId"] as? String ?? ""
+                        let userId = data["userId"] as? String ?? ""
+                        let username = data["username"] as? String
+                        let spotName = data["spotName"] as? String
+                        let value = data["value"] as? Int ?? 0
+                        let comment = data["comment"] as? String
+                        let timestamp = (data["timestamp"] as? Timestamp)?.dateValue()
+                        let likes = data["likes"] as? Int ?? 0
+                        let dislikes = data["dislikes"] as? Int ?? 0
+                        let creaminessRating = data["creaminessRating"] as? Int
+                        let chaiStrengthRating = data["chaiStrengthRating"] as? Int
+                        let flavorNotes = data["flavorNotes"] as? [String]
+                        
+                        if let storedName = spotName {
+                            print("✅ FriendDetailView: Rating for spot \(spotId) has stored name: \(storedName)")
+                        } else {
+                            print("⚠️ FriendDetailView: Rating for spot \(spotId) missing stored name")
+                        }
+                        
                         return Rating(
                             id: doc.documentID,
-                            spotId: data["spotId"] as? String ?? "",
-                            userId: data["userId"] as? String ?? "",
-                            username: data["username"] as? String,
-                            spotName: data["spotName"] as? String,
-                            value: data["value"] as? Int ?? 0,
-                            comment: data["comment"] as? String,
-                            timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
-                            likes: data["likes"] as? Int ?? 0,
-                            dislikes: data["dislikes"] as? Int ?? 0,
-                            creaminessRating: data["creaminessRating"] as? Int,
-                            chaiStrengthRating: data["chaiStrengthRating"] as? Int,
-                            flavorNotes: data["flavorNotes"] as? [String]
+                            spotId: spotId,
+                            userId: userId,
+                            username: username,
+                            spotName: spotName,
+                            value: value,
+                            comment: comment,
+                            timestamp: timestamp,
+                            likes: likes,
+                            dislikes: dislikes,
+                            creaminessRating: creaminessRating,
+                            chaiStrengthRating: chaiStrengthRating,
+                            flavorNotes: flavorNotes
                         )
                     }
                     

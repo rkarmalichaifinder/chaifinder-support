@@ -11,6 +11,8 @@ extension Notification.Name {
 
 struct SubmitRatingView: View {
     let spotId: String
+    let spotName: String
+    let spotAddress: String
     let existingRating: Rating?
     let onComplete: () -> Void
     
@@ -772,6 +774,8 @@ struct SubmitRatingView: View {
                 
                 let ratingData: [String: Any] = [
                     "spotId": spotId,
+                    "spotName": spotName,
+                    "spotAddress": spotAddress,
                     "userId": sessionStore.userProfile?.id ?? "",
                     "userName": sessionStore.userProfile?.displayName ?? "Anonymous",
                     "rating": ratingValue,
@@ -787,12 +791,16 @@ struct SubmitRatingView: View {
                     "visibility": reviewVisibility // 🔒 Add privacy setting
                 ]
                 
+                print("📝 Submitting rating with data: spotId=\(spotId), spotName=\(spotName), spotAddress=\(spotAddress)")
+                
                 if let existing = existingRating {
                     // Update existing rating
                     try await db.collection("ratings").document(existing.id ?? "").updateData(ratingData)
+                    print("✅ Updated existing rating for spot: \(spotName)")
                 } else {
                     // Create new rating
                     try await db.collection("ratings").addDocument(data: ratingData)
+                    print("✅ Created new rating for spot: \(spotName)")
                 }
                 
                 // Check for new badges and achievements
@@ -1146,6 +1154,8 @@ struct SubmitRatingView_Previews: PreviewProvider {
     static var previews: some View {
         SubmitRatingView(
             spotId: "preview",
+            spotName: "Preview Spot",
+            spotAddress: "123 Preview St",
             existingRating: nil,
             onComplete: {}
         )

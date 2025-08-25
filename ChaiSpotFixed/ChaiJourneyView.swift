@@ -708,7 +708,7 @@ class ChaiJourneyViewModel: ObservableObject {
                 guard let data = document.data() else { continue }
                 
                 let id = data["id"] as? String ?? spotId
-                let name = data["name"] as? String ?? "Unknown Spot"
+                let name = data["name"] as? String ?? "Chai Spot #\(spotId.prefix(6))"
                 let address = data["address"] as? String ?? "Unknown Address"
                 let latitude = data["latitude"] as? Double ?? 0.0
                 let longitude = data["longitude"] as? Double ?? 0.0

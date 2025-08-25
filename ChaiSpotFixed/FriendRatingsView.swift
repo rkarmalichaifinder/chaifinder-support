@@ -217,6 +217,8 @@ struct FriendRatingsView: View {
                     let fallbackAddress = "Location details unavailable"
                     self.spotDetailsCache[spotId] = (fallbackName, fallbackAddress)
                     
+                    print("⚠️ Failed to load spot details for \(spotId) from all collections. Using fallback name: \(fallbackName)")
+                    
                     let spot = ChaiSpot(
                         id: spotId,
                         name: fallbackName,
@@ -234,13 +236,15 @@ struct FriendRatingsView: View {
                 let collectionName = collections[currentCollectionIndex]
                 currentCollectionIndex += 1
                 
+                print("🔍 Attempting to load spot \(spotId) from collection: \(collectionName)")
+                
                 db.collection(collectionName).document(spotId).getDocument { snapshot, error in
                 DispatchQueue.main.async {
                     self.loadingSpots.remove(spotId)
                     
                     if let error = error {
                         // Try the next collection if this one failed
-                        print("Failed to load from collection \(collections[currentCollectionIndex - 1]): \(error.localizedDescription)")
+                        print("❌ Failed to load from collection \(collections[currentCollectionIndex - 1]): \(error.localizedDescription)")
                         tryNextCollection()
                         return
                     }
@@ -252,13 +256,15 @@ struct FriendRatingsView: View {
                           let longitude = data["longitude"] as? Double,
                           let chaiTypes = data["chaiTypes"] as? [String] else {
                         // Data is missing, try the next collection
-                        print("Missing data from collection \(collections[currentCollectionIndex - 1])")
+                        print("⚠️ Missing data from collection \(collections[currentCollectionIndex - 1]) for spot \(spotId)")
                         tryNextCollection()
                         return
                     }
                     
                     let averageRating = data["averageRating"] as? Double ?? 0.0
                     let ratingCount = data["ratingCount"] as? Int ?? 0
+                    
+                    print("✅ Successfully loaded spot details from \(collectionName): \(name)")
                     
                     self.spotDetailsCache[spotId] = (name, address)
                     
@@ -391,16 +397,19 @@ struct FriendRatingCard: View {
                 // All collections failed, use fallback
                 spotName = "Chai Spot #\(rating.spotId.prefix(6))"
                 spotAddress = "Location details unavailable"
+                print("⚠️ Failed to load spot details for \(rating.spotId) from all collections in FriendRatingCard. Using fallback name: \(spotName)")
                 return
             }
             
             let collectionName = collections[currentCollectionIndex]
             currentCollectionIndex += 1
             
+            print("🔍 FriendRatingCard attempting to load spot \(rating.spotId) from collection: \(collectionName)")
+            
             db.collection(collectionName).document(rating.spotId).getDocument { snapshot, error in
                 DispatchQueue.main.async {
                     if let error = error {
-                        print("Failed to load from collection \(collectionName): \(error.localizedDescription)")
+                        print("❌ FriendRatingCard failed to load from collection \(collectionName): \(error.localizedDescription)")
                         tryNextCollection()
                         return
                     }
@@ -408,12 +417,13 @@ struct FriendRatingCard: View {
                     guard let data = snapshot?.data(),
                           let name = data["name"] as? String,
                           let address = data["address"] as? String else {
-                        print("Missing data from collection \(collectionName)")
+                        print("⚠️ FriendRatingCard missing data from collection \(collectionName) for spot \(rating.spotId)")
                         tryNextCollection()
                         return
                     }
                     
                     // Successfully loaded spot details
+                    print("✅ FriendRatingCard successfully loaded spot details from \(collectionName): \(name)")
                     spotName = name
                     spotAddress = address
                 }

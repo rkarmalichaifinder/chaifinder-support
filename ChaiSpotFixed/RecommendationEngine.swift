@@ -440,7 +440,7 @@ class RecommendationEngine: ObservableObject {
                 let spots = snapshot.documents.compactMap { document in
                     let data = document.data()
                     let id = data["id"] as? String ?? document.documentID
-                    let name = data["name"] as? String ?? "Unknown Spot"
+                    let name = data["name"] as? String ?? "Chai Spot #\(id.prefix(6))"
                     let address = data["address"] as? String ?? "Unknown Address"
                     let latitude = data["latitude"] as? Double ?? 0.0
                     let longitude = data["longitude"] as? Double ?? 0.0
