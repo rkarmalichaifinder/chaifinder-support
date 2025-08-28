@@ -7,6 +7,7 @@ import PhotosUI
 // Notification names for rating updates
 extension Notification.Name {
     static let ratingUpdated = Notification.Name("ratingUpdated")
+    static let spotsUpdated = Notification.Name("spotsUpdated")
 }
 
 struct SubmitRatingView: View {

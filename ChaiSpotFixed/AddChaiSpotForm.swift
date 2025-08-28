@@ -361,16 +361,33 @@ struct AddChaiFinderForm: View {
 
                 Button(isSubmitting ? "Adding..." : "Submit") {
                     guard !name.isEmpty && !isSubmitting else { return }
+                    guard !address.isEmpty else { 
+                        print("❌ Address is empty")
+                        return 
+                    }
+                    guard let coord = resolvedCoordinate ?? coordinate else {
+                        print("❌ No coordinate selected")
+                        showingNoCoordinateAlert = true
+                        return
+                    }
+                    
                     isSubmitting = true
                     let types = chaiType.isEmpty ? [] : [chaiType]
-                    if let coord = resolvedCoordinate ?? coordinate {
-                        onSubmit(name, address, rating, comments, types, coord, creaminessRating, chaiStrengthRating, Array(selectedFlavorNotes) + (customFlavorNote.isEmpty ? [] : [customFlavorNote]))
-                    } else {
-                        showingNoCoordinateAlert = true
-                        isSubmitting = false
-                    }
+                    
+                    print("📍 Form submission data:")
+                    print("  - Name: \(name)")
+                    print("  - Address: \(address)")
+                    print("  - Rating: \(rating)")
+                    print("  - Comments: \(comments)")
+                    print("  - Chai Types: \(types)")
+                    print("  - Coordinate: \(coord)")
+                    print("  - Creaminess Rating: \(creaminessRating)")
+                    print("  - Chai Strength Rating: \(chaiStrengthRating)")
+                    print("  - Flavor Notes: \(Array(selectedFlavorNotes) + (customFlavorNote.isEmpty ? [] : [customFlavorNote]))")
+                    
+                    onSubmit(name, address, rating, comments, types, coord, creaminessRating, chaiStrengthRating, Array(selectedFlavorNotes) + (customFlavorNote.isEmpty ? [] : [customFlavorNote]))
                 }
-                .disabled(name.isEmpty || isSubmitting)
+                .disabled(name.isEmpty || address.isEmpty || isSubmitting)
             }
             .formStyle(GroupedFormStyle())
             .navigationTitle("Add Chai Spot")

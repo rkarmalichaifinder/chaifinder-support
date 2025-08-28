@@ -1894,22 +1894,24 @@ struct SearchResultRow: View {
                     .background(DesignSystem.Colors.primary)
                     .clipShape(Circle())
                 
-                // User Info
+                // User Info - Fixed width to prevent wrapping
                 VStack(alignment: .leading, spacing: 2) {
                     Text(user.displayName)
                         .font(DesignSystem.Typography.bodyMedium)
                         .fontWeight(.medium)
                         .foregroundColor(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     
                     Text(user.email)
                         .font(DesignSystem.Typography.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 
-                Spacer()
-                
-                // Action Buttons - Prevent text wrapping with fixed widths
+                // Action Buttons - Increased widths to prevent text wrapping
                 if sentRequests.contains(user.uid) {
                     // Already sent request
                     HStack(spacing: 4) {
@@ -1924,9 +1926,9 @@ struct SearchResultRow: View {
                     .padding(.vertical, 4)
                     .background(DesignSystem.Colors.border.opacity(0.3))
                     .cornerRadius(DesignSystem.CornerRadius.small)
-                    .frame(width: 60) // Fixed width to prevent wrapping
+                    .frame(width: 65) // Increased width to prevent wrapping
                 } else {
-                    // Action buttons - horizontal layout with fixed widths
+                    // Action buttons - horizontal layout with increased widths
                     HStack(spacing: 6) {
                         // Send friend request
                         Button(action: {
@@ -1952,7 +1954,7 @@ struct SearchResultRow: View {
                             .cornerRadius(DesignSystem.CornerRadius.small)
                         }
                         .disabled(isInviting)
-                        .frame(width: 70) // Fixed width to prevent wrapping
+                        .frame(width: 75) // Increased width to prevent wrapping
                         
                         // Invite via Email
                         Button(action: {
@@ -1972,7 +1974,7 @@ struct SearchResultRow: View {
                             .cornerRadius(DesignSystem.CornerRadius.small)
                         }
                         .disabled(isInviting)
-                        .frame(width: 60) // Fixed width to prevent wrapping
+                        .frame(width: 70) // Increased width to prevent wrapping
                     }
                 }
             }

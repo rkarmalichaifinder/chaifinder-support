@@ -8,8 +8,8 @@ import FirebaseAuth
 struct PersonalizedMapView: View {
     @StateObject private var vm = PersonalizedMapViewModel()
     @EnvironmentObject var session: SessionStore
-    // Map region - only used for initial setup
-    @State private var initialRegion = MKCoordinateRegion(
+    // Map region - dynamic based on user location or spots
+    @State private var mapRegion = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
         span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
     )
@@ -31,6 +31,20 @@ struct PersonalizedMapView: View {
     // Add location button state
     @State private var showingAddForm = false
     @State private var selectedCoordinate: CLLocationCoordinate2D?
+    
+    // Store current map region to prevent resetting
+    @State private var currentMapRegion: MKCoordinateRegion?
+    
+    // Computed property to get the map region, with fallback to default
+    private var effectiveMapRegion: MKCoordinateRegion {
+        if let storedRegion = getStoredMapRegion() {
+            return storedRegion
+        } else if let currentRegion = currentMapRegion {
+            return currentRegion
+        } else {
+            return mapRegion
+        }
+    }
     
     var body: some View {
         NavigationView {
@@ -55,7 +69,19 @@ struct PersonalizedMapView: View {
             .onAppear {
                 print("🎯 PersonalizedMapView appeared")
                 setupLocationManager()
-                vm.loadPersonalizedSpots()
+            }
+            .onDisappear {
+                // Store the current map region when the view disappears
+                storeCurrentMapRegion()
+            }
+            .onChange(of: vm.isShowingList) { isShowingList in
+                // Store the current map region when switching views
+                if !isShowingList {
+                    // We're switching to map view, store the current region
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        storeCurrentMapRegion()
+                    }
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .tasteSetupCompleted)) { _ in
                 Task {
@@ -69,10 +95,22 @@ struct PersonalizedMapView: View {
                     // Don't auto-center - let user control the map
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .spotsUpdated)) { _ in
+                print("🔄 Received spotsUpdated notification - triggering map refresh")
+                vm.mapUpdateTrigger = UUID()
+                
+                // Update map region to include new spots
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    updateMapRegion()
+                }
+            }
             .task {
                 print("🚀 PersonalizedMapView task started")
                 await vm.loadAllSpots()
                 print("🚀 PersonalizedMapView task completed")
+                
+                // Update map region based on loaded spots or user location
+                updateMapRegion()
                 
                 // Don't auto-center on load - let user control the map
                 // Only center if this is the very first time the view appears
@@ -86,14 +124,43 @@ struct PersonalizedMapView: View {
                 if let coordinate = selectedCoordinate {
                     AddChaiFinderForm(coordinate: coordinate) { name, address, rating, comments, chaiTypes, coordinate, creaminessRating, chaiStrengthRating, flavorNotes in
                         // Handle form submission
-                        print("📍 Adding new chai spot: \(name) at \(coordinate)")
-                        // Here you would typically save to Firestore
-                        // For now, just dismiss the form and clear the selected coordinate
-                        showingAddForm = false
-                        selectedCoordinate = nil
+                        print("📍 PersonalizedMapView received form submission:")
+                        print("  - Name: \(name)")
+                        print("  - Address: \(address)")
+                        print("  - Rating: \(rating)")
+                        print("  - Comments: \(comments)")
+                        print("  - Chai Types: \(chaiTypes)")
+                        print("  - Coordinate: \(coordinate)")
+                        print("  - Creaminess Rating: \(creaminessRating)")
+                        print("  - Chai Strength Rating: \(chaiStrengthRating)")
+                        print("  - Flavor Notes: \(flavorNotes)")
                         
-                        // TODO: Implement actual Firestore save
-                        // You can add the save logic here using the vm or a separate service
+                        // Save to Firestore using the view model
+                        Task {
+                            let success = await vm.addNewChaiSpot(
+                                name: name,
+                                address: address,
+                                rating: rating,
+                                comments: comments,
+                                chaiTypes: chaiTypes,
+                                coordinate: coordinate,
+                                creaminessRating: creaminessRating,
+                                chaiStrengthRating: chaiStrengthRating,
+                                flavorNotes: flavorNotes
+                            )
+                            
+                            await MainActor.run {
+                                if success {
+                                    print("✅ New chai spot added successfully")
+                                } else {
+                                    print("❌ Failed to add new chai spot")
+                                }
+                                
+                                // Dismiss the form and clear the selected coordinate
+                                showingAddForm = false
+                                selectedCoordinate = nil
+                            }
+                        }
                     }
                 }
             }
@@ -554,19 +621,8 @@ struct PersonalizedMapView: View {
             } else {
                 // Create enhanced map view with spots
                 TappableMapView(
-                    initialRegion: initialRegion,
-                    chaiFinder: vm.allSpots.map { spot in
-                        ChaiFinder(
-                            id: spot.id,
-                            name: spot.name,
-                            latitude: spot.latitude,
-                            longitude: spot.longitude,
-                            address: spot.address,
-                            chaiTypes: spot.chaiTypes,
-                            averageRating: spot.averageRating,
-                            ratingCount: spot.ratingCount
-                        )
-                    },
+                    initialRegion: effectiveMapRegion, // Use effectiveMapRegion
+                    chaiFinder: vm.getMapSpots(),
                     personalizedSpotIds: vm.getPersonalizedSpotIds(),
                     onTap: { coordinate in
                         // Handle map tap
@@ -590,11 +646,29 @@ struct PersonalizedMapView: View {
                     onMapViewCreated: { mapView in
                         // Store reference to map view for programmatic updates
                         self.mapViewRef = mapView
+                        
+                        // Store the current region to prevent resetting
+                        if let currentRegion = self.currentMapRegion {
+                            // If we have a stored region, use it
+                            mapView.setRegion(currentRegion, animated: false)
+                        }
+                        
+                        // Store the current region periodically to prevent loss
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            self.storeCurrentMapRegion()
+                        }
                     },
                     showUserLocation: true,
                     showCompass: true,
                     showScale: true
                 )
+                // Removed .id() modifier to prevent blinking - map updates will happen naturally
+                .onAppear {
+                    print("🗺️ Map view appeared with \(vm.allSpots.count) spots")
+                    print("🗺️ Map spots: \(vm.allSpots.map { $0.name })")
+                    print("🗺️ getMapSpots() returns: \(vm.getMapSpots().count) spots")
+                }
+
                 
                 // Enhanced map controls overlay
                 MapControlsOverlay(
@@ -1016,6 +1090,102 @@ struct PersonalizedMapView: View {
             mapView.setRegion(newRegion, animated: true)
         }
     }
+
+    private func updateMapRegion() {
+        guard let mapView = mapViewRef else { return }
+        
+        let currentRegion = mapView.region
+        
+        // Store the current region to prevent resetting
+        currentMapRegion = currentRegion
+        
+        // If user location is available, center on it
+        if let userLocation = locationManager.location {
+            let newRegion = MKCoordinateRegion(
+                center: userLocation.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
+            )
+            withAnimation(.easeInOut(duration: 0.5)) {
+                mapView.setRegion(newRegion, animated: true)
+            }
+            currentMapRegion = newRegion
+            storeMapRegion(newRegion)
+        } else if !vm.allSpots.isEmpty {
+            // If no user location, try to fit all spots
+            let coordinates = vm.allSpots.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+            
+            var minLat = coordinates[0].latitude
+            var maxLat = coordinates[0].latitude
+            var minLon = coordinates[0].longitude
+            var maxLon = coordinates[0].longitude
+            
+            for coordinate in coordinates {
+                minLat = min(minLat, coordinate.latitude)
+                maxLat = max(maxLat, coordinate.latitude)
+                minLon = min(minLon, coordinate.longitude)
+                maxLon = max(maxLon, coordinate.longitude)
+            }
+            
+            let center = CLLocationCoordinate2D(
+                latitude: (minLat + maxLat) / 2,
+                longitude: (minLon + maxLon) / 2
+            )
+            
+            let span = MKCoordinateSpan(
+                latitudeDelta: (maxLat - minLat) * 1.5, // Add padding
+                longitudeDelta: (maxLon - minLon) * 1.5
+            )
+            
+            let newRegion = MKCoordinateRegion(center: center, span: span)
+            
+            withAnimation(.easeInOut(duration: 0.8)) {
+                mapView.setRegion(newRegion, animated: true)
+            }
+            currentMapRegion = newRegion
+            storeMapRegion(newRegion)
+        }
+    }
+    
+    // Track map region changes to prevent resetting
+    private func onMapRegionChanged() {
+        guard let mapView = mapViewRef else { return }
+        currentMapRegion = mapView.region
+    }
+    
+    // Store map region in UserDefaults
+    private func storeMapRegion(_ region: MKCoordinateRegion) {
+        let regionData: [String: Double] = [
+            "latitude": region.center.latitude,
+            "longitude": region.center.longitude,
+            "latitudeDelta": region.span.latitudeDelta,
+            "longitudeDelta": region.span.longitudeDelta
+        ]
+        UserDefaults.standard.set(regionData, forKey: "StoredMapRegion")
+    }
+    
+    // Retrieve stored map region from UserDefaults
+    private func getStoredMapRegion() -> MKCoordinateRegion? {
+        guard let regionData = UserDefaults.standard.dictionary(forKey: "StoredMapRegion") as? [String: Double],
+              let latitude = regionData["latitude"],
+              let longitude = regionData["longitude"],
+              let latitudeDelta = regionData["latitudeDelta"],
+              let longitudeDelta = regionData["longitudeDelta"] else {
+            return nil
+        }
+        
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+            span: MKCoordinateSpan(latitudeDelta: latitudeDelta, longitudeDelta: longitudeDelta)
+        )
+    }
+    
+    // Store the current map region from the map view
+    private func storeCurrentMapRegion() {
+        guard let mapView = mapViewRef else { return }
+        let currentRegion = mapView.region
+        currentMapRegion = currentRegion
+        storeMapRegion(currentRegion)
+    }
 }
 
     // MARK: - Location Manager Delegate
@@ -1162,6 +1332,9 @@ final class PersonalizedMapViewModel: ObservableObject {
     @Published var searchText: String = "" // Added this line
     @Published var hasSearchLocation: Bool = false // Track if search location is active
     @Published var isSearchingLocation: Bool = false // Track if location search is in progress
+    
+    // Map update trigger to avoid blinking
+    @Published var mapUpdateTrigger = UUID()
     
     // Filter state
     @Published var showFriendsFavorites = true
@@ -1355,7 +1528,16 @@ final class PersonalizedMapViewModel: ObservableObject {
     func getPersonalizedSpotIds() -> Set<String> {
         let personalizedSpots = allSpots.filter { spot in
             let score = calculatePersonalizationScore(for: spot)
-            return score >= 15.0 // Threshold for considering a spot "personalized"
+            let isPersonalized = score >= 15.0 // Threshold for considering a spot "personalized"
+            
+            // Special case: always include newly added spots (rating count = 1 and created by current user)
+            if spot.ratingCount == 1 {
+                // We can't easily check if created by current user without additional data,
+                // so let's include all spots with rating count 1 for now
+                return true
+            }
+            
+            return isPersonalized
         }
         return Set(personalizedSpots.map { $0.id })
     }
@@ -1518,6 +1700,7 @@ final class PersonalizedMapViewModel: ObservableObject {
         }
         
         personalizedSpots = filtered
+        
         sortSpots(by: currentSortOrder)
     }
     
@@ -1561,6 +1744,7 @@ final class PersonalizedMapViewModel: ObservableObject {
     
     // MARK: - Data Loading
     func loadAllSpots() async {
+        print("🔄 loadAllSpots() called")
         await MainActor.run {
             isLoading = true
         }
@@ -1592,7 +1776,7 @@ final class PersonalizedMapViewModel: ObservableObject {
                     let averageRating = data["averageRating"] as? Double ?? 0.0
                     let ratingCount = data["ratingCount"] as? Int ?? 0
                     
-                    return ChaiSpot(
+                    let spot = ChaiSpot(
                         id: document.documentID,
                         name: name,
                         address: address,
@@ -1602,15 +1786,19 @@ final class PersonalizedMapViewModel: ObservableObject {
                         averageRating: averageRating,
                         ratingCount: ratingCount
                     )
+                    
+                    return spot
                 }
                 
                 allSpots.append(contentsOf: spots)
                 
             } catch {
-                print("Error loading from collection \(collectionName): \(error)")
+                print("❌ Error loading from collection \(collectionName): \(error)")
                 continue
             }
         }
+        
+        print("📚 Total spots loaded: \(allSpots.count)")
         
         // Remove duplicates based on spot ID
         let uniqueSpots = Array(Set(allSpots))
@@ -1626,6 +1814,7 @@ final class PersonalizedMapViewModel: ObservableObject {
     func loadPersonalizedSpots() {
         // Apply personalization logic
         let personalizedIds = getPersonalizedSpotIds()
+        
         let personalizedSpots = allSpots.filter { personalizedIds.contains($0.id) }
         
         self.personalizedSpots = personalizedSpots
@@ -1712,6 +1901,142 @@ final class PersonalizedMapViewModel: ObservableObject {
             applyFilters()
             isRefreshingPersonalization = false
         }
+    }
+    
+    /// Add a new chai spot to Firestore
+    func addNewChaiSpot(name: String, address: String, rating: Int, comments: String, chaiTypes: [String], coordinate: CLLocationCoordinate2D, creaminessRating: Int, chaiStrengthRating: Int, flavorNotes: [String]) async -> Bool {
+        print("🔄 Starting to add new chai spot...")
+        print("  - Name: \(name)")
+        print("  - Address: \(address)")
+        print("  - Rating: \(rating)")
+        print("  - Comments: \(comments)")
+        print("  - Chai Types: \(chaiTypes)")
+        print("  - Coordinate: \(coordinate)")
+        print("  - Creaminess Rating: \(creaminessRating)")
+        print("  - Chai Strength Rating: \(chaiStrengthRating)")
+        print("  - Flavor Notes: \(flavorNotes)")
+        
+        guard let userId = Auth.auth().currentUser?.uid else {
+            print("❌ User not authenticated")
+            return false
+        }
+        
+        print("✅ User authenticated: \(userId)")
+        let db = Firestore.firestore()
+        
+        do {
+            // Create the chai spot document
+            let spotData: [String: Any] = [
+                "name": name,
+                "address": address,
+                "latitude": coordinate.latitude,
+                "longitude": coordinate.longitude,
+                "chaiTypes": chaiTypes,
+                "averageRating": Double(rating),
+                "ratingCount": 1,
+                "createdBy": userId,
+                "createdAt": Timestamp(),
+                "updatedAt": Timestamp()
+            ]
+            
+            print("📝 Spot data prepared: \(spotData)")
+            
+            // Add to chaiFinder collection (primary collection)
+            let spotRef = try await db.collection("chaiFinder").addDocument(data: spotData)
+            let spotId = spotRef.documentID
+            
+            print("✅ New chai spot added with ID: \(spotId)")
+            
+            // Try to add to chaiSpots collection for consistency, but don't fail if it doesn't work
+            do {
+                try await db.collection("chaiSpots").document(spotId).setData(spotData)
+                print("✅ Also added to chaiSpots collection")
+            } catch {
+                print("⚠️ Warning: Failed to add to chaiSpots collection: \(error.localizedDescription)")
+                print("⚠️ This is not critical - the spot was added to chaiFinder collection")
+            }
+            
+            // Create the user's rating for this spot
+            let ratingData: [String: Any] = [
+                "spotId": spotId,
+                "userId": userId,
+                "username": Auth.auth().currentUser?.displayName ?? "Anonymous",
+                "spotName": name,
+                "value": rating,
+                "comment": comments,
+                "timestamp": Timestamp(),
+                "likes": 0,
+                "dislikes": 0,
+                "creaminessRating": creaminessRating,
+                "chaiStrengthRating": chaiStrengthRating,
+                "flavorNotes": flavorNotes,
+                "visibility": "public",
+                "deleted": false,
+                "updatedAt": Timestamp()
+            ]
+            
+            print("📝 Rating data prepared: \(ratingData)")
+            
+            try await db.collection("ratings").addDocument(data: ratingData)
+            print("✅ User rating added for new spot")
+            
+            // Reload user ratings to include the new one
+            print("🔄 Reloading user ratings to include the new rating...")
+            await loadUserData()
+            print("✅ User ratings reloaded")
+            
+            // Reload spots to include the new one
+            print("🔄 Reloading spots to include the new one...")
+            await loadAllSpots()
+            print("✅ Spots reloaded")
+            
+            // Check if the new spot is now in the allSpots array
+            await MainActor.run {
+                if let newSpot = self.allSpots.first(where: { $0.name == name }) {
+                    print("✅ New spot '\(name)' found in allSpots array after reload")
+                    print("✅ Total spots in allSpots: \(self.allSpots.count)")
+                    print("✅ Map view should now show \(self.allSpots.count) spots")
+                    
+                    // Trigger map update without blinking
+                    self.mapUpdateTrigger = UUID()
+                    print("🔄 Map update triggered")
+                    
+                    // Post notification to trigger map refresh
+                    NotificationCenter.default.post(name: .spotsUpdated, object: nil)
+                    print("📢 Posted spotsUpdated notification")
+                    
+                    // Map updates happen naturally through the view model's published properties
+                } else {
+                    print("❌ New spot '\(name)' NOT found in allSpots array after reload")
+                    print("❌ Available spots: \(self.allSpots.map { $0.name })")
+                }
+            }
+            
+            return true
+            
+        } catch {
+            print("❌ Failed to add new chai spot: \(error.localizedDescription)")
+            print("❌ Error details: \(error)")
+            return false
+        }
+    }
+    
+    /// Get map spots for the map view
+    func getMapSpots() -> [ChaiFinder] {
+        let mapSpots = allSpots.map { spot in
+            ChaiFinder(
+                id: spot.id,
+                name: spot.name,
+                latitude: spot.latitude,
+                longitude: spot.longitude,
+                address: spot.address,
+                chaiTypes: spot.chaiTypes,
+                averageRating: spot.averageRating,
+                ratingCount: spot.ratingCount
+            )
+        }
+        
+        return mapSpots
     }
 }
 
