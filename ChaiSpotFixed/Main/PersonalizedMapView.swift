@@ -1475,20 +1475,22 @@ final class PersonalizedMapViewModel: ObservableObject {
         do {
             let profileDoc = try await db.collection("users").document(uid).getDocument()
             if let data = profileDoc.data() {
-                self.userProfile = UserProfile(
-                    id: profileDoc.documentID,
-                    uid: data["uid"] as? String ?? uid,
-                    displayName: data["displayName"] as? String ?? "Unknown User",
-                    email: data["email"] as? String ?? "unknown",
-                    photoURL: data["photoURL"] as? String,
-                    friends: data["friends"] as? [String] ?? [],
-                    incomingRequests: data["incomingRequests"] as? [String] ?? [],
-                    outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
-                    bio: data["bio"] as? String,
-                    hasTasteSetup: data["hasTasteSetup"] as? Bool ?? false,
-                    tasteVector: data["tasteVector"] as? [Int],
-                    topTasteTags: data["topTasteTags"] as? [String]
-                )
+                await MainActor.run {
+                    self.userProfile = UserProfile(
+                        id: profileDoc.documentID,
+                        uid: data["uid"] as? String ?? uid,
+                        displayName: data["displayName"] as? String ?? "Unknown User",
+                        email: data["email"] as? String ?? "unknown",
+                        photoURL: data["photoURL"] as? String,
+                        friends: data["friends"] as? [String] ?? [],
+                        incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                        outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                        bio: data["bio"] as? String,
+                        hasTasteSetup: data["hasTasteSetup"] as? Bool ?? false,
+                        tasteVector: data["tasteVector"] as? [Int],
+                        topTasteTags: data["topTasteTags"] as? [String]
+                    )
+                }
             }
         } catch {
             print("❌ Failed to load user profile: \(error)")

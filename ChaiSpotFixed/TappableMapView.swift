@@ -86,155 +86,33 @@ struct TappableMapView: UIViewRepresentable {
     }
     
     // MARK: - Clustering Logic
-    private func createClusteredAnnotations(for spots: [ChaiFinder], in mapView: MKMapView) -> [EnhancedChaiAnnotation] {
-        guard !spots.isEmpty else { return [] }
-        
-        // Use a smaller distance threshold to avoid clustering very close locations
-        // 0.001 degrees ≈ 110m, which should separate Mayuri and Chaat House
-        let dynamicDistance = 0.001  // ~110m clustering
-        print("🔍 Creating clusters with distance threshold: \(dynamicDistance)")
-        
-        // Debug: Show coordinates for Mayuri and Chaat House
-        if let mayuri = spots.first(where: { $0.name.contains("Mayuri") }),
-           let chaatHouse = spots.first(where: { $0.name.contains("Chaat") }) {
-            print("🧪 Mayuri coordinates: \(mayuri.latitude), \(mayuri.longitude)")
-            print("🧪 Chaat House coordinates: \(chaatHouse.latitude), \(chaatHouse.longitude)")
-        }
-        
-        // Use clustering with the calculated distance
-        return createClusteredAnnotationsWithDistance(spots: spots, distance: dynamicDistance)
-    }
+    // REMOVED: Redundant createClusteredAnnotations method - using Coordinator's version instead
     
-            // MARK: - Helper Method for Clustering with Distance
-        private func createClusteredAnnotationsWithDistance(spots: [ChaiFinder], distance: Double) -> [EnhancedChaiAnnotation] {
-            var clusteredAnnotations: [EnhancedChaiAnnotation] = []
-            var processedSpots = Set<String>()
-            
-            // First pass: identify all clusters
-            var clusters: [[ChaiFinder]] = []
-            
-            for spot in spots {
-                guard let spotId = spot.id, !processedSpots.contains(spotId) else { continue }
-                
-                // Find all nearby spots including this one
-                let nearbySpots = findNearbySpots(to: spot, within: distance, in: spots)
-                
-                if nearbySpots.count > 1 {
-                    // This is a cluster
-                    clusters.append(nearbySpots)
-                    
-                    // Mark all spots in this cluster as processed
-                    for nearbySpot in nearbySpots {
-                        if let nearbyId = nearbySpot.id {
-                            processedSpots.insert(nearbyId)
-                        }
-                    }
-                    
-                    print("🎯 Cluster identified: \(nearbySpots.count) spots around \(spot.name)")
-                }
-            }
-            
-            // Second pass: create cluster annotations
-            for cluster in clusters {
-                let representativeSpot = findRepresentativeSpot(for: cluster)
-                let annotation = EnhancedChaiAnnotation(
-                    spot: representativeSpot,
-                    isPersonalized: personalizedSpotIds.contains(representativeSpot.id ?? "")
-                )
-                
-                // Store cluster information
-                annotation.clusterSize = cluster.count
-                annotation.clusteredSpots = cluster
-                
-                clusteredAnnotations.append(annotation)
-                
-                print("🎯 Cluster created: \(cluster.count) spots around \(representativeSpot.name)")
-                for spot in cluster {
-                    print("   - \(spot.name)")
-                }
-            }
-            
-            // Third pass: create individual annotations for remaining spots
-            for spot in spots {
-                guard let spotId = spot.id, !processedSpots.contains(spotId) else { continue }
-                
-                let annotation = EnhancedChaiAnnotation(
-                    spot: spot,
-                    isPersonalized: personalizedSpotIds.contains(spotId)
-                )
-                clusteredAnnotations.append(annotation)
-                processedSpots.insert(spotId)
-                print("📍 Single spot: \(spot.name)")
-            }
-            
-            print("✅ Created \(clusteredAnnotations.count) annotations from \(spots.count) spots")
-            return clusteredAnnotations
-        }
-    
-    private func findNearbySpots(to spot: ChaiFinder, within distance: Double, in allSpots: [ChaiFinder]) -> [ChaiFinder] {
-        let spotCoord = CLLocationCoordinate2D(latitude: spot.latitude, longitude: spot.longitude)
-        
-        let nearbySpots = allSpots.filter { otherSpot in
-            let otherCoord = CLLocationCoordinate2D(latitude: otherSpot.latitude, longitude: otherSpot.longitude)
-            let calculatedDistance = calculateGeographicDistance(from: spotCoord, to: otherCoord)
-            
-            // Debug logging for the first few spots
-            if otherSpot.name.contains("Mayuri") || otherSpot.name.contains("Chaat") {
-                print("🧪 Distance from \(spot.name) to \(otherSpot.name): \(calculatedDistance) degrees")
-            }
-            
-            return calculatedDistance < distance
-        }
-        
-        print("🧪 Found \(nearbySpots.count) spots within \(distance) degrees of \(spot.name)")
-        return nearbySpots
-    }
-    
-    private func findRepresentativeSpot(for spots: [ChaiFinder]) -> ChaiFinder {
-        // Use the first spot as representative, or find the one closest to the center
-        guard spots.count > 1 else { return spots[0] }
-        
-        // Calculate the center point of all spots
-        let totalLat = spots.reduce(0) { $0 + $1.latitude }
-        let totalLon = spots.reduce(0) { $0 + $1.longitude }
-        let centerLat = totalLat / Double(spots.count)
-        let centerLon = totalLon / Double(spots.count)
-        let centerCoord = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
-        
-        // Find the spot closest to the center
-        var closestSpot = spots[0]
-        var minDistance = Double.infinity
-        
-        for spot in spots {
-            let spotCoord = CLLocationCoordinate2D(latitude: spot.latitude, longitude: spot.longitude)
-            let distance = calculateGeographicDistance(from: centerCoord, to: spotCoord)
-            if distance < minDistance {
-                minDistance = distance
-                closestSpot = spot
-            }
-        }
-        
-        return closestSpot
-    }
-    
-
-    
-    private func calculateGeographicDistance(from coord1: CLLocationCoordinate2D, to coord2: CLLocationCoordinate2D) -> Double {
-        let lat1 = coord1.latitude * .pi / 180
-        let lon1 = coord1.longitude * .pi / 180
-        let lat2 = coord2.latitude * .pi / 180
-        let lon2 = coord2.longitude * .pi / 180
-        
-        let dLat = lat2 - lat1
-        let dLon = lon2 - lon1
-        
-        let a = sin(dLat/2) * sin(dLat/2) + cos(lat1) * cos(lat2) * sin(dLon/2) * sin(dLon/2)
-        let c = 2 * atan2(sqrt(a), sqrt(1-a))
-        
-        // Convert to degrees for consistency with our threshold
-        return c * 180 / .pi
-    }
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        // ENERGY OPTIMIZATION: Add throttling to prevent excessive updates
+        let currentTime = Date().timeIntervalSince1970
+        let updateInterval: TimeInterval = 0.15 // 150ms minimum between updates for responsive clustering
+        
+        // Check if enough time has passed since last update
+        if let lastUpdateTime = context.coordinator.lastUpdateTime,
+           currentTime - lastUpdateTime < updateInterval {
+            return
+        }
+        
+        // Update the last update time
+        context.coordinator.lastUpdateTime = currentTime
+        
+        // OPTIMIZATION: Check if zoom level changed significantly before recalculating
+        let currentZoomLevel = mapView.region.span.latitudeDelta
+        if let lastZoomLevel = context.coordinator.lastProcessedZoomLevel {
+            let zoomChangeRatio = abs(currentZoomLevel - lastZoomLevel) / lastZoomLevel
+            // Only recalculate if zoom changed by more than 10%
+            if zoomChangeRatio < 0.1 {
+                return
+            }
+        }
+        context.coordinator.lastProcessedZoomLevel = currentZoomLevel
+        
         // SIMPLE FIX: Only update if spots actually changed
         let currentSpotIds = Set(chaiFinder.compactMap { $0.id })
         let existingSpotIds = Set(mapView.annotations.compactMap { 
@@ -243,11 +121,8 @@ struct TappableMapView: UIViewRepresentable {
         
         // Skip update if spots haven't changed
         if currentSpotIds == existingSpotIds && !mapView.annotations.isEmpty {
-            print("⏭️ Skipping update - spots unchanged")
             return
         }
-        
-        print("🗺️ TappableMapView updating with \(chaiFinder.count) spots")
         
         // Remove existing annotations (except user location and search pin)
         let annotationsToRemove = mapView.annotations.filter { annotation in
@@ -255,8 +130,8 @@ struct TappableMapView: UIViewRepresentable {
         }
         mapView.removeAnnotations(annotationsToRemove)
 
-        // Create clustered annotations
-        let clusteredAnnotations = createClusteredAnnotations(for: chaiFinder, in: mapView)
+        // Create clustered annotations using Coordinator's method
+        let clusteredAnnotations = context.coordinator.createClusteredAnnotations(for: chaiFinder, in: mapView)
         
         // Add clustered annotations
         mapView.addAnnotations(clusteredAnnotations)
@@ -268,8 +143,6 @@ struct TappableMapView: UIViewRepresentable {
             tempPin.title = "Search Location"
             mapView.addAnnotation(tempPin)
         }
-        
-        print("✅ TappableMapView updated with \(clusteredAnnotations.count) clustered annotations")
     }
     
     class Coordinator: NSObject, MKMapViewDelegate {
@@ -277,7 +150,8 @@ struct TappableMapView: UIViewRepresentable {
         private var isUserInteracting = false
         private var pendingClusteringRefresh: DispatchWorkItem?
         var justRefreshedClustering = false
-        private var lastProcessedZoomLevel: Double?
+        var lastProcessedZoomLevel: Double?
+        var lastUpdateTime: TimeInterval? // For throttling map updates
         weak var mapView: MKMapView?
 
         init(_ parent: TappableMapView) {
@@ -572,7 +446,8 @@ struct TappableMapView: UIViewRepresentable {
             
             // Test if they would be grouped using the new clustering logic
             let dynamicDistance = calculateDynamicDistance(for: mapView)
-            let nearbySpots = findNearbySpots(to: spot1, within: dynamicDistance, in: parent.chaiFinder)
+            var testCache: [String: Double] = [:]
+            let nearbySpots = findNearbySpots(to: spot1, within: dynamicDistance, in: parent.chaiFinder, cache: &testCache)
             print("🧪 Would '\(spot1.name)' be grouped? \(nearbySpots.count > 1 ? "Yes" : "No")")
             print("🧪 Nearby spots count: \(nearbySpots.count)")
         }
@@ -734,55 +609,41 @@ struct TappableMapView: UIViewRepresentable {
             let span = mapView.region.span
             let zoomLevel = span.latitudeDelta
             
-            print("🗺️ Current map zoom level: \(zoomLevel)")
-            
             // Adaptive clustering based on zoom level
             // Lower zoom level = higher zoom (closer to ground)
             // Higher zoom level = lower zoom (farther from ground)
             
             let dynamicDistance: Double
             
-            if zoomLevel <= 0.001 {
-                // Very high zoom (street level) - no clustering, show all individual locations
-                // This ensures users can see every chai spot when they're looking at street level
+            if zoomLevel <= 0.005 {
+                // High zoom (neighborhood level) - no clustering, show all individual locations
+                // This ensures users can see every chai spot when they're looking at neighborhood level
                 dynamicDistance = 0.0
-                print("🔍 STREET LEVEL ZOOM - NO CLUSTERING, showing all individual locations")
-                
-            } else if zoomLevel <= 0.005 {
-                // High zoom (neighborhood level) - minimal clustering for very close spots only
-                // Threshold: ~0.5 meters - only cluster spots that are essentially in the same building
-                dynamicDistance = 0.000001
-                print("🔍 NEIGHBORHOOD LEVEL ZOOM - MINIMAL CLUSTERING, threshold: \(dynamicDistance) (~0.5m)")
                 
             } else if zoomLevel <= 0.02 {
                 // Medium-high zoom (district level) - light clustering for nearby spots
-                // Threshold: ~2 meters - cluster spots that are very close (same block)
-                dynamicDistance = 0.000005
-                print("🔍 DISTRICT LEVEL ZOOM - LIGHT CLUSTERING, threshold: \(dynamicDistance) (~2m)")
+                // Threshold: ~80 meters - cluster spots that are very close (same block)
+                dynamicDistance = 0.0008
                 
             } else if zoomLevel <= 0.05 {
                 // Medium zoom (city area level) - moderate clustering
-                // Threshold: ~5 meters - cluster spots within walking distance
-                dynamicDistance = 0.00001
-                print("🔍 CITY AREA LEVEL ZOOM - MODERATE CLUSTERING, threshold: \(dynamicDistance) (~5m)")
+                // Threshold: ~200 meters - cluster spots within walking distance
+                dynamicDistance = 0.002
                 
             } else if zoomLevel <= 0.1 {
                 // Medium-low zoom (city level) - more aggressive clustering
-                // Threshold: ~10 meters - cluster spots within short walking distance
-                dynamicDistance = 0.00002
-                print("🔍 CITY LEVEL ZOOM - AGGRESSIVE CLUSTERING, threshold: \(dynamicDistance) (~10m)")
+                // Threshold: ~1km - cluster spots within short walking distance
+                dynamicDistance = 0.01
                 
             } else if zoomLevel <= 0.5 {
                 // Low zoom (metropolitan level) - heavy clustering
-                // Threshold: ~50 meters - cluster spots within medium walking distance
-                dynamicDistance = 0.0001
-                print("🔍 METROPOLITAN LEVEL ZOOM - HEAVY CLUSTERING, threshold: \(dynamicDistance) (~50m)")
+                // Threshold: ~5km - cluster spots within medium walking distance
+                dynamicDistance = 0.05
                 
             } else {
                 // Very low zoom (regional level) - maximum clustering
-                // Threshold: ~100 meters - cluster spots within long walking distance
-                dynamicDistance = 0.0002
-                print("🔍 REGIONAL LEVEL ZOOM - MAXIMUM CLUSTERING, threshold: \(dynamicDistance) (~100m)")
+                // Threshold: ~10km - cluster spots within long walking distance
+                dynamicDistance = 0.1
             }
             
             return dynamicDistance
@@ -802,13 +663,13 @@ struct TappableMapView: UIViewRepresentable {
         }
         
         // MARK: - Clustering Logic
-        private func createClusteredAnnotations(for spots: [ChaiFinder], in mapView: MKMapView) -> [EnhancedChaiAnnotation] {
+        func createClusteredAnnotations(for spots: [ChaiFinder], in mapView: MKMapView) -> [EnhancedChaiAnnotation] {
             guard !spots.isEmpty else { return [] }
             
             let dynamicDistance = calculateDynamicDistance(for: mapView)
-            print("🔍 Creating clusters with distance threshold: \(dynamicDistance)")
+            print("🔍 Creating clusters with distance threshold: \(dynamicDistance) (zoom level: \(mapView.region.span.latitudeDelta))")
             
-            // SPECIAL CASE: No clustering at very high zoom
+            // SPECIAL CASE: No clustering at neighborhood zoom level
             if dynamicDistance == 0.0 {
                 print("🔍 NO CLUSTERING - creating individual annotations for all spots")
                 var individualAnnotations: [EnhancedChaiAnnotation] = []
@@ -829,12 +690,15 @@ struct TappableMapView: UIViewRepresentable {
             var clusteredAnnotations: [EnhancedChaiAnnotation] = []
             var processedSpots = Set<String>()
             
+            // ENERGY OPTIMIZATION: Add distance calculation caching
+            var distanceCache: [String: Double] = [:]
+            
             for spot in spots {
                 // Skip if already processed
                 guard let spotId = spot.id, !processedSpots.contains(spotId) else { continue }
                 
                 // Find all nearby spots including this one
-                let nearbySpots = findNearbySpots(to: spot, within: dynamicDistance, in: spots)
+                let nearbySpots = findNearbySpots(to: spot, within: dynamicDistance, in: spots, cache: &distanceCache)
                 
                 if nearbySpots.count == 1 {
                     // Single spot - create individual annotation
@@ -844,7 +708,7 @@ struct TappableMapView: UIViewRepresentable {
                     )
                     clusteredAnnotations.append(annotation)
                     processedSpots.insert(spotId)
-                    print("📍 Single spot: \(spot.name)")
+                    
                 } else {
                     // Multiple spots - create clustered annotation
                     let representativeSpot = findRepresentativeSpot(for: nearbySpots)
@@ -865,23 +729,62 @@ struct TappableMapView: UIViewRepresentable {
                             processedSpots.insert(nearbyId)
                         }
                     }
-                    
-                    print("🎯 Cluster created: \(nearbySpots.count) spots around \(representativeSpot.name)")
                 }
             }
             
-            print("✅ Created \(clusteredAnnotations.count) annotations from \(spots.count) spots")
             return clusteredAnnotations
         }
         
-        private func findNearbySpots(to spot: ChaiFinder, within distance: Double, in allSpots: [ChaiFinder]) -> [ChaiFinder] {
+        private func findNearbySpots(to spot: ChaiFinder, within distance: Double, in allSpots: [ChaiFinder], cache: inout [String: Double]) -> [ChaiFinder] {
             let spotCoord = CLLocationCoordinate2D(latitude: spot.latitude, longitude: spot.longitude)
             
-            return allSpots.filter { otherSpot in
-                let otherCoord = CLLocationCoordinate2D(latitude: otherSpot.latitude, longitude: otherSpot.longitude)
-                let calculatedDistance = calculateGeographicDistance(from: spotCoord, to: otherCoord)
+            // DEBUG: Log the spot we're checking and the distance threshold
+            if spot.name.contains("Chaat") || spot.name.contains("Mayuri") {
+                print("🔍 Checking '\(spot.name)' at coordinates: \(spot.latitude), \(spot.longitude)")
+                print("🔍 Distance threshold: \(distance) degrees")
+            }
+            
+            let nearbySpots = allSpots.filter { otherSpot in
+                guard let spotId = spot.id, let otherId = otherSpot.id else { return false }
+                
+                // ENERGY OPTIMIZATION: Check cache first
+                let cacheKey = "\(spotId)-\(otherId)"
+                let reverseCacheKey = "\(otherId)-\(spotId)"
+                
+                var calculatedDistance: Double
+                
+                if let cachedDistance = cache[cacheKey] {
+                    calculatedDistance = cachedDistance
+                } else if let cachedDistance = cache[reverseCacheKey] {
+                    calculatedDistance = cachedDistance
+                } else {
+                    let otherCoord = CLLocationCoordinate2D(latitude: otherSpot.latitude, longitude: otherSpot.longitude)
+                    calculatedDistance = calculateGeographicDistance(from: spotCoord, to: otherCoord)
+                    
+                    // Cache the result for both directions
+                    cache[cacheKey] = calculatedDistance
+                    cache[reverseCacheKey] = calculatedDistance
+                }
+                
+                // DEBUG: Log distances for Chaat House and Mayuri
+                if (spot.name.contains("Chaat") || spot.name.contains("Mayuri")) && 
+                   (otherSpot.name.contains("Chaat") || otherSpot.name.contains("Mayuri")) {
+                    print("🔍 Distance from '\(spot.name)' to '\(otherSpot.name)': \(calculatedDistance) degrees (threshold: \(distance))")
+                    print("🔍 Would cluster? \(calculatedDistance < distance ? "Yes" : "No")")
+                }
+                
                 return calculatedDistance < distance
             }
+            
+            // DEBUG: Log the result for Chaat House and Mayuri
+            if spot.name.contains("Chaat") || spot.name.contains("Mayuri") {
+                print("🔍 '\(spot.name)' found \(nearbySpots.count) nearby spots")
+                for nearbySpot in nearbySpots {
+                    print("🔍   - \(nearbySpot.name)")
+                }
+            }
+            
+            return nearbySpots
         }
         
         private func findRepresentativeSpot(for spots: [ChaiFinder]) -> ChaiFinder {
