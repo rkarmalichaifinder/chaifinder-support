@@ -173,6 +173,7 @@ struct SubmitRatingView: View {
             } message: {
                 Text(contentWarningMessage)
             }
+            .multiFieldKeyboardDismissible()
         }
     }
     
@@ -778,7 +779,7 @@ struct SubmitRatingView: View {
                     "spotName": spotName,
                     "spotAddress": spotAddress,
                     "userId": sessionStore.userProfile?.id ?? "",
-                    "userName": sessionStore.userProfile?.displayName ?? "Anonymous",
+                    "username": sessionStore.userProfile?.displayName ?? "Anonymous",
                     "rating": ratingValue,
                     "comment": comment.isEmpty ? nil : comment,
                     "creaminessRating": creaminessRating,

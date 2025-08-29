@@ -70,6 +70,7 @@ struct EditBioView: View {
             .padding(DesignSystem.Spacing.lg)
             .background(DesignSystem.Colors.background)
             .iPadOptimized()
+            .keyboardDismissible()
             .navigationTitle("Edit Bio")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -35,6 +35,10 @@ struct PersonalizedMapView: View {
     // Store current map region to prevent resetting
     @State private var currentMapRegion: MKCoordinateRegion?
     
+    // Personalization explanation alert state
+    @State private var showingPersonalizationAlert = false
+    @State private var selectedSpotForExplanation: ChaiSpot?
+    
     // Computed property to get the map region, with fallback to default
     private var effectiveMapRegion: MKCoordinateRegion {
         if let storedRegion = getStoredMapRegion() {
@@ -66,6 +70,14 @@ struct PersonalizedMapView: View {
             }
             .background(DesignSystem.Colors.background)
             .navigationBarHidden(true) // Hide navigation bar since we have custom header
+            .keyboardDismissible()
+            .gesture(
+                DragGesture()
+                    .onChanged { _ in
+                        // Dismiss keyboard when user starts dragging
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+            )
             .onAppear {
                 print("🎯 PersonalizedMapView appeared")
                 setupLocationManager()
@@ -120,6 +132,7 @@ struct PersonalizedMapView: View {
                     ChaiSpotDetailSheet(spot: spot, userLocation: locationManager.location)
                 }
             }
+
             .sheet(isPresented: $showingAddForm) {
                 if let coordinate = selectedCoordinate {
                     AddChaiFinderForm(coordinate: coordinate) { name, address, rating, comments, chaiTypes, coordinate, creaminessRating, chaiStrengthRating, flavorNotes in
@@ -164,6 +177,12 @@ struct PersonalizedMapView: View {
                     }
                 }
             }
+            .alert("Understanding Your Match Score", isPresented: $showingPersonalizationAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("This score shows how well this chai spot matches your personal preferences on a 1-5 scale. It's calculated from your taste preferences, ratings of similar spots, friend recommendations, and community ratings. 4-5 stars = great match, 3-4 stars = good match, 1-2 stars = low match.")
+            }
+
         }
     }
     
@@ -358,6 +377,10 @@ struct PersonalizedMapView: View {
                     .textCase(.lowercase)
                     .keyboardType(.default)
                     .submitLabel(.search)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .textContentType(.none)
                     .accessibilityLabel("Search chai spots or locations")
                     .accessibilityHint("Type to search through chai spots or search for a location to center the map")
                     .onChange(of: vm.searchText) { newValue in
@@ -416,6 +439,10 @@ struct PersonalizedMapView: View {
             )
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
+        .onTapGesture {
+            // Dismiss keyboard when tapping outside the search field
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
     }
     
     // MARK: - Search Handler
@@ -681,9 +708,6 @@ struct PersonalizedMapView: View {
                     },
                     onZoomOutTap: {
                         zoomMapOut()
-                    },
-                    onCompassTap: {
-                        resetMapOrientation()
                     }
                 )
                 
@@ -746,6 +770,9 @@ struct PersonalizedMapView: View {
     private var listView: some View {
         ZStack {
             VStack(spacing: 0) {
+                // Filter options
+                filterOptionsSection
+                
                 // Sort options
                 sortOptionsSection
                 
@@ -760,6 +787,73 @@ struct PersonalizedMapView: View {
                 }
             }
         }
+    }
+    
+    private var filterOptionsSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                // My Spots toggle
+                Button(action: {
+                    vm.togglePersonalizedOnly()
+                }) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: vm.showPersonalizedOnly ? "heart.fill" : "heart")
+                            .foregroundColor(vm.showPersonalizedOnly ? DesignSystem.Colors.primary : DesignSystem.Colors.textSecondary)
+                            .font(.caption)
+                        Text("My Spots")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(vm.showPersonalizedOnly ? DesignSystem.Colors.primary : DesignSystem.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, DesignSystem.Spacing.xs)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                            .fill(vm.showPersonalizedOnly ? DesignSystem.Colors.primary.opacity(0.1) : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                            .stroke(vm.showPersonalizedOnly ? DesignSystem.Colors.primary.opacity(0.3) : DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+                    )
+                }
+                
+                // Community spots toggle
+                Button(action: {
+                    vm.toggleCommunitySpots()
+                }) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: vm.showCommunitySpots ? "cup.and.saucer.fill" : "cup.and.saucer")
+                            .foregroundColor(vm.showCommunitySpots ? DesignSystem.Colors.secondary : DesignSystem.Colors.textSecondary)
+                            .font(.caption)
+                        Text("Community")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(vm.showCommunitySpots ? DesignSystem.Colors.secondary : DesignSystem.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, DesignSystem.Spacing.xs)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                            .fill(vm.showCommunitySpots ? DesignSystem.Colors.secondary.opacity(0.1) : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                            .stroke(vm.showCommunitySpots ? DesignSystem.Colors.secondary.opacity(0.3) : DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+                    )
+                }
+                
+                Spacer()
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+        }
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.cardBackground)
+        .shadow(
+            color: Color.black.opacity(0.05),
+            radius: 2,
+            x: 0,
+            y: 1
+        )
     }
     
     private var sortOptionsSection: some View {
@@ -1242,49 +1336,44 @@ struct SpotCard: View {
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                         .lineLimit(1)
                     
+                    // Simple rating display
                     if spot.averageRating > 0 {
                         HStack(spacing: DesignSystem.Spacing.xs) {
-                            Image(systemName: "star.fill")
-                                .font(.caption)
-                                .foregroundColor(DesignSystem.Colors.accent)
-                            Text(String(format: "%.1f", spot.averageRating))
+                            Text("\(String(format: "%.1f", spot.averageRating))★")
                                 .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            Text("(\(spot.ratingCount))")
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(DesignSystem.Colors.ratingGreen)
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                            
+                            Text("\(spot.ratingCount) reviews")
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
                         }
                     }
                     
-                    // Personalization score indicator
+                    // Personalization score line
                     let personalizationScore = viewModel.calculatePersonalizationScore(for: spot)
                     HStack(spacing: DesignSystem.Spacing.xs) {
-                        if personalizationScore >= 15.0 {
+                        Image(systemName: "heart")
+                            .font(.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        Text("Match: \(String(format: "%.1f", personalizationScore))/5")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    }
+                    
+                    // Simple personalization indicator
+                    if personalizationScore >= 3.5 {
+                        HStack(spacing: DesignSystem.Spacing.xs) {
                             Image(systemName: "heart.fill")
                                 .font(.caption)
                                 .foregroundColor(DesignSystem.Colors.primary)
-                            Text("Personalized")
+                            Text("Great match for you")
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundColor(DesignSystem.Colors.primary)
-                            
-                            // Info button to show why it's personalized
-                            Button(action: {
-                                // Show explanation in an alert or sheet
-                                print("Personalization explanation: \(viewModel.getPersonalizationExplanation(for: spot))")
-                            }) {
-                                Image(systemName: "info.circle")
-                                    .font(.caption2)
-                                    .foregroundColor(DesignSystem.Colors.primary)
-                            }
-                            .accessibilityLabel("Why this spot is personalized")
-                            .accessibilityHint("Double tap to see why this spot matches your preferences")
-                        } else {
-                            Image(systemName: "heart")
-                                .font(.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            Text("Score: \(Int(personalizationScore))")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
                         }
                     }
                 }
@@ -1299,14 +1388,14 @@ struct SpotCard: View {
             .background(DesignSystem.Colors.cardBackground)
             .cornerRadius(DesignSystem.CornerRadius.medium)
             .shadow(
-                color: Color.black.opacity(0.03), // Very subtle shadow
+                color: Color.black.opacity(0.04),
                 radius: 2,
                 x: 0,
                 y: 1
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                    .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1) // Reduced opacity and line width
+                    .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1)
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -1417,21 +1506,21 @@ final class PersonalizedMapViewModel: ObservableObject {
                       let userId = data["userId"] as? String,
                       let value = data["value"] as? Int else { return nil }
                 
-                return Rating(
-                    id: doc.documentID,
-                    spotId: spotId,
-                    userId: userId,
-                    username: data["username"] as? String,
-                    spotName: data["spotName"] as? String,
-                    value: value,
-                    comment: data["comment"] as? String,
-                    timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
-                    likes: data["likes"] as? Int,
-                    dislikes: data["dislikes"] as? Int,
-                    creaminessRating: data["creaminessRating"] as? Int,
-                    chaiStrengthRating: data["chaiStrengthRating"] as? Int,
-                    flavorNotes: data["flavorNotes"] as? [String]
-                )
+                                    return Rating(
+                        id: doc.documentID,
+                        spotId: spotId,
+                        userId: userId,
+                        username: data["username"] as? String ?? data["userName"] as? String,
+                        spotName: data["spotName"] as? String,
+                        value: value,
+                        comment: data["comment"] as? String,
+                        timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
+                        likes: data["likes"] as? Int,
+                        dislikes: data["dislikes"] as? Int,
+                        creaminessRating: data["creaminessRating"] as? Int,
+                        chaiStrengthRating: data["chaiStrengthRating"] as? Int,
+                        flavorNotes: data["flavorNotes"] as? [String]
+                    )
             }
         } catch {
             print("❌ Failed to load user ratings: \(error)")
@@ -1450,21 +1539,21 @@ final class PersonalizedMapViewModel: ObservableObject {
                           let userId = data["userId"] as? String,
                           let value = data["value"] as? Int else { return nil }
                     
-                    return Rating(
-                        id: doc.documentID,
-                        spotId: spotId,
-                        userId: userId,
-                        username: data["username"] as? String,
-                        spotName: data["spotName"] as? String,
-                        value: value,
-                        comment: data["comment"] as? String,
-                        timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
-                        likes: data["likes"] as? Int,
-                        dislikes: data["dislikes"] as? Int,
-                        creaminessRating: data["creaminessRating"] as? Int,
-                        chaiStrengthRating: data["chaiStrengthRating"] as? Int,
-                        flavorNotes: data["flavorNotes"] as? [String]
-                    )
+                                    return Rating(
+                    id: doc.documentID,
+                    spotId: spotId,
+                    userId: userId,
+                    username: data["username"] as? String ?? data["userName"] as? String,
+                    spotName: data["spotName"] as? String,
+                    value: value,
+                    comment: data["comment"] as? String,
+                    timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
+                    likes: data["likes"] as? Int,
+                    dislikes: data["dislikes"] as? Int,
+                    creaminessRating: data["creaminessRating"] as? Int,
+                    chaiStrengthRating: data["chaiStrengthRating"] as? Int,
+                    flavorNotes: data["flavorNotes"] as? [String]
+                )
                 }
             } catch {
                 print("❌ Failed to load friend ratings: \(error)")
@@ -1472,9 +1561,10 @@ final class PersonalizedMapViewModel: ObservableObject {
         }
     }
     
-    /// Calculate personalization score for a spot
+    /// Calculate personalization score for a spot (returns 1-5 rating)
     func calculatePersonalizationScore(for spot: ChaiSpot) -> Double {
-        var score: Double = 0.0
+        var rawScore: Double = 0.0
+        var maxPossibleScore: Double = 0.0
         
         // Base score from user's taste preferences
         if let tasteVector = userProfile?.tasteVector, tasteVector.count >= 2 {
@@ -1485,16 +1575,19 @@ final class PersonalizedMapViewModel: ObservableObject {
             if let userRating = userRatings.first(where: { $0.spotId == spot.id }) {
                 if let creaminessRating = userRating.creaminessRating {
                     let creaminessMatch = 5.0 - Double(abs(creaminessRating - preferredCreaminess))
-                    score += creaminessMatch * 2.0 // Weight creaminess preference
+                    rawScore += creaminessMatch * 2.0 // Weight creaminess preference
+                    maxPossibleScore += 10.0 // Max creaminess score
                 }
                 
                 if let strengthRating = userRating.chaiStrengthRating {
                     let strengthMatch = 5.0 - Double(abs(strengthRating - preferredStrength))
-                    score += strengthMatch * 2.0 // Weight strength preference
+                    rawScore += strengthMatch * 2.0 // Weight strength preference
+                    maxPossibleScore += 10.0 // Max strength score
                 }
                 
                 // Bonus for high user rating
-                score += Double(userRating.value) * 3.0
+                rawScore += Double(userRating.value) * 3.0
+                maxPossibleScore += 15.0 // Max user rating score
             }
             
             // Flavor notes matching
@@ -1504,7 +1597,8 @@ final class PersonalizedMapViewModel: ObservableObject {
                         chaiType.localizedCaseInsensitiveContains(tag)
                     }
                 }
-                score += Double(matchingFlavors.count) * 5.0
+                rawScore += Double(matchingFlavors.count) * 5.0
+                maxPossibleScore += Double(topTasteTags.count) * 5.0 // Max flavor score
             }
         }
         
@@ -1512,23 +1606,35 @@ final class PersonalizedMapViewModel: ObservableObject {
         let friendRatingsForSpot = friendRatings.filter { $0.spotId == spot.id }
         if !friendRatingsForSpot.isEmpty {
             let averageFriendRating = Double(friendRatingsForSpot.reduce(0) { $0 + $1.value }) / Double(friendRatingsForSpot.count)
-            score += averageFriendRating * 2.0 // Weight friend recommendations
+            rawScore += averageFriendRating * 2.0
+            maxPossibleScore += 10.0 // Max friend rating score
         }
         
         // Community rating bonus
-        score += spot.averageRating * 1.5
+        rawScore += spot.averageRating * 1.5
+        maxPossibleScore += 7.5 // Max community rating score (5 * 1.5)
         
         // Rating count bonus (more ratings = more reliable)
-        score += min(Double(spot.ratingCount) * 0.5, 10.0)
+        let ratingCountBonus = min(Double(spot.ratingCount) * 0.5, 10.0)
+        rawScore += ratingCountBonus
+        maxPossibleScore += 10.0 // Max rating count bonus
         
-        return score
+        // Convert to 1-5 scale
+        if maxPossibleScore > 0 {
+            let normalizedScore = (rawScore / maxPossibleScore) * 5.0
+            // Ensure it's between 1.0 and 5.0
+            return max(1.0, min(5.0, normalizedScore))
+        } else {
+            // Fallback: base score on community rating if no personalization data
+            return max(1.0, min(5.0, spot.averageRating))
+        }
     }
     
     /// Get personalized spot IDs for map labeling
     func getPersonalizedSpotIds() -> Set<String> {
         let personalizedSpots = allSpots.filter { spot in
             let score = calculatePersonalizationScore(for: spot)
-            let isPersonalized = score >= 15.0 // Threshold for considering a spot "personalized"
+            let isPersonalized = score >= 3.5 // Threshold for considering a spot "personalized" (3.5/5 = 70%)
             
             // Special case: always include newly added spots (rating count = 1 and created by current user)
             if spot.ratingCount == 1 {
@@ -1594,6 +1700,7 @@ final class PersonalizedMapViewModel: ObservableObject {
     
     /// Get explanation for why a spot is personalized
     func getPersonalizationExplanation(for spot: ChaiSpot) -> String {
+        let score = calculatePersonalizationScore(for: spot)
         let breakdown = getPersonalizationBreakdown(for: spot)
         var explanations: [String] = []
         
@@ -1621,7 +1728,9 @@ final class PersonalizedMapViewModel: ObservableObject {
             return "Based on general popularity and ratings"
         }
         
-        return "Personalized because it " + explanations.joined(separator: ", ")
+        let scoreDescription = if score >= 4.5 { "excellent match" } else if score >= 3.5 { "good match" } else if score >= 2.5 { "moderate match" } else { "low match" }
+        
+        return "This spot is a \(scoreDescription) (\(String(format: "%.1f", score))/5) because it " + explanations.joined(separator: ", ")
     }
     
     /// Get suggestions for improving personalization
@@ -1688,14 +1797,14 @@ final class PersonalizedMapViewModel: ObservableObject {
         if !showPersonalizedOnly {
             filtered = filtered.filter { spot in
                 let score = calculatePersonalizationScore(for: spot)
-                return score < 15.0 // Exclude personalized spots
+                return score < 3.5 // Exclude personalized spots (3.5/5 = 70%)
             }
         }
         
         if !showCommunitySpots {
             filtered = filtered.filter { spot in
                 let score = calculatePersonalizationScore(for: spot)
-                return score >= 15.0 // Only show personalized spots
+                return score >= 3.5 // Only show personalized spots (3.5/5 = 70%)
             }
         }
         

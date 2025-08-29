@@ -10,6 +10,8 @@ struct FeedView: View {
     @State private var isReapplyingSearch = false
     @State private var persistSearchAcrossFeeds = true
     
+    @EnvironmentObject var sessionStore: SessionStore
+    
     var body: some View {
         NavigationView {
             ZStack {
@@ -53,6 +55,7 @@ struct FeedView: View {
             .refreshable {
                 viewModel.refreshFeed()
             }
+            .keyboardDismissible()
         }
         .navigationViewStyle(.stack)
         .sheet(isPresented: $showingAddReview) {
@@ -163,13 +166,14 @@ struct FeedView: View {
                     .font(.system(size: 14))
                     .accessibilityHidden(true)
                 
-                TextField("Search reviews, locations, cities, reviewers...", text: $searchText)
+                TextField("Search reviews, locations, cities, users...", text: $searchText)
                     .font(DesignSystem.Typography.bodyMedium)
                     .foregroundColor(DesignSystem.Colors.textPrimary)
                     .autocorrectionDisabled(true)
                     .autocapitalization(.none)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
+                    .textContentType(.none)
                     .accessibilityLabel("Search reviews")
                     .accessibilityHint("Type to search through reviews, locations, cities, and reviewers")
                     .onChange(of: searchText) { newValue in
@@ -553,6 +557,7 @@ struct FeedView: View {
                         ReviewCardView(review: review)
                             .iPadCardStyle()
                             .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                            .environmentObject(sessionStore)
                     }
                 }
                 
@@ -573,6 +578,14 @@ struct FeedView: View {
             .padding(.top, 2) // Reduced from 8 to 2
             .padding(.bottom, 16)
         }
+        .scrollDismissesKeyboard(.immediately)
+        .gesture(
+            DragGesture()
+                .onChanged { _ in
+                    // Dismiss keyboard when user starts dragging
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+        )
     }
 }
 

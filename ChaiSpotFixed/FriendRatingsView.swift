@@ -157,7 +157,7 @@ struct FriendRatingsView: View {
                         
                         print("🔍 FriendRatingsView: Processing rating for spotId: \(spotId), userId: \(userId), value: \(value)")
                         
-                        let username = data["username"] as? String
+                        let username = data["username"] as? String ?? data["userName"] as? String
                         let comment = data["comment"] as? String
                         let timestamp = data["timestamp"] as? Timestamp
                         let likes = data["likes"] as? Int

@@ -76,6 +76,7 @@ struct ReportContentView: View {
             } message: {
                 Text("Thank you for your report. We will review it within 24 hours.")
             }
+            .keyboardDismissible()
         }
     }
     

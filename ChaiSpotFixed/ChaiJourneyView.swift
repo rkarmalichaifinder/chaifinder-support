@@ -634,7 +634,7 @@ class ChaiJourneyViewModel: ObservableObject {
                 
                 // Extract rating data manually
                 let userId = data["userId"] as? String ?? ""
-                let username = data["username"] as? String ?? "Anonymous"
+                let username = data["username"] as? String ?? data["userName"] as? String ?? "Anonymous"
                 let value = data["value"] as? Int ?? 0
                 let comment = data["comment"] as? String
                 let timestamp = data["timestamp"] as? Timestamp

@@ -564,7 +564,7 @@ class FeedViewModel: ObservableObject {
                     return nil
                 }
                 
-                let username = data["username"] as? String ?? "Anonymous"
+                let username = data["username"] as? String ?? data["userName"] as? String ?? "Anonymous"
                 let comment = data["comment"] as? String
                 let timestamp = data["timestamp"] as? Timestamp
                 let chaiType = data["chaiType"] as? String
@@ -649,7 +649,7 @@ class FeedViewModel: ObservableObject {
                     return nil
                 }
                 
-                let username = data["username"] as? String ?? "Anonymous"
+                let username = data["username"] as? String ?? data["userName"] as? String ?? "Anonymous"
                 let comment = data["comment"] as? String
                 let timestamp = data["timestamp"] as? Timestamp
                 let chaiType = data["chaiType"] as? String

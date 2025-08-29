@@ -498,7 +498,7 @@ class RecommendationEngine: ObservableObject {
             
             let id = document.documentID
             let userId = data["userId"] as? String ?? ""
-            let username = data["username"] as? String ?? "Anonymous"
+            let username = data["username"] as? String ?? data["userName"] as? String ?? "Anonymous"
             let spotName = data["spotName"] as? String
             let value = data["value"] as? Int ?? 0
             let comment = data["comment"] as? String
@@ -561,7 +561,7 @@ class RecommendationEngine: ObservableObject {
                 
                 let id = document.documentID
                 let userId = data["userId"] as? String ?? ""
-                let username = data["username"] as? String ?? "Anonymous"
+                let username = data["username"] as? String ?? data["userName"] as? String ?? "Anonymous"
                 let spotName = data["spotName"] as? String
                 let value = data["value"] as? Int ?? 0
                 let comment = data["comment"] as? String

@@ -396,6 +396,7 @@ struct AddChaiFinderForm: View {
             } message: {
                 Text("Please select a suggestion or enter an address.")
             }
+            .multiFieldKeyboardDismissible()
         }
         .navigationViewStyle(.stack)
         .onAppear { autoModel.completer.delegate = autoModel }

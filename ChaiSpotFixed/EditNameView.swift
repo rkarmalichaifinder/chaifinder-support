@@ -69,6 +69,7 @@ struct EditNameView: View {
             .padding(DesignSystem.Spacing.lg)
             .background(DesignSystem.Colors.background)
             .iPadOptimized()
+            .keyboardDismissible()
             .navigationTitle("Edit Name")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

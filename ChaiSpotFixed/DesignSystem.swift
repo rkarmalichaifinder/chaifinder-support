@@ -103,6 +103,59 @@ struct DesignSystem {
         )
     }
     
+    // MARK: - View Modifiers
+    struct ViewModifiers {
+        /// Enables keyboard dismissal by swiping down or tapping outside text fields
+        struct KeyboardDismissible: ViewModifier {
+            @FocusState private var isFocused: Bool
+            
+            func body(content: Content) -> some View {
+                content
+                    .focused($isFocused)
+                    .onTapGesture {
+                        if isFocused {
+                            isFocused = false
+                        }
+                    }
+                    .gesture(
+                        DragGesture()
+                            .onEnded { value in
+                                // Dismiss keyboard on downward swipe
+                                if value.translation.height > 50 && isFocused {
+                                    isFocused = false
+                                }
+                            }
+                    )
+            }
+        }
+        
+        /// Alternative keyboard dismissible modifier for views with multiple text fields
+        struct MultiFieldKeyboardDismissible: ViewModifier {
+            @FocusState private var focusedField: FocusedField?
+            
+            enum FocusedField: Hashable {
+                case name, email, password, address, comments, chaiType, customFlavorNote
+            }
+            
+            func body(content: Content) -> some View {
+                content
+                    .focused($focusedField, equals: nil)
+                    .onTapGesture {
+                        focusedField = nil
+                    }
+                    .gesture(
+                        DragGesture()
+                            .onEnded { value in
+                                // Dismiss keyboard on downward swipe
+                                if value.translation.height > 50 && focusedField != nil {
+                                    focusedField = nil
+                                }
+                            }
+                    )
+            }
+        }
+    }
+    
     // MARK: - Layout
     struct Layout {
         // Maximum content width for iPad to prevent content from stretching too wide
@@ -349,8 +402,19 @@ struct EmptyStateView: View {
     }
 }
 
-// MARK: - iPad-specific extensions
+// MARK: - View Extensions
 extension View {
+    /// Applies keyboard dismissible behavior to the view
+    func keyboardDismissible() -> some View {
+        self.modifier(DesignSystem.ViewModifiers.KeyboardDismissible())
+    }
+    
+    /// Applies keyboard dismissible behavior for views with multiple text fields
+    func multiFieldKeyboardDismissible() -> some View {
+        self.modifier(DesignSystem.ViewModifiers.MultiFieldKeyboardDismissible())
+    }
+    
+    /// iPad-optimized spacing and sizing
     func iPadOptimized() -> some View {
         self
             .frame(maxWidth: DesignSystem.Layout.maxContentWidth)

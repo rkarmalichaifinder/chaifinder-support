@@ -73,6 +73,8 @@ struct ReviewCardView: View {
     @State private var showingReactionPicker = false
     @State private var selectedReaction: Rating.ReactionType?
     
+    @EnvironmentObject var sessionStore: SessionStore
+    
     init(review: ReviewFeedItem) {
         self.review = review
         // Initialize with the review's spot info
@@ -386,7 +388,12 @@ struct ReviewCardView: View {
         }
         .buttonStyle(PlainButtonStyle())
         .sheet(isPresented: $showingComments) {
-            CommentListView(spotId: review.spotId)
+            CommentListView(
+                spotId: review.spotId,
+                spotName: spotName,
+                spotAddress: spotAddress
+            )
+            .environmentObject(sessionStore)
         }
         .sheet(isPresented: $showingShareSheet) {
             let place = (spotName == "Loading..." ? review.spotName : spotName)

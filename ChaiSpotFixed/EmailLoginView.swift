@@ -67,6 +67,7 @@ struct EmailLoginView: View {
         } message: {
             Text(errorMessage ?? "An unknown error occurred")
         }
+        .keyboardDismissible()
     }
 
     private func signIn() {

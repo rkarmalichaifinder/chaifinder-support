@@ -84,6 +84,7 @@ struct SignInView: View {
                     .padding(.top, DesignSystem.Spacing.sm)
                 }
                 .iPadOptimized()
+                .keyboardDismissible()
 
                 Divider()
                     .padding(.vertical, DesignSystem.Spacing.lg)

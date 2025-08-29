@@ -426,7 +426,7 @@ struct FriendDetailView: View {
                         let data = doc.data()
                         let spotId = data["spotId"] as? String ?? ""
                         let userId = data["userId"] as? String ?? ""
-                        let username = data["username"] as? String
+                        let username = data["username"] as? String ?? data["userName"] as? String
                         let spotName = data["spotName"] as? String
                         let value = data["value"] as? Int ?? 0
                         let comment = data["comment"] as? String

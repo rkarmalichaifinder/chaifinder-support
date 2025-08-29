@@ -1115,7 +1115,6 @@ struct MapControlsOverlay: View {
     let onLocationButtonTap: () -> Void
     let onZoomInTap: () -> Void
     let onZoomOutTap: () -> Void
-    let onCompassTap: () -> Void
     
     var body: some View {
         VStack {
@@ -1165,18 +1164,7 @@ struct MapControlsOverlay: View {
                         .accessibilityHint("Double tap to zoom out on the map")
                     }
                     
-                    // Compass button
-                    Button(action: onCompassTap) {
-                        Image(systemName: "location.north.fill")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
-                            .background(DesignSystem.Colors.primary)
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-                    }
-                    .accessibilityLabel("Reset map orientation")
-                    .accessibilityHint("Double tap to reset the map to north-up orientation")
+
                     
                     // Debug clustering button (only in debug builds)
                     #if DEBUG

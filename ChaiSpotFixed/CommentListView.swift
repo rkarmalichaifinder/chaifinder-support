@@ -5,8 +5,17 @@ import FirebaseFirestore
 
 struct CommentListView: View {
     let spotId: String
+    let spotName: String?
+    let spotAddress: String?
+    
     @State private var comments: [Rating] = []
     @State private var sortByMostHelpful = false
+    @State private var showingAddReview = false
+    @State private var userExistingRating: Rating?
+    @State private var isLoadingUserRating = false
+    @State private var isUserAuthenticated = false
+    
+    @EnvironmentObject var sessionStore: SessionStore
     let db = Firestore.firestore()
 
     var sortedComments: [Rating] {
@@ -22,14 +31,20 @@ struct CommentListView: View {
     }
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
+            // Header with Add Review Button
+            headerSection
+            
+            // Sort Picker
             Picker("Sort", selection: $sortByMostHelpful) {
                 Text("Most Recent").tag(false)
                 Text("Most Helpful").tag(true)
             }
             .pickerStyle(SegmentedPickerStyle())
-            .padding()
+            .padding(.horizontal)
+            .padding(.bottom, 8)
 
+            // Comments List
             List(sortedComments) { comment in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -84,8 +99,178 @@ struct CommentListView: View {
         }
         .navigationTitle("All Comments")
         .onAppear {
+            checkUserAuthentication()
             loadComments()
+            loadUserExistingRating()
         }
+        .sheet(isPresented: $showingAddReview) {
+            SubmitRatingView(
+                spotId: spotId,
+                spotName: spotName ?? "Unknown Location",
+                spotAddress: spotAddress ?? "Unknown Address",
+                existingRating: userExistingRating,
+                onComplete: {
+                    showingAddReview = false
+                    loadComments()
+                    loadUserExistingRating()
+                }
+            )
+            .environmentObject(sessionStore)
+        }
+        .keyboardDismissible()
+    }
+    
+    // MARK: - Header Section
+    private var headerSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            if isUserAuthenticated {
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    if isLoadingUserRating {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Loading your review...")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                        }
+                    } else if let existingRating = userExistingRating {
+                        // User has already reviewed this spot
+                        VStack(spacing: DesignSystem.Spacing.sm) {
+                            HStack {
+                                Image(systemName: "star.fill")
+                                    .foregroundColor(DesignSystem.Colors.primary)
+                                Text("Your Review")
+                                    .font(DesignSystem.Typography.headline)
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                            
+                            HStack {
+                                Text("\(existingRating.value)★")
+                                    .font(DesignSystem.Typography.bodyMedium)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(DesignSystem.Colors.primary)
+                                
+                                if let comment = existingRating.comment, !comment.isEmpty {
+                                    Text("•")
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                    Text(comment)
+                                        .font(DesignSystem.Typography.bodyMedium)
+                                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                                        .lineLimit(2)
+                                }
+                                
+                                Spacer()
+                            }
+                            
+                            Button("Edit Your Review") {
+                                showingAddReview = true
+                            }
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, DesignSystem.Spacing.sm)
+                            .background(DesignSystem.Colors.primary.opacity(0.1))
+                            .cornerRadius(DesignSystem.CornerRadius.medium)
+                        }
+                        .padding(DesignSystem.Spacing.md)
+                        .background(DesignSystem.Colors.cardBackground)
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                                .stroke(DesignSystem.Colors.border.opacity(0.2), lineWidth: 1)
+                        )
+                    } else {
+                        // User hasn't reviewed this spot yet
+                        VStack(spacing: DesignSystem.Spacing.sm) {
+                            HStack {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(DesignSystem.Colors.primary)
+                                Text("Add Your Review")
+                                    .font(DesignSystem.Typography.headline)
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                            
+                            Text("Share your experience and help others discover great chai spots!")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .multilineTextAlignment(.leading)
+                            
+                            Button("Write a Review") {
+                                showingAddReview = true
+                            }
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, DesignSystem.Spacing.md)
+                            .background(DesignSystem.Colors.primary)
+                            .cornerRadius(DesignSystem.CornerRadius.medium)
+                        }
+                        .padding(DesignSystem.Spacing.md)
+                        .background(DesignSystem.Colors.cardBackground)
+                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                                .stroke(DesignSystem.Colors.border.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, DesignSystem.Spacing.md)
+            }
+        }
+    }
+
+    // MARK: - Helper Functions
+    private func checkUserAuthentication() {
+        isUserAuthenticated = Auth.auth().currentUser != nil
+    }
+    
+    private func loadUserExistingRating() {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            isLoadingUserRating = false
+            return
+        }
+        
+        isLoadingUserRating = true
+        
+        db.collection("ratings")
+            .whereField("spotId", isEqualTo: spotId)
+            .whereField("userId", isEqualTo: userId)
+            .getDocuments { snapshot, error in
+                DispatchQueue.main.async {
+                    isLoadingUserRating = false
+                    
+                    if let error = error {
+                        print("❌ Error loading user rating: \(error.localizedDescription)")
+                        return
+                    }
+                    
+                    if let document = snapshot?.documents.first {
+                        let data = document.data()
+                        self.userExistingRating = Rating(
+                            id: document.documentID,
+                            spotId: data["spotId"] as? String ?? "",
+                            userId: data["userId"] as? String ?? "",
+                            username: data["username"] as? String ?? data["userName"] as? String,
+                            spotName: data["spotName"] as? String,
+                            value: data["value"] as? Int ?? 0,
+                            comment: data["comment"] as? String,
+                            timestamp: (data["timestamp"] as? Timestamp)?.dateValue(),
+                            likes: data["likes"] as? Int ?? 0,
+                            dislikes: data["dislikes"] as? Int ?? 0,
+                            creaminessRating: data["creaminessRating"] as? Int,
+                            chaiStrengthRating: data["chaiStrengthRating"] as? Int,
+                            flavorNotes: data["flavorNotes"] as? [String]
+                        )
+                    } else {
+                        self.userExistingRating = nil
+                    }
+                }
+            }
     }
 
     private func loadComments() {
@@ -104,7 +289,7 @@ struct CommentListView: View {
                         id: doc.documentID,
                         spotId: data["spotId"] as? String ?? "",
                         userId: data["userId"] as? String ?? "",
-                        username: data["username"] as? String,
+                        username: data["username"] as? String ?? data["userName"] as? String,
                         spotName: data["spotName"] as? String,
                         value: data["value"] as? Int ?? 0,
                         comment: data["comment"] as? String,
