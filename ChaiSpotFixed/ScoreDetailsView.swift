@@ -207,7 +207,7 @@ struct ScoreDetailsView: View {
                 )
                 
                 ScoreTipRow(
-                    tip: "Maintain daily streaks for +10 points",
+                    tip: "Maintain weekly streaks for +5 points per week",
                     icon: "flame.fill"
                 )
             }
