@@ -40,7 +40,7 @@ struct StreakView: View {
                                 .font(.system(size: 28, weight: .bold, design: .rounded))
                                 .foregroundColor(.orange)
                             
-                            Text("days")
+                            Text("weeks")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -69,7 +69,7 @@ struct StreakView: View {
                                 .font(.system(size: 28, weight: .bold, design: .rounded))
                                 .foregroundColor(.purple)
                             
-                            Text("days")
+                            Text("weeks")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -104,7 +104,7 @@ struct StreakView: View {
                             .foregroundColor(.orange)
                             .font(.title3)
                         
-                        Text("Start your streak today!")
+                        Text("Start your weekly streak!")
                             .font(DesignSystem.Typography.bodyMedium)
                             .fontWeight(.medium)
                             .foregroundColor(.orange)
@@ -133,7 +133,7 @@ struct StreakView: View {
             if currentStreak > 0 {
                 VStack(spacing: 12) {
                     HStack {
-                        Text("Next Milestones")
+                        Text("Weekly Milestones")
                             .font(DesignSystem.Typography.bodyMedium)
                             .fontWeight(.semibold)
                         
@@ -169,23 +169,23 @@ struct StreakView: View {
     }
     
     private var streakStatusText: String {
-        if currentStreak >= 30 {
-            return "🔥 Month Master! Incredible dedication!"
-        } else if currentStreak >= 21 {
-            return "🔥 Three weeks strong! You're on fire!"
-        } else if currentStreak >= 14 {
-            return "🔥 Two weeks! Keep the momentum going!"
-        } else if currentStreak >= 7 {
-            return "🔥 Week warrior! Great consistency!"
-        } else if currentStreak >= 3 {
-            return "🔥 Getting started! Nice beginning!"
+        if currentStreak >= 26 {
+            return "🔥 Half Year Hero! Unstoppable dedication!"
+        } else if currentStreak >= 12 {
+            return "🔥 Three months strong! You're a chai legend!"
+        } else if currentStreak >= 8 {
+            return "🔥 Two months! Incredible consistency!"
+        } else if currentStreak >= 4 {
+            return "🔥 One month! Great momentum!"
+        } else if currentStreak >= 2 {
+            return "🔥 Two weeks! Nice start!"
         } else {
-            return "🔥 First day! Let's build this streak!"
+            return "🔥 First week! Let's build this streak!"
         }
     }
     
     private var streakMilestones: [Int] {
-        [3, 7, 14, 21, 30, 50, 100]
+        [2, 4, 8, 12, 26, 52] // 2 weeks, 1 month, 2 months, 3 months, 6 months, 1 year
     }
 }
 
@@ -218,7 +218,7 @@ struct MilestoneBadge: View {
                 }
             }
             
-            Text("\(milestone)d")
+            Text("\(milestone)w")
                 .font(.caption2)
                 .foregroundColor(textColor)
         }

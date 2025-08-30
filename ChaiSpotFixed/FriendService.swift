@@ -69,51 +69,87 @@ struct FriendService {
             return
         }
 
+        // Prevent users from sending friend requests to themselves
+        if senderUID == recipientUID {
+            print("❌ Cannot send friend request to yourself")
+            completion(false)
+            return
+        }
+
         print("🔄 Sending friend request from \(senderUID) to \(recipientUID)")
 
         let db = Firestore.firestore()
         let timestamp = Timestamp()
         let batch = db.batch()
 
-        // Add to subcollections
-        let incomingRef = db.collection("users").document(recipientUID)
-            .collection("incomingFriendRequests").document(senderUID)
-        let outgoingRef = db.collection("users").document(senderUID)
-            .collection("outgoingFriendRequests").document(recipientUID)
-
-        batch.setData(["timestamp": timestamp], forDocument: incomingRef)
-        batch.setData(["timestamp": timestamp], forDocument: outgoingRef)
-
-        // Update arrays in user documents
-        let recipientUserRef = db.collection("users").document(recipientUID)
+        // Get sender's profile information
         let senderUserRef = db.collection("users").document(senderUID)
-
-        // Add sender to recipient's incoming requests array
-        batch.updateData([
-            "incomingRequests": FieldValue.arrayUnion([senderUID])
-        ], forDocument: recipientUserRef)
-
-        // Add recipient to sender's outgoing requests array
-        batch.updateData([
-            "outgoingRequests": FieldValue.arrayUnion([recipientUID])
-        ], forDocument: senderUserRef)
-
-        batch.commit { error in
-            if let error = error {
-                print("❌ Failed to send friend request: \(error.localizedDescription)")
+        
+        senderUserRef.getDocument { senderDoc, senderError in
+            if let senderError = senderError {
+                print("❌ Failed to get sender profile: \(senderError.localizedDescription)")
                 completion(false)
-            } else {
-                print("✅ Friend request sent successfully in Firestore")
-                
-                // Send notification to recipient about new friend request
-                if let currentUser = Auth.auth().currentUser {
-                    let senderName = currentUser.displayName ?? currentUser.email ?? "Someone"
-                    // Note: This would ideally be sent via server-side notification
-                    // For now, we'll store the notification data for the recipient to see
+                return
+            }
+            
+            guard let senderData = senderDoc?.data() else {
+                print("❌ Sender profile not found")
+                completion(false)
+                return
+            }
+            
+            let senderName = senderData["displayName"] as? String ?? "Unknown User"
+            let senderEmail = senderData["email"] as? String ?? "unknown@email.com"
+            let senderPhotoURL = senderData["photoURL"] as? String ?? ""
+            
+            // Add to subcollections with sender's profile information
+            let incomingRef = db.collection("users").document(recipientUID)
+                .collection("incomingFriendRequests").document(senderUID)
+            let outgoingRef = db.collection("users").document(senderUID)
+                .collection("outgoingFriendRequests").document(recipientUID)
+
+            // Store sender's profile information in the incoming request document
+            let incomingRequestData: [String: Any] = [
+                "timestamp": timestamp,
+                "uid": senderUID,
+                "displayName": senderName,
+                "email": senderEmail,
+                "photoURL": senderPhotoURL
+            ]
+            
+            // Store just timestamp in the outgoing request document (no need for recipient profile)
+            let outgoingRequestData: [String: Any] = [
+                "timestamp": timestamp
+            ]
+            
+            batch.setData(incomingRequestData, forDocument: incomingRef)
+            batch.setData(outgoingRequestData, forDocument: outgoingRef)
+
+            // Update arrays in user documents
+            let recipientUserRef = db.collection("users").document(recipientUID)
+
+            // Add sender to recipient's incoming requests array
+            batch.updateData([
+                "incomingRequests": FieldValue.arrayUnion([senderUID])
+            ], forDocument: recipientUserRef)
+
+            // Add recipient to sender's outgoing requests array
+            batch.updateData([
+                "outgoingRequests": FieldValue.arrayUnion([recipientUID])
+            ], forDocument: senderUserRef)
+
+            batch.commit { error in
+                if let error = error {
+                    print("❌ Failed to send friend request: \(error.localizedDescription)")
+                    completion(false)
+                } else {
+                    print("✅ Friend request sent successfully in Firestore")
+                    
+                    // Send notification to recipient about new friend request
                     print("📱 Friend request notification would be sent to \(recipientUID) from \(senderName)")
+                    
+                    completion(true)
                 }
-                
-                completion(true)
             }
         }
     }
@@ -136,48 +172,106 @@ struct FriendService {
         let timestamp = Timestamp()
         let batch = db.batch()
 
-        // Add to friends subcollections
-        let currentUserFriendRef = db.collection("users").document(currentUID)
-            .collection("friends").document(senderUID)
-        let senderUserFriendRef = db.collection("users").document(senderUID)
-            .collection("friends").document(currentUID)
-
-        // Remove from requests subcollections
-        let incomingRequestRef = db.collection("users").document(currentUID)
-            .collection("incomingFriendRequests").document(senderUID)
-        let outgoingRequestRef = db.collection("users").document(senderUID)
-            .collection("outgoingFriendRequests").document(currentUID)
-
-        batch.setData(["timestamp": timestamp], forDocument: currentUserFriendRef)
-        batch.setData(["timestamp": timestamp], forDocument: senderUserFriendRef)
-        batch.deleteDocument(incomingRequestRef)
-        batch.deleteDocument(outgoingRequestRef)
-
-        // Update arrays in user documents
+        // Get both users' profile information
         let currentUserRef = db.collection("users").document(currentUID)
         let senderUserRef = db.collection("users").document(senderUID)
-
-        // Add to friends arrays
-        batch.updateData([
-            "friends": FieldValue.arrayUnion([senderUID])
-        ], forDocument: currentUserRef)
-        batch.updateData([
-            "friends": FieldValue.arrayUnion([currentUID])
-        ], forDocument: senderUserRef)
-
-        // Remove from requests arrays
-        batch.updateData([
-            "incomingRequests": FieldValue.arrayRemove([senderUID])
-        ], forDocument: currentUserRef)
-        batch.updateData([
-            "outgoingRequests": FieldValue.arrayRemove([currentUID])
-        ], forDocument: senderUserRef)
-
-        batch.commit { error in
-            if let error = error {
+        
+        // First, get current user's profile
+        currentUserRef.getDocument { currentUserDoc, currentUserError in
+            if let currentUserError = currentUserError {
+                print("❌ Failed to get current user profile: \(currentUserError.localizedDescription)")
                 completion(false)
-            } else {
-                completion(true)
+                return
+            }
+            
+            guard let currentUserData = currentUserDoc?.data() else {
+                print("❌ Current user profile not found")
+                completion(false)
+                return
+            }
+            
+            // Then, get sender's profile
+            senderUserRef.getDocument { senderUserDoc, senderUserError in
+                if let senderUserError = senderUserError {
+                    print("❌ Failed to get sender profile: \(senderUserError.localizedDescription)")
+                    completion(false)
+                    return
+                }
+                
+                guard let senderUserData = senderUserDoc?.data() else {
+                    print("❌ Sender profile not found")
+                    completion(false)
+                    return
+                }
+                
+                let currentUserName = currentUserData["displayName"] as? String ?? "Unknown User"
+                let currentUserEmail = currentUserData["email"] as? String ?? "unknown@email.com"
+                let currentUserPhotoURL = currentUserData["photoURL"] as? String ?? ""
+                
+                let senderName = senderUserData["displayName"] as? String ?? "Unknown User"
+                let senderEmail = senderUserData["email"] as? String ?? "unknown@email.com"
+                let senderPhotoURL = senderUserData["photoURL"] as? String ?? ""
+                
+                // Add to friends subcollections with profile information
+                let currentUserFriendRef = db.collection("users").document(currentUID)
+                    .collection("friends").document(senderUID)
+                let senderUserFriendRef = db.collection("users").document(senderUID)
+                    .collection("friends").document(currentUID)
+
+                // Store sender's profile in current user's friends collection
+                let currentUserFriendData: [String: Any] = [
+                    "timestamp": timestamp,
+                    "uid": senderUID,
+                    "displayName": senderName,
+                    "email": senderEmail,
+                    "photoURL": senderPhotoURL
+                ]
+                
+                // Store current user's profile in sender's friends collection
+                let senderUserFriendData: [String: Any] = [
+                    "timestamp": timestamp,
+                    "uid": currentUID,
+                    "displayName": currentUserName,
+                    "email": currentUserEmail,
+                    "photoURL": currentUserPhotoURL
+                ]
+
+                // Remove from requests subcollections
+                let incomingRequestRef = db.collection("users").document(currentUID)
+                    .collection("incomingFriendRequests").document(senderUID)
+                let outgoingRequestRef = db.collection("users").document(senderUID)
+                    .collection("outgoingFriendRequests").document(currentUID)
+
+                batch.setData(currentUserFriendData, forDocument: currentUserFriendRef)
+                batch.setData(senderUserFriendData, forDocument: senderUserFriendRef)
+                batch.deleteDocument(incomingRequestRef)
+                batch.deleteDocument(outgoingRequestRef)
+
+                // Add to friends arrays
+                batch.updateData([
+                    "friends": FieldValue.arrayUnion([senderUID])
+                ], forDocument: currentUserRef)
+                batch.updateData([
+                    "friends": FieldValue.arrayUnion([currentUID])
+                ], forDocument: senderUserRef)
+
+                // Remove from requests arrays
+                batch.updateData([
+                    "incomingRequests": FieldValue.arrayRemove([senderUID])
+                ], forDocument: currentUserRef)
+                batch.updateData([
+                    "outgoingRequests": FieldValue.arrayRemove([currentUID])
+                ], forDocument: senderUserRef)
+
+                batch.commit { error in
+                    if let error = error {
+                        print("❌ Failed to accept friend request: \(error.localizedDescription)")
+                        completion(false)
+                    } else {
+                        print("✅ Friend request accepted successfully")
+                        completion(true)
+                    }
+                }
             }
         }
     }

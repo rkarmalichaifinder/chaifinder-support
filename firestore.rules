@@ -41,6 +41,10 @@ service cloud.firestore {
       allow update: if request.auth != null && 
         request.auth.uid == resource.data.userId &&
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['visibility', 'deleted', 'updatedAt']));
+      
+      // 🆕 Allow any authenticated user to update reaction counts
+      allow update: if request.auth != null && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
     }
     
     // Chai spots collection

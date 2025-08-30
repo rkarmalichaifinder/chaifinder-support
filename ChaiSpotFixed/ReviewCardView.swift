@@ -165,22 +165,8 @@ struct ReviewCardView: View {
                 // 🎮 NEW: Photo Display
                 if let photoURL = review.photoURL, !photoURL.isEmpty {
                     VStack(spacing: 6) {
-                        AsyncImage(url: URL(string: photoURL)) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(height: 200)
-                                .clipped()
-                                .cornerRadius(12)
-                        } placeholder: {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 200)
-                                .overlay(
-                                    ProgressView()
-                                        .scaleEffect(1.2)
-                                )
-                        }
+                        CachedAsyncImage(url: photoURL, cornerRadius: 12)
+                            .frame(height: 200)
                         
                         // Photo bonus indicator
                         HStack(spacing: 6) {
@@ -399,8 +385,22 @@ struct ReviewCardView: View {
             let place = (spotName == "Loading..." ? review.spotName : spotName)
             let location = (spotAddress == "Loading..." ? review.spotAddress : spotAddress)
             let commentText = (review.comment?.isEmpty == false) ? "\"\(review.comment!)\"" : "No comment"
-            let message = "Check out this Chai Finder review of \(place) (\(location)) — \(review.rating)★ by \(review.username). \(commentText)"
-            ShareSheet(activityItems: [message])
+            
+            // 🆕 Enhanced sharing with multiple formats for different platforms
+            let shareItems = createMultiFormatShareItems(
+                place: place,
+                location: location,
+                rating: review.rating,
+                username: review.username,
+                comment: commentText
+            )
+            
+            ShareSheet(
+                activityItems: shareItems,
+                reviewId: review.id,
+                spotName: place,
+                spotAddress: location
+            )
         }
         .sheet(isPresented: $showingReportSheet) {
             ReportContentView(
@@ -459,6 +459,9 @@ struct ReviewCardView: View {
                     } else {
                         selectedReaction = nil
                         updateReactionCount(reactionType: reactionType, increment: -1)
+                        
+                        // 🆕 Trigger feed refresh for reaction update
+                        NotificationCenter.default.post(name: .reactionUpdated, object: nil)
                     }
                 }
             }
@@ -481,6 +484,9 @@ struct ReviewCardView: View {
                         
                         selectedReaction = reactionType
                         updateReactionCount(reactionType: reactionType, increment: 1)
+                        
+                        // 🆕 Trigger feed refresh for reaction update
+                        NotificationCenter.default.post(name: .reactionUpdated, object: nil)
                     }
                 }
             }
@@ -507,6 +513,200 @@ struct ReviewCardView: View {
         // Check if user has already reacted to this review
         // This would need to be implemented separately if you want to track individual user reactions
         // For now, we'll just display the total reaction counts
+    }
+    
+    // 🆕 Create enhanced share message with deep link
+    private func createEnhancedShareMessage(place: String, location: String, rating: Int, username: String, comment: String) -> String {
+        // Create a deep link to this specific review with additional context
+        let deepLink = createDeepLink()
+        
+        // App Store link for Chai Finder
+        let appStoreLink = "https://apps.apple.com/us/app/chai-finder/id6747459183"
+        
+        // Create the share message
+        let message = """
+        🫖 Check out this Chai Finder review!
+        
+        📍 \(place) (\(location))
+        ⭐ \(rating)★ by \(username)
+        💬 \(comment)
+        
+        🔗 View in Chai Finder: \(deepLink)
+        
+        📱 Download Chai Finder: \(appStoreLink)
+        
+        #ChaiFinder #ChaiLover #TeaTime
+        """
+        
+        return message
+    }
+    
+    // 🆕 Create a sophisticated deep link with context
+    private func createDeepLink() -> String {
+        // Create a deep link that includes review context
+        var components = ["chaifinder://review"]
+        
+        // Add review ID
+        components.append(review.id)
+        
+        // Add spot context if available
+        if !review.spotId.isEmpty {
+            components.append("spot/\(review.spotId)")
+        }
+        
+        // Add rating context
+        components.append("rating/\(review.rating)")
+        
+        // Add user context
+        components.append("user/\(review.userId)")
+        
+        // Join components with slashes
+        let deepLink = components.joined(separator: "/")
+        
+        // Add query parameters for additional context
+        var queryParams: [String] = []
+        
+        if let chaiType = review.chaiType, !chaiType.isEmpty {
+            queryParams.append("chaiType=\(chaiType.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? chaiType)")
+        }
+        
+        if let creaminessRating = review.creaminessRating {
+            queryParams.append("creaminess=\(creaminessRating)")
+        }
+        
+        if let chaiStrengthRating = review.chaiStrengthRating {
+            queryParams.append("strength=\(chaiStrengthRating)")
+        }
+        
+        if let flavorNotes = review.flavorNotes, !flavorNotes.isEmpty {
+            let notesString = flavorNotes.joined(separator: ",")
+            queryParams.append("flavors=\(notesString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? notesString)")
+        }
+        
+        // Combine deep link with query parameters
+        if !queryParams.isEmpty {
+            return "\(deepLink)?\(queryParams.joined(separator: "&"))"
+        }
+        
+        return deepLink
+    }
+    
+    // 🆕 Create HTML email template for better email sharing
+    private func createHTMLEmailTemplate(place: String, location: String, rating: Int, username: String, comment: String) -> String {
+        let deepLink = createDeepLink()
+        let appStoreLink = "https://apps.apple.com/us/app/chai-finder/id6747459183"
+        
+        let htmlTemplate = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Chai Finder Review - \(place)</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #c1440e, #e67e22); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+                .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+                .review-card { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                .rating { color: #f39c12; font-size: 18px; font-weight: bold; }
+                .location { color: #7f8c8d; font-size: 14px; }
+                .comment { font-style: italic; color: #555; margin: 15px 0; }
+                .cta-button { display: inline-block; background: #c1440e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 10px 5px; }
+                .footer { text-align: center; margin-top: 30px; color: #7f8c8d; font-size: 12px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🫖 Chai Finder Review</h1>
+                    <p>Discover amazing chai spots through trusted recommendations</p>
+                </div>
+                
+                <div class="content">
+                    <div class="review-card">
+                        <h2>📍 \(place)</h2>
+                        <p class="location">\(location)</p>
+                        <p class="rating">⭐ \(rating)★ by \(username)</p>
+                        <div class="comment">"\(comment)"</div>
+                    </div>
+                    
+                    <p>This review was shared with you from the Chai Finder app - where chai lovers discover and share their favorite spots!</p>
+                    
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="\(deepLink)" class="cta-button">View in Chai Finder</a>
+                        <a href="\(appStoreLink)" class="cta-button">Download App</a>
+                    </div>
+                    
+                    <p><strong>Why Chai Finder?</strong></p>
+                    <ul>
+                        <li>✨ Discover authentic chai through trusted friends</li>
+                        <li>📍 Find the best spots in your area</li>
+                        <li>💬 Read detailed reviews and ratings</li>
+                        <li>🫖 Connect with fellow chai enthusiasts</li>
+                    </ul>
+                </div>
+                
+                <div class="footer">
+                    <p>Shared from Chai Finder • <a href="\(appStoreLink)">Download on the App Store</a></p>
+                    <p>© 2024 Chai Finder. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return htmlTemplate
+    }
+    
+    // 🆕 Create plain text email template for email clients that don't support HTML
+    private func createPlainTextEmailTemplate(place: String, location: String, rating: Int, username: String, comment: String) -> String {
+        let deepLink = createDeepLink()
+        let appStoreLink = "https://apps.apple.com/us/app/chai-finder/id6747459183"
+        
+        let plainTextTemplate = """
+        🫖 Chai Finder Review
+        
+        📍 \(place)
+        📍 \(location)
+        ⭐ \(rating)★ by \(username)
+        💬 \(comment)
+        
+        This review was shared with you from the Chai Finder app - where chai lovers discover and share their favorite spots!
+        
+        🔗 View in Chai Finder: \(deepLink)
+        📱 Download Chai Finder: \(appStoreLink)
+        
+        Why Chai Finder?
+        ✨ Discover authentic chai through trusted friends
+        📍 Find the best spots in your area
+        💬 Read detailed reviews and ratings
+        🫖 Connect with fellow chai enthusiasts
+        
+        Shared from Chai Finder
+        Download on the App Store: \(appStoreLink)
+        """
+        
+        return plainTextTemplate
+    }
+    
+    // 🆕 Create multiple share formats for different platforms
+    private func createMultiFormatShareItems(place: String, location: String, rating: Int, username: String, comment: String) -> [Any] {
+        // Create different formats for different sharing methods
+        let plainText = createEnhancedShareMessage(place: place, location: location, rating: rating, username: username, comment: comment)
+        let htmlEmail = createHTMLEmailTemplate(place: place, location: location, rating: rating, username: username, comment: comment)
+        let plainEmail = createPlainTextEmailTemplate(place: place, location: location, rating: rating, username: username, comment: comment)
+        
+        // Create a custom activity item that provides different content based on the activity type
+        let customActivityItem = CustomShareActivityItem(
+            plainText: plainText,
+            htmlEmail: htmlEmail,
+            plainEmail: plainEmail,
+            reviewId: review.id,
+            spotName: place
+        )
+        
+        return [customActivityItem]
     }
     
     private func loadSpotInfo() {
@@ -684,16 +884,90 @@ struct ReactionButton: View {
     }
 }
 
-// MARK: - Share Sheet
+// MARK: - Enhanced Share Sheet
 struct ShareSheet: UIViewControllerRepresentable {
     let activityItems: [Any]
+    let reviewId: String
+    let spotName: String
+    let spotAddress: String
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        
+        // 🆕 Customize the share sheet for better email experience
+        controller.excludedActivityTypes = [
+            .assignToContact,
+            .addToReadingList,
+            .openInIBooks,
+            .markupAsPDF
+        ]
+        
+        // 🆕 Set completion handler to track sharing
+        controller.completionWithItemsHandler = { (activityType, completed, returnedItems, error) in
+            if completed {
+                print("✅ Review shared via: \(activityType?.rawValue ?? "unknown")")
+                
+                // Track email sharing specifically
+                if activityType == .mail {
+                    print("📧 Review shared via email: \(self.reviewId)")
+                }
+            }
+        }
+        
         return controller
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Custom Share Activity Item
+class CustomShareActivityItem: NSObject, UIActivityItemSource {
+    let plainText: String
+    let htmlEmail: String
+    let plainEmail: String
+    let reviewId: String
+    let spotName: String
+    
+    init(plainText: String, htmlEmail: String, plainEmail: String, reviewId: String, spotName: String) {
+        self.plainText = plainText
+        self.htmlEmail = htmlEmail
+        self.plainEmail = plainEmail
+        self.reviewId = reviewId
+        self.spotName = spotName
+        super.init()
+    }
+    
+    // 🆕 Provide different content based on activity type
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        return plainText
+    }
+    
+    func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
+        guard let activityType = activityType else { return plainText }
+        
+        switch activityType {
+        case .mail:
+            // For email, provide HTML content if possible, otherwise plain text
+            return htmlEmail
+        case .message, .postToFacebook, .postToTwitter, .postToWeibo:
+            // For social media, use plain text with emojis
+            return plainText
+        default:
+            // For other activities, use plain text
+            return plainText
+        }
+    }
+    
+    func activityViewController(_ activityViewController: UIActivityViewController, subjectForActivityType activityType: UIActivity.ActivityType?) -> String {
+        return "Chai Finder Review - \(spotName)"
+    }
+    
+    func activityViewController(_ activityViewController: UIActivityViewController, dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?) -> String {
+        if activityType == .mail {
+            return "public.html"
+        }
+        return "public.plain-text"
+    }
 } 
 
 // MARK: - Date Extension

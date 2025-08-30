@@ -166,6 +166,8 @@ class SessionStore: NSObject, ObservableObject,
                 topTasteTags: data["topTasteTags"] as? [String]
             )
             
+
+            
             await MainActor.run {
                 self.userProfile = profile
                 print("✅ User profile loaded async with bio: \(profile.bio ?? "nil"), hasTasteSetup: \(profile.hasTasteSetup)")

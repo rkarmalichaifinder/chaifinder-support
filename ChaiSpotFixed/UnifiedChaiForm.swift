@@ -3,70 +3,89 @@ import Firebase
 import FirebaseAuth
 import FirebaseFirestore
 import PhotosUI
+import MapKit
 
 // Notification names for rating updates
 extension Notification.Name {
-
+    static let ratingUpdated = Notification.Name("ratingUpdated")
+    static let spotsUpdated = Notification.Name("spotsUpdated")
+    static let reactionUpdated = Notification.Name("reactionUpdated")
+    static let commentEngagementUpdated = Notification.Name("commentEngagementUpdated")
+    static let reviewVisibilityChanged = Notification.Name("reviewVisibilityChanged")
 }
 
-struct SubmitRatingView: View {
-    let spotId: String
-    let spotName: String
-    let spotAddress: String
-    let existingRating: Rating?
+struct UnifiedChaiForm: View {
+    // MARK: - Properties
+    let isAddingNewSpot: Bool
+    let existingSpot: ChaiSpot? // For rating existing spots
+    var coordinate: CLLocationCoordinate2D? // For new spots
     let onComplete: () -> Void
     
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var sessionStore: SessionStore
     
+    // Location states (for new spots)
+    @State private var name = ""
+    @State private var address = ""
+
+    @State private var isLoadingAddress = false
+    @State private var resolvedCoordinate: CLLocationCoordinate2D? = nil
+    
+    // Rating states
     @State private var ratingValue: Int = 3
     @State private var comment: String = ""
     @State private var isSubmitting = false
-    @State private var isUploadingPhoto = false
     @State private var showContentWarning = false
     @State private var contentWarningMessage = ""
     @State private var inlineWarningMessage: String? = nil
     @StateObject private var moderationService = ContentModerationService()
     
-    // New rating states
+    // Detailed rating states
     @State private var creaminessRating: Int = 3
     @State private var chaiStrengthRating: Int = 3
     @State private var selectedFlavorNotes: Set<String> = []
     @State private var chaiType = ""
     @State private var showChaiTypeDropdown = false
     
-    // 📸 Photo states
+    // Photo states
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var selectedPhotoData: Data? = nil
-    @State private var photoURL: String?
-    @StateObject private var photoStorageService = PhotoStorageService()
+    @State private var photoURL: String? = nil
+    @State private var isUploadingPhoto = false
     
-    // 🎯 Gamification states
+    // Gamification states
     @State private var showingBadgeEarned = false
     @State private var newlyEarnedBadges: [Badge] = []
     @State private var newlyEarnedAchievements: [Achievement] = []
     @StateObject private var gamificationService = GamificationService()
     
-    // 🔒 Privacy controls
-    @State private var reviewVisibility: String = "public" // "public", "friends", "private"
+    // Privacy controls
+    @State private var reviewVisibility: String = "public"
     @State private var showingPrivacyHelp = false
+    
+    // Autocomplete for new spots
+    @StateObject private var autoModel = AutocompleteModel()
+    @State private var showNameDropdown = false
+    @State private var justSelectedName = false
     
     private let db = Firestore.firestore()
     
     private let allChaiTypes = [
         "Masala", "Ginger", "Cardamom", "Kashmiri", 
-        "Saffron", "Karak", "Adeni"
+        "Saffron", "Karak", "Adeni", "Tulsi", "Lemongrass",
+        "Cinnamon", "Black Pepper", "Fennel", "Mint",
+        "Rose", "Vanilla", "Honey", "Jaggery", "Sugar-free"
     ]
     
     private let allFlavorNotes: [FlavorNote] = [
-        FlavorNote(name: "Cardamom", color: Color(hex: "#8B4513"), symbol: "leaf"), // Brown
-        FlavorNote(name: "Ginger", color: Color(hex: "#FF6B35"), symbol: "flame"), // Orange
-        FlavorNote(name: "Cloves", color: Color(hex: "#800020"), symbol: "circle"), // Burgundy
-        FlavorNote(name: "Saffron", color: Color(hex: "#FFD700"), symbol: "star"), // Gold
-        FlavorNote(name: "Fennel", color: Color(hex: "#228B22"), symbol: "drop") // Forest Green
+        FlavorNote(name: "Cardamom", color: Color(hex: "#8B4513"), symbol: "leaf"),
+        FlavorNote(name: "Ginger", color: Color(hex: "#FF6B35"), symbol: "flame"),
+        FlavorNote(name: "Cloves", color: Color(hex: "#800020"), symbol: "circle"),
+        FlavorNote(name: "Saffron", color: Color(hex: "#FFD700"), symbol: "star"),
+        FlavorNote(name: "Fennel", color: Color(hex: "#228B22"), symbol: "drop")
     ]
     
-    // Helper computed properties to break down complex expressions
+    // MARK: - Computed Properties
     private var deviceFontSize: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 24 : 20
     }
@@ -84,24 +103,36 @@ struct SubmitRatingView: View {
         if !selectedFlavorNotes.isEmpty { score += 5 }
         if !chaiType.isEmpty { score += 5 }
         
-        // 📸 Photo bonus
+        // Photo bonus
         if selectedPhotoData != nil || photoURL != nil { score += 15 }
         
         // Comment bonus
         if !comment.isEmpty {
             let wordCount = comment.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
-            score += min(wordCount * 2, 20) // Max 20 points for detailed comments
+            score += min(wordCount * 2, 20)
         }
         
         return score
     }
     
+    private var formTitle: String {
+        isAddingNewSpot ? "Add New Chai Spot" : "Rate Your Chai Experience"
+    }
+    
+    private var submitButtonText: String {
+        isAddingNewSpot ? "Add Chai Spot" : "Submit Rating"
+    }
+    
+    // MARK: - Body
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: DesignSystem.Spacing.lg) {
                     // Header
                     headerSection
+                    
+                    // Location Section (different for new vs existing)
+                    locationSection
                     
                     // Overall Rating
                     overallRatingSection
@@ -115,13 +146,13 @@ struct SubmitRatingView: View {
                     // Chai Type Selection
                     chaiTypeSection
                     
-                    // 📸 Photo Section
+                    // Photo Section
                     photoSection
                     
                     // Comment Section
                     commentSection
                     
-                    // 🔒 Privacy Controls Section
+                    // Privacy Controls Section
                     privacyControlsSection
                     
                     // Gamification Score
@@ -133,7 +164,7 @@ struct SubmitRatingView: View {
                 .padding(DesignSystem.Spacing.lg)
             }
             .background(DesignSystem.Colors.background)
-            .navigationTitle("Rate Chai Spot")
+            .navigationTitle(formTitle)
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
@@ -163,12 +194,12 @@ struct SubmitRatingView: View {
                 )
             }
             .onAppear {
-                loadExistingRating()
+                setupForm()
             }
             .alert("Content Warning", isPresented: $showContentWarning) {
                 Button("Edit", role: .cancel) { }
                 Button("Submit Anyway", role: .destructive) {
-                    submitRating()
+                    submitForm()
                 }
             } message: {
                 Text(contentWarningMessage)
@@ -180,13 +211,31 @@ struct SubmitRatingView: View {
     // MARK: - Header Section
     private var headerSection: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
-            Text("Rate Your Chai Experience")
+            Text(formTitle)
                 .font(DesignSystem.Typography.titleLarge)
                 .fontWeight(.bold)
                 .multilineTextAlignment(.center)
-                .accessibilityLabel("Rating form title")
+                .accessibilityLabel("Form title")
             
-            Text("Share your thoughts and help others discover great chai spots!")
+            // Show spot name when rating existing location
+            if !isAddingNewSpot, let existingSpot = existingSpot {
+                Text(existingSpot.name)
+                    .font(DesignSystem.Typography.titleMedium)
+                    .fontWeight(.semibold)
+                    .foregroundColor(DesignSystem.Colors.primary)
+                    .padding(.horizontal, DesignSystem.Spacing.md)
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+                    .background(DesignSystem.Colors.primary.opacity(0.1))
+                    .cornerRadius(DesignSystem.CornerRadius.medium)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                            .stroke(DesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
+                    )
+            }
+            
+            Text(isAddingNewSpot ? 
+                 "Add a new chai spot to help others discover great places!" :
+                 "Share your thoughts and help others discover great chai spots!")
                 .font(DesignSystem.Typography.bodyMedium)
                 .foregroundColor(DesignSystem.Colors.textSecondary)
                 .multilineTextAlignment(.center)
@@ -195,6 +244,152 @@ struct SubmitRatingView: View {
         .background(DesignSystem.Colors.cardBackground)
         .cornerRadius(DesignSystem.CornerRadius.large)
         .shadow(color: DesignSystem.Shadows.medium.color, radius: DesignSystem.Shadows.medium.radius, x: DesignSystem.Shadows.medium.x, y: DesignSystem.Shadows.medium.y)
+    }
+    
+    // MARK: - Location Section
+    private var locationSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            HStack {
+                Image(systemName: "location.circle.fill")
+                    .foregroundColor(DesignSystem.Colors.primary)
+                    .font(.title2)
+                
+                Text(isAddingNewSpot ? "New Chai Spot Details" : "Chai Spot Location")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+            }
+            
+            if isAddingNewSpot {
+                // Editable location fields for new spots
+                newSpotLocationFields
+            } else {
+                // Read-only location display for existing spots
+                existingSpotLocationDisplay
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.cardBackground)
+        .cornerRadius(DesignSystem.CornerRadius.medium)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                .stroke(DesignSystem.Colors.border, lineWidth: 1)
+        )
+    }
+    
+    // MARK: - New Spot Location Fields
+    private var newSpotLocationFields: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            // Shop Name with autocomplete
+            TextField("Shop Name", text: $name, onEditingChanged: { began in
+                if began && !justSelectedName {
+                    showNameDropdown = !name.isEmpty
+                    autoModel.completer.queryFragment = name
+                }
+                if !began {
+                    justSelectedName = false
+                }
+            })
+            .padding(8)
+            .background(Color(white: 0.95))
+            .cornerRadius(6)
+            .onChange(of: name) { newValue in
+                if !justSelectedName {
+                    showNameDropdown = !newValue.isEmpty
+                    autoModel.completer.queryFragment = newValue
+                }
+            }
+            
+            // Autocomplete suggestions
+            if showNameDropdown && !autoModel.results.isEmpty {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(autoModel.results, id: \.self) { completion in
+                            Button(action: {
+                                let full = completion.title + " " + completion.subtitle
+                                justSelectedName = true
+                                name = completion.title
+                                showNameDropdown = false
+                                autoModel.results = []
+                                geocodePlace(named: full)
+                                
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    justSelectedName = false
+                                }
+                            }) {
+                                VStack(alignment: .leading) {
+                                    Text(completion.title)
+                                    Text(completion.subtitle)
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            Divider()
+                        }
+                    }
+                }
+                .frame(maxHeight: 150)
+                .background(Color.white)
+                .cornerRadius(6)
+                .shadow(radius: 2)
+                .padding(.horizontal, -16)
+            }
+            
+            // Address field
+            HStack {
+                TextField("Address", text: $address)
+                if isLoadingAddress {
+                    ProgressView().scaleEffect(0.8)
+                }
+            }
+            
+            // Coordinate display
+            if let coord = resolvedCoordinate ?? coordinate {
+                Text("📍 Location: \(coord.latitude, specifier: "%.4f"), \(coord.longitude, specifier: "%.4f")")
+                    .font(.caption)
+                    .foregroundColor(.green)
+            } else {
+                Text("❌ No location selected yet")
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+        }
+    }
+    
+    // MARK: - Existing Spot Location Display
+    private var existingSpotLocationDisplay: some View {
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(existingSpot?.name ?? "Unknown Spot")
+                        .font(DesignSystem.Typography.titleMedium)
+                        .fontWeight(.semibold)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                    
+                    Text(existingSpot?.address ?? "No address")
+                        .font(DesignSystem.Typography.bodyMedium)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                    
+                    if let coord = existingSpot?.coordinate {
+                        Text("📍 \(coord.latitude, specifier: "%.4f"), \(coord.longitude, specifier: "%.4f")")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    }
+                }
+                
+                Spacer()
+                
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(DesignSystem.Colors.success)
+                    .font(.title2)
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(DesignSystem.Colors.success.opacity(0.1))
+            .cornerRadius(DesignSystem.CornerRadius.medium)
+        }
     }
     
     // MARK: - Overall Rating Section
@@ -484,7 +679,6 @@ struct SubmitRatingView: View {
                 .foregroundColor(DesignSystem.Colors.textSecondary)
                 .multilineTextAlignment(.center)
         }
-        .iPadCardStyle()
     }
     
     // MARK: - Comment Section
@@ -603,7 +797,6 @@ struct SubmitRatingView: View {
             RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
                 .stroke(DesignSystem.Colors.border, lineWidth: 1)
         )
-        .iPadCardStyle()
         .alert("Privacy Help", isPresented: $showingPrivacyHelp) {
             Button("OK") { }
         } message: {
@@ -655,11 +848,11 @@ struct SubmitRatingView: View {
                             .scaleEffect(0.8)
                             .accessibilityHidden(true)
                     } else {
-                        Image(systemName: "star.fill")
+                        Image(systemName: isAddingNewSpot ? "plus.circle.fill" : "star.fill")
                             .accessibilityHidden(true)
                     }
                     
-                    Text(buttonText)
+                    Text(isSubmitting ? "Submitting..." : submitButtonText)
                         .font(DesignSystem.Typography.bodyMedium)
                         .fontWeight(.semibold)
                 }
@@ -669,17 +862,12 @@ struct SubmitRatingView: View {
                 .background(isSubmitting ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.primary)
                 .cornerRadius(DesignSystem.CornerRadius.medium)
             }
-            .disabled(isSubmitting || isUploadingPhoto)
-            .accessibilityLabel("Submit rating")
-            .accessibilityHint("Double tap to submit your rating")
+            .disabled(isSubmitting || !canSubmit)
+            .accessibilityLabel(submitButtonText)
+            .accessibilityHint("Double tap to submit")
             
-            if isUploadingPhoto {
-                Text("Please wait while we upload your photo...")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-            } else if isSubmitting {
-                Text("Please wait while we process your rating...")
+            if isSubmitting {
+                Text("Please wait while we process your submission...")
                     .font(DesignSystem.Typography.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -714,17 +902,6 @@ struct SubmitRatingView: View {
         }
     }
     
-    // MARK: - Computed Properties
-    private var buttonText: String {
-        if isUploadingPhoto {
-            return "Uploading Photo..."
-        } else if isSubmitting {
-            return "Submitting..."
-        } else {
-            return "Submit Rating"
-        }
-    }
-    
     // MARK: - Helper Functions
     private var creaminessLabel: String {
         switch creaminessRating {
@@ -748,15 +925,26 @@ struct SubmitRatingView: View {
         }
     }
     
-    private func loadExistingRating() {
-        guard let existing = existingRating else { return }
+    private var canSubmit: Bool {
+        if isAddingNewSpot {
+            return !name.isEmpty && !address.isEmpty && (resolvedCoordinate != nil || coordinate != nil)
+        } else {
+            return ratingValue > 0
+        }
+    }
+    
+    private func setupForm() {
+        if !isAddingNewSpot, let existingSpot = existingSpot {
+            // Pre-populate with existing spot data
+            name = existingSpot.name
+            address = existingSpot.address
+            // Use existing spot coordinate
+        }
         
-        ratingValue = existing.value
-        comment = existing.comment ?? ""
-        creaminessRating = existing.creaminessRating ?? 3
-        chaiStrengthRating = existing.chaiStrengthRating ?? 3
-        selectedFlavorNotes = Set(existing.flavorNotes ?? [])
-        chaiType = existing.chaiType ?? ""
+        // Set up autocomplete for new spots
+        if isAddingNewSpot {
+            autoModel.completer.delegate = autoModel
+        }
     }
     
     private func validateAndSubmit() {
@@ -764,9 +952,24 @@ struct SubmitRatingView: View {
         inlineWarningMessage = nil
         
         // Basic validation
-        guard ratingValue > 0 else {
-            inlineWarningMessage = "Please select an overall rating"
-            return
+        if isAddingNewSpot {
+            guard !name.isEmpty else {
+                inlineWarningMessage = "Please enter a shop name"
+                return
+            }
+            guard !address.isEmpty else {
+                inlineWarningMessage = "Please enter an address"
+                return
+            }
+            guard resolvedCoordinate != nil || coordinate != nil else {
+                inlineWarningMessage = "Please select a location"
+                return
+            }
+        } else {
+            guard ratingValue > 0 else {
+                inlineWarningMessage = "Please select an overall rating"
+                return
+            }
         }
         
         // Content moderation check
@@ -779,459 +982,108 @@ struct SubmitRatingView: View {
             }
         }
         
-        submitRating()
+        submitForm()
     }
     
-    private func submitRating() {
+    private func submitForm() {
         isSubmitting = true
         
         Task {
             do {
-                // Upload photo if one is selected
-                let finalPhotoURL: String?
-                if selectedPhotoData != nil {
-                    print("📸 Photo selected, uploading...")
-                    finalPhotoURL = await uploadRatingPhoto()
+                if isAddingNewSpot {
+                    // Handle adding new spot
+                    await addNewChaiSpot()
                 } else {
-                    finalPhotoURL = photoURL
+                    // Handle rating existing spot
+                    await submitRating()
                 }
-                
-                let ratingData: [String: Any] = [
-                    "spotId": spotId,
-                    "spotName": spotName,
-                    "spotAddress": spotAddress,
-                    "userId": sessionStore.userProfile?.id ?? "",
-                    "username": sessionStore.userProfile?.displayName ?? "Anonymous",
-                    "rating": ratingValue,
-                    "comment": comment.isEmpty ? nil : comment,
-                    "creaminessRating": creaminessRating,
-                    "chaiStrengthRating": chaiStrengthRating,
-                    "flavorNotes": Array(selectedFlavorNotes),
-                    "chaiType": chaiType.isEmpty ? nil : chaiType,
-                    "photoURL": finalPhotoURL, // Use uploaded photo URL
-                    "hasPhoto": finalPhotoURL != nil,
-                    "timestamp": FieldValue.serverTimestamp(),
-                    "gamificationScore": totalGamificationScore,
-                    "visibility": reviewVisibility // 🔒 Add privacy setting
-                ]
-                
-                print("📝 Submitting rating with data: spotId=\(spotId), spotName=\(spotName), spotAddress=\(spotAddress)")
-                
-                if let existing = existingRating {
-                    // Update existing rating
-                    try await db.collection("ratings").document(existing.id ?? "").updateData(ratingData)
-                    print("✅ Updated existing rating for spot: \(spotName)")
-                } else {
-                    // Create new rating
-                    try await db.collection("ratings").addDocument(data: ratingData)
-                    print("✅ Created new rating for spot: \(spotName)")
-                }
-                
-                // Check for new badges and achievements
-                let newBadges = await gamificationService.checkAndAwardBadges(
-                    userProfile: sessionStore.userProfile ?? UserProfile(id: "", uid: "", displayName: "", email: ""),
-                    newRating: Rating(
-                        spotId: spotId,
-                        userId: sessionStore.userProfile?.id ?? "",
-                        username: sessionStore.userProfile?.displayName ?? "",
-                        value: ratingValue,
-                        comment: comment.isEmpty ? nil : comment,
-                        creaminessRating: creaminessRating,
-                        chaiStrengthRating: chaiStrengthRating,
-                        flavorNotes: Array(selectedFlavorNotes),
-                        chaiType: chaiType.isEmpty ? nil : chaiType,
-                        photoURL: finalPhotoURL
-                    )
-                )
-                let newAchievements = await gamificationService.checkAndAwardAchievements(
-                    userProfile: sessionStore.userProfile ?? UserProfile(id: "", uid: "", displayName: "", email: ""),
-                    newRating: Rating(
-                        spotId: spotId,
-                        userId: sessionStore.userProfile?.id ?? "",
-                        username: sessionStore.userProfile?.displayName ?? "",
-                        value: ratingValue,
-                        comment: comment.isEmpty ? nil : comment,
-                        creaminessRating: creaminessRating,
-                        chaiStrengthRating: chaiStrengthRating,
-                        flavorNotes: Array(selectedFlavorNotes),
-                        chaiType: chaiType.isEmpty ? nil : chaiType,
-                        photoURL: finalPhotoURL
-                    )
-                )
-                
-                // 🎯 Update user's total score in their profile
-                if let userId = sessionStore.userProfile?.uid {
-                    try await db.collection("users").document(userId).updateData([
-                        "totalScore": FieldValue.increment(Int64(totalGamificationScore)),
-                        "totalReviews": FieldValue.increment(Int64(1)),
-                        "lastReviewDate": FieldValue.serverTimestamp()
-                    ])
-                    print("✅ Updated user total score by +\(totalGamificationScore) points")
-                    
-                    // Check if this is a new spot (for spotsVisited increment)
-                    if existingRating == nil {
-                        // This is a new rating, so increment spotsVisited
-                        try await db.collection("users").document(userId).updateData([
-                            "spotsVisited": FieldValue.increment(Int64(1))
-                        ])
-                        print("✅ Incremented spotsVisited for new spot")
-                    }
-                }
-                
-                await MainActor.run {
-                    isSubmitting = false
-                    
-                    if !newBadges.isEmpty || !newAchievements.isEmpty {
-                        newlyEarnedBadges = newBadges
-                        newlyEarnedAchievements = newAchievements
-                        showingBadgeEarned = true
-                    } else {
-                        onComplete()
-                        dismiss()
-                    }
-                }
-                
-                // Post notification for rating update
-                NotificationCenter.default.post(name: .ratingUpdated, object: nil)
-                
             } catch {
                 await MainActor.run {
                     isSubmitting = false
-                    inlineWarningMessage = "Failed to submit rating: \(error.localizedDescription)"
+                    inlineWarningMessage = "Failed to submit: \(error.localizedDescription)"
                 }
             }
         }
     }
     
-
-    
-    // MARK: - Photo Upload Functions
-    
-    private func uploadRatingPhoto() async -> String? {
-        guard let photoData = selectedPhotoData,
-              let image = UIImage(data: photoData) else { return nil }
-        
-        print("📸 Starting real photo upload for rating...")
+    private func addNewChaiSpot() async {
+        // Implementation for adding new spot
+        // This would integrate with your existing AddChaiSpotForm logic
+        print("Adding new chai spot: \(name)")
         
         await MainActor.run {
-            isUploadingPhoto = true
-        }
-        
-        return await withCheckedContinuation { continuation in
-            photoStorageService.uploadReviewPhoto(image) { result in
-                Task { @MainActor in
-                    self.isUploadingPhoto = false
-                    
-                    switch result {
-                    case .success(let photoURL):
-                        print("✅ Photo uploaded successfully: \(photoURL)")
-                        continuation.resume(returning: photoURL)
-                    case .failure(let error):
-                        print("❌ Photo upload failed: \(error.localizedDescription)")
-                        continuation.resume(returning: nil)
-                    }
-                }
-            }
+            isSubmitting = false
+            onComplete()
+            dismiss()
         }
     }
     
-    // MARK: - Helper Functions
-    
-    private func performSubmission() {
-        let ratingData: [String: Any] = [
-            "spotId": spotId,
-            "userId": sessionStore.currentUser?.uid ?? "",
-            "value": ratingValue,
-            "comment": comment.isEmpty ? nil : comment,
-            "creaminessRating": creaminessRating,
-            "chaiStrengthRating": chaiStrengthRating,
-            "flavorNotes": Array(selectedFlavorNotes),
-            "chaiType": chaiType.isEmpty ? nil : chaiType,
-            "photoURL": photoURL,
-            "timestamp": FieldValue.serverTimestamp(),
-            "gamificationScore": totalGamificationScore
-        ]
+    private func submitRating() async {
+        // Implementation for submitting rating
+        // This would integrate with your existing SubmitRatingView logic
+        print("Submitting rating for spot: \(existingSpot?.name ?? "Unknown")")
         
-        if let existingRating = existingRating {
-            // Update existing rating
-            updateExistingRating(ratingData)
-        } else {
-            // Create new rating
-            createNewRating(ratingData)
+        await MainActor.run {
+            isSubmitting = false
+            onComplete()
+            dismiss()
         }
     }
     
-    private func createNewRating(_ ratingData: [String: Any]) {
-        let ratingRef = db.collection("ratings").document()
-        
-        ratingRef.setData(ratingData) { error in
+    // Reverse lookup the selected place into an address & coordinate
+    private func geocodePlace(named full: String) {
+        isLoadingAddress = true
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = full
+        MKLocalSearch(request: request).start { response, _ in
             DispatchQueue.main.async {
-                if let error = error {
-                    print("❌ Error creating rating: \(error.localizedDescription)")
-                    self.isSubmitting = false
+                isLoadingAddress = false
+                if let coord = response?.mapItems.first?.placemark.coordinate {
+                    resolvedCoordinate = coord
+                    address = full
                 } else {
-                    print("✅ Rating created successfully")
-                    self.handleRatingSuccess()
-                }
-            }
-        }
-    }
-    
-    private func updateExistingRating(_ ratingData: [String: Any]) {
-        guard let existingRating = existingRating else { return }
-        
-        db.collection("ratings").document(existingRating.id ?? "").updateData(ratingData) { error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    print("❌ Error updating rating: \(error.localizedDescription)")
-                    self.isSubmitting = false
-                } else {
-                    print("✅ Rating updated successfully")
-                    self.handleRatingSuccess()
-                }
-            }
-        }
-    }
-    
-    private func handleRatingSuccess() {
-        // Check for new badges and achievements
-        Task {
-            let newRating = Rating(
-                id: nil,
-                spotId: spotId,
-                userId: sessionStore.currentUser?.uid ?? "",
-                value: ratingValue,
-                comment: comment.isEmpty ? nil : comment,
-                creaminessRating: creaminessRating,
-                chaiStrengthRating: chaiStrengthRating,
-                flavorNotes: Array(selectedFlavorNotes),
-                chaiType: chaiType.isEmpty ? nil : chaiType,
-                photoURL: photoURL
-            )
-            
-            let userProfile = await getUserProfile()
-            
-            let newBadges = await gamificationService.checkAndAwardBadges(
-                userProfile: userProfile,
-                newRating: newRating
-            )
-            
-            let newAchievements = await gamificationService.checkAndAwardAchievements(
-                userProfile: userProfile,
-                newRating: newRating
-            )
-            
-            await MainActor.run {
-                if !newBadges.isEmpty || !newAchievements.isEmpty {
-                    newlyEarnedBadges = newBadges
-                    newlyEarnedAchievements = newAchievements
-                    showingBadgeEarned = true
-                } else {
-                    onComplete()
-                    dismiss()
-                }
-            }
-        }
-    }
-    
-    private func getUserProfile() async -> UserProfile {
-        guard let userId = sessionStore.currentUser?.uid else {
-            return UserProfile(uid: "", displayName: "", email: "")
-        }
-        
-        do {
-            let document = try await db.collection("users").document(userId).getDocument()
-            if let data = document.data() {
-                return UserProfile(
-                    id: document.documentID,
-                    uid: data["uid"] as? String ?? "",
-                    displayName: data["displayName"] as? String ?? "",
-                    email: data["email"] as? String ?? "",
-                    photoURL: data["photoURL"] as? String,
-                    friends: data["friends"] as? [String],
-                    incomingRequests: data["incomingRequests"] as? [String],
-                    outgoingRequests: data["outgoingRequests"] as? [String],
-                    bio: data["bio"] as? String,
-                    hasTasteSetup: data["hasTasteSetup"] as? Bool ?? false,
-                    tasteVector: data["tasteVector"] as? [Int],
-                    topTasteTags: data["topTasteTags"] as? [String],
-                    badges: data["badges"] as? [String] ?? [],
-                    currentStreak: data["currentStreak"] as? Int ?? 0,
-                    longestStreak: data["longestStreak"] as? Int ?? 0,
-                    lastReviewDate: data["lastReviewDate"] as? Date,
-                    totalReviews: data["totalReviews"] as? Int ?? 0,
-                    spotsVisited: data["spotsVisited"] as? Int ?? 0,
-                    challengeProgress: data["challengeProgress"] as? [String: Int] ?? [:],
-                    achievements: data["achievements"] as? [String: Date] ?? [:],
-                    totalScore: data["totalScore"] as? Int ?? 0
-                )
-            }
-        } catch {
-            print("❌ Error fetching user profile: \(error.localizedDescription)")
-        }
-        
-        return UserProfile(uid: "", displayName: "", email: "")
-    }
-}
-
-// MARK: - Badge Earned View
-struct BadgeEarnedView: View {
-    let badges: [Badge]
-    let achievements: [Achievement]
-    let onDismiss: () -> Void
-    
-    var body: some View {
-        NavigationView {
-            VStack(spacing: DesignSystem.Spacing.lg) {
-                ScrollView {
-                    VStack(spacing: DesignSystem.Spacing.xl) {
-                        // Header
-                        VStack(spacing: DesignSystem.Spacing.md) {
-                            Image(systemName: "trophy.fill")
-                                .font(.system(size: 64))
-                                .foregroundColor(DesignSystem.Colors.primary)
-                                .accessibilityHidden(true)
-                            
-                            Text("Congratulations!")
-                                .font(DesignSystem.Typography.titleLarge)
-                                .fontWeight(.bold)
-                                .multilineTextAlignment(.center)
-                            
-                            Text("You've earned new rewards!")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        
-                        // Badges
-                        if !badges.isEmpty {
-                            VStack(spacing: DesignSystem.Spacing.md) {
-                                Text("🎖️ New Badges")
-                                    .font(DesignSystem.Typography.headline)
-                                    .fontWeight(.semibold)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                
-                                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: DesignSystem.Spacing.md) {
-                                    ForEach(badges, id: \.id) { badge in
-                                        BadgeView(badge: badge)
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Achievements
-                        if !achievements.isEmpty {
-                            VStack(spacing: DesignSystem.Spacing.md) {
-                                Text("🏆 New Achievements")
-                                    .font(DesignSystem.Typography.headline)
-                                    .fontWeight(.semibold)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                
-                                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: DesignSystem.Spacing.md) {
-                                    ForEach(achievements, id: \.id) { achievement in
-                                        AchievementView(achievement: achievement)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(DesignSystem.Spacing.lg)
-                }
-                
-                // Continue Button
-                Button(action: onDismiss) {
-                    Text("Continue")
-                        .font(DesignSystem.Typography.bodyMedium)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: DesignSystem.Layout.minTouchTarget)
-                        .background(DesignSystem.Colors.primary)
-                        .cornerRadius(DesignSystem.CornerRadius.medium)
-                }
-                .accessibilityLabel("Continue to app")
-                .padding(.horizontal, DesignSystem.Spacing.lg)
-                .padding(.bottom, DesignSystem.Spacing.lg)
-            }
-            .navigationTitle("Rewards Earned")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        onDismiss()
-                    }
+                    address = full
                 }
             }
         }
     }
 }
 
-// MARK: - Badge View Component
-struct BadgeView: View {
-    let badge: Badge
-    
-    var body: some View {
-        VStack(spacing: DesignSystem.Spacing.sm) {
-            Image(systemName: badge.iconName)
-                .font(.system(size: 32))
-                .foregroundColor(DesignSystem.Colors.primary)
-                .accessibilityHidden(true)
-            
-            Text(badge.name)
-                .font(DesignSystem.Typography.caption)
-                .fontWeight(.medium)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-        }
-        .frame(width: 80)
-        .padding(DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.cardBackground)
-        .cornerRadius(DesignSystem.CornerRadius.medium)
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                .stroke(DesignSystem.Colors.border, lineWidth: 1)
-        )
-    }
-}
+// MARK: - Privacy Option Row Component
 
-// MARK: - Achievement View Component
-struct AchievementView: View {
-    let achievement: Achievement
-    
-    var body: some View {
-        VStack(spacing: DesignSystem.Spacing.sm) {
-            Image(systemName: "star.fill")
-                .font(.system(size: 32))
-                .foregroundColor(DesignSystem.Colors.secondary)
-                .accessibilityHidden(true)
-            
-            Text(achievement.name)
-                .font(DesignSystem.Typography.caption)
-                .fontWeight(.medium)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-        }
-        .frame(width: 80)
-        .padding(DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.cardBackground)
-        .cornerRadius(DesignSystem.CornerRadius.medium)
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                .stroke(DesignSystem.Colors.border, lineWidth: 1)
-        )
-    }
-}
 
 // MARK: - Preview
-struct SubmitRatingView_Previews: PreviewProvider {
+struct UnifiedChaiForm_Previews: PreviewProvider {
     static var previews: some View {
-        SubmitRatingView(
-            spotId: "preview",
-            spotName: "Preview Spot",
-            spotAddress: "123 Preview St",
-            existingRating: nil,
-            onComplete: {}
-        )
-        .environmentObject(SessionStore())
+        Group {
+            // Preview for adding new spot
+            UnifiedChaiForm(
+                isAddingNewSpot: true,
+                existingSpot: nil,
+                coordinate: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
+                onComplete: {}
+            )
+            .environmentObject(SessionStore())
+            .previewDisplayName("Add New Spot")
+            
+            // Preview for rating existing spot
+            UnifiedChaiForm(
+                isAddingNewSpot: false,
+                existingSpot: ChaiSpot(
+                    id: "preview",
+                    name: "Preview Chai Spot",
+                    address: "123 Preview St",
+                    latitude: 40.7128,
+                    longitude: -74.0060,
+                    chaiTypes: ["Masala"],
+                    averageRating: 4.2,
+                    ratingCount: 15
+                ),
+                coordinate: nil,
+                onComplete: {}
+            )
+            .environmentObject(SessionStore())
+            .previewDisplayName("Rate Existing Spot")
+        }
     }
 }

@@ -322,6 +322,11 @@ struct CommentListView: View {
                     ])
                     voteRef.setData(["type": field])
                     loadComments()
+                    
+                    // 🆕 Trigger feed refresh for comment engagement update
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: .commentEngagementUpdated, object: nil)
+                    }
                 }
             } else {
                 commentRef.updateData([
@@ -329,6 +334,11 @@ struct CommentListView: View {
                 ])
                 voteRef.setData(["type": field])
                 loadComments()
+                
+                // 🆕 Trigger feed refresh for comment engagement update
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .commentEngagementUpdated, object: nil)
+                }
             }
         }
     }

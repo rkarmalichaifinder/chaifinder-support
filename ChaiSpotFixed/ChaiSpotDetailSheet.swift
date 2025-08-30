@@ -143,6 +143,25 @@ struct ChaiSpotDetailSheet: View {
             }
             .buttonStyle(PlainButtonStyle())
             
+            // Apple Maps link for directions
+            Button(action: {
+                openInAppleMaps()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "location.circle.fill")
+                        .font(.system(size: 14))
+                    Text("View on Apple Maps")
+                        .font(DesignSystem.Typography.bodySmall)
+                        .fontWeight(.medium)
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(DesignSystem.Colors.secondary)
+                .cornerRadius(8)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
             HStack {
                 Image(systemName: "location.circle.fill")
                     .foregroundColor(DesignSystem.Colors.secondary)
@@ -331,6 +350,31 @@ struct ChaiSpotDetailSheet: View {
                 }
             }
             
+            // 🎮 NEW: Photo Display
+            if let photoURL = rating.photoURL, !photoURL.isEmpty {
+                VStack(spacing: 6) {
+                    CachedAsyncImage(url: photoURL, cornerRadius: 8)
+                        .frame(height: 150)
+                    
+                    // Photo bonus indicator
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption2)
+                        
+                        Text("Photo included (+15 points)")
+                            .font(DesignSystem.Typography.caption2)
+                            .foregroundColor(.orange)
+                            .fontWeight(.medium)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                .padding(.vertical, 4)
+            }
+            
             if let comment = rating.comment, !comment.isEmpty {
                 Text(comment)
                     .font(DesignSystem.Typography.bodySmall)
@@ -386,15 +430,6 @@ struct ChaiSpotDetailSheet: View {
             }
             .buttonStyle(SecondaryButtonStyle())
             .disabled(isAddingToList)
-            
-            Button("Get Directions") {
-                // Open in Maps
-                let coordinate = spot.coordinate
-                let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
-                mapItem.name = spot.name
-                mapItem.openInMaps(launchOptions: nil)
-            }
-            .buttonStyle(SecondaryButtonStyle())
         }
         .padding(DesignSystem.Spacing.lg)
         .background(DesignSystem.Colors.cardBackground)
@@ -574,5 +609,15 @@ struct ChaiSpotDetailSheet: View {
                 UIApplication.shared.open(webURL)
             }
         }
+    }
+    
+    private func openInAppleMaps() {
+        let coordinate = spot.coordinate
+        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        mapItem.name = spot.name
+        
+        // Just show the location on the map without directions mode
+        // This will center the map on the spot location
+        mapItem.openInMaps(launchOptions: nil)
     }
 } 

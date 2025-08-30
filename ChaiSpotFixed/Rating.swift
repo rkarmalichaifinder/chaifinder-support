@@ -91,4 +91,17 @@ struct Rating: Identifiable, Codable {
         
         return score
     }
+    
+    // MARK: - Photo Management
+    
+    /// Deletes the associated photo from Firebase Storage
+    func deletePhoto(completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let photoURL = photoURL, !photoURL.isEmpty else {
+            completion(.success(()))
+            return
+        }
+        
+        let photoStorageService = PhotoStorageService()
+        photoStorageService.deleteReviewPhoto(photoURL: photoURL, completion: completion)
+    }
 }

@@ -489,6 +489,40 @@ struct FriendRatingCard: View {
                         }
                     }
                 }
+                
+                // 🎮 NEW: Photo Display
+                if let photoURL = rating.photoURL, !photoURL.isEmpty {
+                    VStack(spacing: 4) {
+                        CachedAsyncImage(url: photoURL, cornerRadius: 8)
+                            .frame(height: 120)
+                        
+                        // Photo bonus indicator
+                        HStack(spacing: 3) {
+                            Image(systemName: "camera.fill")
+                                .foregroundColor(.orange)
+                                .font(.caption2)
+                            
+                            Text("Photo included (+15 points)")
+                                .font(DesignSystem.Typography.caption2)
+                                .foregroundColor(.orange)
+                                .fontWeight(.medium)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(4)
+                    }
+                    .padding(.vertical, 4)
+                }
+                
+                // Comment
+                if let comment = rating.comment, !comment.isEmpty {
+                    Text(comment)
+                        .font(DesignSystem.Typography.bodySmall)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.cardBackground)

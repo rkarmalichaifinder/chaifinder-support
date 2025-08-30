@@ -107,22 +107,18 @@ struct DesignSystem {
     struct ViewModifiers {
         /// Enables keyboard dismissal by swiping down or tapping outside text fields
         struct KeyboardDismissible: ViewModifier {
-            @FocusState private var isFocused: Bool
-            
             func body(content: Content) -> some View {
                 content
-                    .focused($isFocused)
                     .onTapGesture {
-                        if isFocused {
-                            isFocused = false
-                        }
+                        // Dismiss keyboard by resigning first responder
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
                     .gesture(
                         DragGesture()
                             .onEnded { value in
                                 // Dismiss keyboard on downward swipe
-                                if value.translation.height > 50 && isFocused {
-                                    isFocused = false
+                                if value.translation.height > 50 {
+                                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                                 }
                             }
                     )
@@ -131,27 +127,57 @@ struct DesignSystem {
         
         /// Alternative keyboard dismissible modifier for views with multiple text fields
         struct MultiFieldKeyboardDismissible: ViewModifier {
-            @FocusState private var focusedField: FocusedField?
-            
-            enum FocusedField: Hashable {
-                case name, email, password, address, comments, chaiType, customFlavorNote
-            }
-            
             func body(content: Content) -> some View {
                 content
-                    .focused($focusedField, equals: nil)
                     .onTapGesture {
-                        focusedField = nil
+                        // Dismiss keyboard by resigning first responder
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
                     .gesture(
                         DragGesture()
                             .onEnded { value in
                                 // Dismiss keyboard on downward swipe
-                                if value.translation.height > 50 && focusedField != nil {
-                                    focusedField = nil
+                                if value.translation.height > 50 {
+                                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                                 }
                             }
                     )
+            }
+        }
+        
+        /// Specialized keyboard dismissible modifier for search bars
+        struct SearchBarKeyboardDismissible: ViewModifier {
+            func body(content: Content) -> some View {
+                content
+                    .onTapGesture {
+                        // Dismiss keyboard by resigning first responder
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .gesture(
+                        DragGesture()
+                            .onEnded { value in
+                                // Dismiss keyboard on downward swipe with lower threshold for search bars
+                                if value.translation.height > 30 {
+                                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                                }
+                            }
+                    )
+                    .simultaneousGesture(
+                        // Additional gesture for better keyboard dismissal
+                        TapGesture()
+                            .onEnded { _ in
+                                // Small delay to ensure tap outside search field
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                                }
+                            }
+                    )
+                    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                        // Ensure keyboard is properly dismissed
+                        DispatchQueue.main.async {
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        }
+                    }
             }
         }
     }
@@ -412,6 +438,11 @@ extension View {
     /// Applies keyboard dismissible behavior for views with multiple text fields
     func multiFieldKeyboardDismissible() -> some View {
         self.modifier(DesignSystem.ViewModifiers.MultiFieldKeyboardDismissible())
+    }
+    
+    /// Applies specialized keyboard dismissible behavior for search bars
+    func searchBarKeyboardDismissible() -> some View {
+        self.modifier(DesignSystem.ViewModifiers.SearchBarKeyboardDismissible())
     }
     
     /// iPad-optimized spacing and sizing

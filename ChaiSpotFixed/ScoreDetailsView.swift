@@ -97,7 +97,7 @@ struct ScoreDetailsView: View {
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(DesignSystem.Colors.error)
                 
-                Text("Day Streak")
+                Text("Weekly Streak")
                     .font(DesignSystem.Typography.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
             }
@@ -390,13 +390,49 @@ extension GamificationService {
             ))
         }
         
-        // Add estimated categories if we have remaining points
-        let achievementPoints = userAchievements.reduce(0) { $0 + $1.points }
-        let remainingPoints = totalScore - achievementPoints
+        // Add badge points
+        let badgePoints = userBadges.count * 10
+        if badgePoints > 0 {
+            breakdown.append(ScoreBreakdownItem(
+                title: "Badges (\(userBadges.count))",
+                points: badgePoints,
+                icon: "mappin.circle.fill",
+                color: DesignSystem.Colors.secondary,
+                isAchievement: false
+            ))
+        }
+        
+        // Add streak points
+        let streakPoints = currentStreak * 5
+        if streakPoints > 0 {
+            breakdown.append(ScoreBreakdownItem(
+                title: "Weekly Streak (\(currentStreak) weeks)",
+                points: streakPoints,
+                icon: "flame.fill",
+                color: DesignSystem.Colors.error,
+                isAchievement: false
+            ))
+        }
+        
+        // Add longest streak milestone bonus
+        let milestoneBonus = getStreakMilestoneBonus(longestStreak)
+        if milestoneBonus > 0 {
+            breakdown.append(ScoreBreakdownItem(
+                title: "Longest Streak Milestone",
+                points: milestoneBonus,
+                icon: "trophy.fill",
+                color: .yellow,
+                isAchievement: false
+            ))
+        }
+        
+        // Add any remaining points from other activities
+        let calculatedPoints = userAchievements.reduce(0) { $0 + $1.points } + badgePoints + streakPoints + milestoneBonus
+        let remainingPoints = totalScore - calculatedPoints
         
         if remainingPoints > 0 {
             breakdown.append(ScoreBreakdownItem(
-                title: "Additional Activity",
+                title: "Other Activities",
                 points: remainingPoints,
                 icon: "plus.circle.fill",
                 color: DesignSystem.Colors.primary,
@@ -405,6 +441,16 @@ extension GamificationService {
         }
         
         return breakdown
+    }
+    
+    private func getStreakMilestoneBonus(_ streak: Int) -> Int {
+        if streak >= 52 { return 100 }      // 1 year
+        else if streak >= 26 { return 75 }  // 6 months
+        else if streak >= 12 { return 50 }  // 3 months
+        else if streak >= 8 { return 25 }   // 2 months
+        else if streak >= 4 { return 15 }   // 1 month
+        else if streak >= 2 { return 10 }   // 2 weeks
+        return 0
     }
     
     private func getIconForAchievement(_ id: String) -> String {

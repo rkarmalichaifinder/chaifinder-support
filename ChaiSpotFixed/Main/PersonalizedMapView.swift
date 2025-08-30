@@ -21,6 +21,7 @@ struct PersonalizedMapView: View {
     // Spot detail navigation
     @State private var selectedSpot: ChaiSpot?
     @State private var showingSpotDetail = false
+    @State private var cameFromListView = false
     
     // Map interaction state
     @State private var isUserInteractingWithMap = false
@@ -65,12 +66,11 @@ struct PersonalizedMapView: View {
                 if vm.isShowingList {
                     listView
                 } else {
-                    mapView
+                    mapViewContent
                 }
             }
             .background(DesignSystem.Colors.background)
             .navigationBarHidden(true) // Hide navigation bar since we have custom header
-            .keyboardDismissible()
             .gesture(
                 DragGesture()
                     .onChanged { _ in
@@ -130,51 +130,32 @@ struct PersonalizedMapView: View {
             .sheet(isPresented: $showingSpotDetail) {
                 if let spot = selectedSpot {
                     ChaiSpotDetailSheet(spot: spot, userLocation: locationManager.location)
-                }
-            }
-
-            .sheet(isPresented: $showingAddForm) {
-                if let coordinate = selectedCoordinate {
-                    AddChaiFinderForm(coordinate: coordinate) { name, address, rating, comments, chaiTypes, coordinate, creaminessRating, chaiStrengthRating, flavorNotes in
-                        // Handle form submission
-                        print("📍 PersonalizedMapView received form submission:")
-                        print("  - Name: \(name)")
-                        print("  - Address: \(address)")
-                        print("  - Rating: \(rating)")
-                        print("  - Comments: \(comments)")
-                        print("  - Chai Types: \(chaiTypes)")
-                        print("  - Coordinate: \(coordinate)")
-                        print("  - Creaminess Rating: \(creaminessRating)")
-                        print("  - Chai Strength Rating: \(chaiStrengthRating)")
-                        print("  - Flavor Notes: \(flavorNotes)")
-                        
-                        // Save to Firestore using the view model
-                        Task {
-                            let success = await vm.addNewChaiSpot(
-                                name: name,
-                                address: address,
-                                rating: rating,
-                                comments: comments,
-                                chaiTypes: chaiTypes,
-                                coordinate: coordinate,
-                                creaminessRating: creaminessRating,
-                                chaiStrengthRating: chaiStrengthRating,
-                                flavorNotes: flavorNotes
-                            )
-                            
-                            await MainActor.run {
-                                if success {
-                                    print("✅ New chai spot added successfully")
-                                } else {
-                                    print("❌ Failed to add new chai spot")
+                        .onDisappear {
+                            // If user came from list view, return to list view
+                            if cameFromListView {
+                                print("🔄 Returning to list view after dismissing spot details")
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    vm.isShowingList = true
                                 }
-                                
-                                // Dismiss the form and clear the selected coordinate
-                                showingAddForm = false
-                                selectedCoordinate = nil
+                                cameFromListView = false
+                            } else {
+                                print("🔄 Staying in map view after dismissing spot details")
                             }
                         }
-                    }
+                }
+            }
+            .sheet(isPresented: $showingAddForm) {
+                if let coordinate = selectedCoordinate {
+                    UnifiedChaiForm(
+                        isAddingNewSpot: true,
+                        existingSpot: nil,
+                        coordinate: coordinate,
+                        onComplete: {
+                            // Dismiss the form and clear the selected coordinate
+                            showingAddForm = false
+                            selectedCoordinate = nil
+                        }
+                    )
                 }
             }
             .alert("Understanding Your Match Score", isPresented: $showingPersonalizationAlert) {
@@ -182,7 +163,12 @@ struct PersonalizedMapView: View {
             } message: {
                 Text("This score shows how well this chai spot matches your personal preferences on a 1-5 scale. It's calculated from your taste preferences, ratings of similar spots, friend recommendations, and community ratings. 4-5 stars = great match, 3-4 stars = good match, 1-2 stars = low match.")
             }
-
+            .navigationViewStyle(.stack)
+            .searchBarKeyboardDismissible()
+            .onAppear {
+                print("🎯 PersonalizedMapView appeared")
+                setupLocationManager()
+            }
         }
     }
     
@@ -377,9 +363,6 @@ struct PersonalizedMapView: View {
                     .textCase(.lowercase)
                     .keyboardType(.default)
                     .submitLabel(.search)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
                     .textContentType(.none)
                     .accessibilityLabel("Search chai spots or locations")
                     .accessibilityHint("Type to search through chai spots or search for a location to center the map")
@@ -397,6 +380,7 @@ struct PersonalizedMapView: View {
                     .onSubmit {
                         // Handle search submission (Enter key)
                         handleSearch(vm.searchText)
+                        // Keep focus to allow continued typing
                     }
                     .disabled(vm.isSearchingLocation) // Disable while searching
                 
@@ -439,10 +423,6 @@ struct PersonalizedMapView: View {
             )
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
-        .onTapGesture {
-            // Dismiss keyboard when tapping outside the search field
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        }
     }
     
     // MARK: - Search Handler
@@ -633,7 +613,7 @@ struct PersonalizedMapView: View {
     }
     
     // MARK: - Map View
-    private var mapView: some View {
+    private var mapViewContent: some View {
         ZStack {
             if vm.allSpots.isEmpty {
                 // Loading state
@@ -667,6 +647,8 @@ struct PersonalizedMapView: View {
                         if let spot = vm.allSpots.first(where: { $0.id == spotId }) {
                             print("📍 Spot selected from map: \(spot.name)")
                             selectedSpot = spot
+                            cameFromListView = false // Ensure we know this came from map
+                            print("🔄 Set cameFromListView = false (will stay in map view)")
                             showingSpotDetail = true
                         }
                     },
@@ -909,6 +891,8 @@ struct PersonalizedMapView: View {
                         // Handle spot selection - center map on selected spot and show details
                         print("📍 Spot selected from list: \(spot.name)")
                         selectedSpot = spot
+                        cameFromListView = true
+                        print("🔄 Set cameFromListView = true (will return to list view)")
                         showingSpotDetail = true
                         centerMapOnSpot(spot)
                         // Switch to map view to show the selected spot

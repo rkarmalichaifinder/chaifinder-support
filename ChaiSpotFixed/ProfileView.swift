@@ -14,13 +14,20 @@ struct ProfileView: View {
     @State private var showingTermsOfService = false
     @State private var showingBadges = false
     @State private var showingAchievements = false
-    @State private var showingScoreDetails = false
-    @State private var showingNotificationSettings = false
     @State private var showingPrivacySettings = false
+    @State private var showingChaiJourney = false
     @State private var showingWeeklyChallenge = false
+    @State private var showingLeaderboard = false
+    @State private var showingScoreDetails = false
+    @State private var showingStreak = false
+    @State private var showingBadgeCollection = false
+    @State private var showingEditPhoto = false
+    @State private var showingNotificationSettings = false
+    @State private var showingTopSpots = false
     @State private var isRefreshing = false
     @State private var hasAcceptedTerms = false
-
+    @State private var profileRefreshTrigger = UUID()
+    
     var body: some View {
         NavigationView {
             ScrollView {
@@ -55,6 +62,9 @@ struct ProfileView: View {
                     // 📍 Saved Spots
                     savedSpotsSection
                     
+                    // ⭐ Top Spots
+                    topSpotsSection
+                    
                     // 🔒 Privacy & Settings
                     privacySettingsSection
                     
@@ -62,12 +72,29 @@ struct ProfileView: View {
                     settingsSection
                 }
                 .padding(.bottom, DesignSystem.Spacing.xl)
+                .id(profileRefreshTrigger) // Force refresh when profile changes
+                .onAppear {
+                    print("🔄 ProfileView body appeared with profileRefreshTrigger: \(profileRefreshTrigger)")
+                }
             }
             .background(DesignSystem.Colors.background)
             .refreshable {
                 await refreshProfile()
             }
             .navigationBarHidden(true)
+
+            .onChange(of: sessionStore.userProfile?.photoURL) { newPhotoURL in
+                profileRefreshTrigger = UUID()
+            }
+            .onReceive(sessionStore.objectWillChange) {
+                profileRefreshTrigger = UUID()
+            }
+            .onAppear {
+                // Recalculate total score when profile appears
+                Task {
+                    await gamificationService.updateTotalScore()
+                }
+            }
         }
         .navigationViewStyle(.stack)
         .sheet(isPresented: $showingEditBio) {
@@ -76,6 +103,10 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingEditName) {
             EditNameView()
+                .environmentObject(sessionStore)
+        }
+        .sheet(isPresented: $showingEditPhoto) {
+            EditProfilePhotoView()
                 .environmentObject(sessionStore)
         }
         .sheet(isPresented: $showingSavedSpots) {
@@ -113,6 +144,11 @@ struct ProfileView: View {
         .sheet(isPresented: $showingPrivacySettings) {
             PrivacySettingsView()
         }
+        .sheet(isPresented: $showingTopSpots) {
+            UserTopSpotsView()
+                .environmentObject(sessionStore)
+        }
+
         .alert("Delete Account", isPresented: $showingDeleteAccount) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -178,13 +214,76 @@ struct ProfileView: View {
         VStack(spacing: DesignSystem.Spacing.md) {
             // Profile Image
             Button(action: {
-                // TODO: Add profile image editing
+                showingEditPhoto = true
             }) {
                 ZStack {
-                    Image(systemName: "person.circle.fill")
-                        .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 120 : 80))
-                        .foregroundColor(DesignSystem.Colors.primary)
-                        .accessibilityHidden(true)
+                    // Display user's photo if available, otherwise show default icon
+                    if let photoURL = sessionStore.userProfile?.photoURL,
+                       !photoURL.isEmpty {
+                        Group {
+                            // Check if this is a base64 data URL
+                            if photoURL.hasPrefix("data:image") {
+                                // Handle base64 data URL
+                                if let data = Data(base64Encoded: photoURL.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")),
+                                   let uiImage = UIImage(data: data) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        
+                                } else {
+                                    // Fallback if base64 decoding fails
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.red)
+                                        .onAppear {
+                                            print("❌ Failed to decode base64 profile photo")
+                                            print("❌ PhotoURL: \(photoURL)")
+                                            print("❌ PhotoURL length: \(photoURL.count)")
+                                            let base64Part = photoURL.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")
+                                            print("❌ Base64 part length: \(base64Part.count)")
+                                        }
+                                }
+                            } else {
+                                // Handle regular URL
+                                AsyncImage(url: URL(string: photoURL)) { phase in
+                                    switch phase {
+                                    case .empty:
+                                        ProgressView()
+                                            .scaleEffect(1.5)
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                    case .failure(let error):
+                                        VStack {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .foregroundColor(.red)
+                                            Text("Failed to load")
+                                                .font(.caption)
+                                                .foregroundColor(.red)
+                                        }
+                                        .onAppear {
+                                            print("❌ AsyncImage failed to load photo: \(error.localizedDescription)")
+                                            print("🔍 Failed URL: \(photoURL)")
+                                        }
+                                    @unknown default:
+                                        ProgressView()
+                                            .scaleEffect(1.5)
+                                    }
+                                }
+
+                            }
+                        }
+                        .frame(width: UIDevice.current.userInterfaceIdiom == .pad ? 120 : 80, 
+                               height: UIDevice.current.userInterfaceIdiom == .pad ? 120 : 80)
+                        .clipShape(Circle())
+                    } else {
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 120 : 80))
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .onAppear {
+                                print("🔍 Showing default profile icon - photoURL: \(sessionStore.userProfile?.photoURL ?? "nil")")
+                            }
+                    }
                     
                     // Edit indicator
                     VStack {
@@ -227,6 +326,21 @@ struct ProfileView: View {
                     .font(DesignSystem.Typography.bodyMedium)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
                     .accessibilityLabel("Email address")
+                
+                // Photo status indicator
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: sessionStore.userProfile?.photoURL?.isEmpty == false ? "checkmark.circle.fill" : "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundColor(sessionStore.userProfile?.photoURL?.isEmpty == false ? DesignSystem.Colors.success : DesignSystem.Colors.warning)
+                    
+                    Text(sessionStore.userProfile?.photoURL?.isEmpty == false ? "Profile photo set" : "Add a profile photo")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundColor(sessionStore.userProfile?.photoURL?.isEmpty == false ? DesignSystem.Colors.success : DesignSystem.Colors.warning)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+                .background((sessionStore.userProfile?.photoURL?.isEmpty == false ? DesignSystem.Colors.success : DesignSystem.Colors.warning).opacity(0.1))
+                .cornerRadius(DesignSystem.CornerRadius.small)
             }
             
 
@@ -249,6 +363,14 @@ struct ProfileView: View {
                 )
             }
             .buttonStyle(PlainButtonStyle())
+            .contextMenu {
+                Button("Recalculate Score") {
+                    Task {
+                        await gamificationService.updateTotalScore()
+                    }
+                }
+                .disabled(isRefreshing)
+            }
             
             Button(action: {
                 showingBadges = true
@@ -281,7 +403,7 @@ struct ProfileView: View {
     private var streakSection: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
             HStack {
-                Text("🔥 Current Streak")
+                Text("🔥 Weekly Streak")
                     .font(DesignSystem.Typography.headline)
                     .fontWeight(.semibold)
                 
@@ -471,6 +593,63 @@ struct ProfileView: View {
         .iPadCardStyle()
     }
     
+    // MARK: - Top Spots Section
+    private var topSpotsSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            HStack {
+                Text("⭐ Top Spots")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Button("View All") {
+                    showingTopSpots = true
+                }
+                .font(DesignSystem.Typography.caption)
+                .foregroundColor(DesignSystem.Colors.primary)
+                .accessibilityLabel("View all top spots")
+            }
+            
+            Button(action: {
+                showingTopSpots = true
+            }) {
+                HStack {
+                    Image(systemName: "star.circle.fill")
+                        .foregroundColor(DesignSystem.Colors.ratingGreen)
+                        .accessibilityHidden(true)
+                    
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        Text("Your 5-Star Favorites")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
+                        
+                        Text("See how the community rates your top picks")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .accessibilityHidden(true)
+                }
+                .padding(DesignSystem.Spacing.md)
+                .background(DesignSystem.Colors.cardBackground)
+                .cornerRadius(DesignSystem.CornerRadius.medium)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                        .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("View top spots")
+            .accessibilityHint("Double tap to view your 5-star rated spots ranked by community score")
+        }
+        .iPadCardStyle()
+    }
+    
     // MARK: - Privacy & Settings Section
     private var privacySettingsSection: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
@@ -607,6 +786,8 @@ struct ProfileView: View {
                     },
                     isDestructive: true
                 )
+                
+
             }
         }
         .iPadCardStyle()
@@ -642,6 +823,10 @@ struct ProfileView: View {
     
     private func refreshProfile() async {
         isRefreshing = true
+        
+        // Refresh gamification data and recalculate scores
+        gamificationService.refreshData()
+        await gamificationService.updateTotalScore()
         
         // Simulate refresh
         try? await Task.sleep(nanoseconds: 1_000_000_000)

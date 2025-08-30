@@ -27,6 +27,10 @@ class FeedViewModel: ObservableObject {
     private var loadingSpots: Set<String> = []
     private var hasLoadedData = false
     
+    // 🆕 Debounced reaction updates
+    private var reactionUpdateTimer: Timer?
+    private var pendingReactionUpdates: Set<String> = []
+    
     // MARK: - Data Migration Functions
     
     /// Backfills existing ratings documents with default visibility and deleted fields
@@ -117,36 +121,54 @@ class FeedViewModel: ObservableObject {
     
     /// Loads friend ratings with fallback to legacy data if filtered query returns no results
     private func loadFriendRatingsWithFallback(currentUserId: String, friends: [String]) {
-        // First try the filtered query
-        let filteredQuery = db.collection("ratings")
+        // Use the original simple query that was working before
+        let query = db.collection("ratings")
             .whereField("userId", in: friends)
-            .whereField("visibility", in: ["public", "friends"])
-            .whereField("deleted", isEqualTo: false)
             .order(by: "timestamp", descending: true)
             .limit(to: 20)
         
-        filteredQuery.getDocuments { [weak self] snapshot, error in
+        query.getDocuments { [weak self] snapshot, error in
             if let error = error {
-                print("❌ Filtered friends query failed: \(error.localizedDescription)")
-                // Fallback to legacy query
-                self?.loadLegacyFriendRatings(currentUserId: currentUserId, friends: friends)
+                print("❌ Friends query failed: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                    self?.isSwitchingFeedType = false
+                    self?.reviews = []
+                    self?.filteredReviews = []
+                    self?.error = "Unable to load friend reviews. Please try again."
+                }
                 return
             }
             
-            guard let documents = snapshot?.documents, !documents.isEmpty else {
-                print("⚠️ Filtered friends query returned no results, trying legacy query...")
-                // Fallback to legacy query
-                self?.loadLegacyFriendRatings(currentUserId: currentUserId, friends: friends)
+            guard let documents = snapshot?.documents else {
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                    self?.isSwitchingFeedType = false
+                    self?.reviews = []
+                    self?.filteredReviews = []
+                    self?.error = "Your friends haven't posted any reviews yet."
+                }
                 return
             }
             
-            // Success with filtered query
+            if documents.isEmpty {
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                    self?.isSwitchingFeedType = false
+                    self?.reviews = []
+                    self?.filteredReviews = []
+                    self?.error = "Your friends haven't posted any reviews yet."
+                }
+                return
+            }
+            
+            // Success with original query
             DispatchQueue.main.async {
                 self?.isLoading = false
                 self?.isSwitchingFeedType = false
                 self?.processFriendRatingDocuments(documents)
                 self?.hasLoadedData = true
-                print("✅ Friend feed loaded successfully with \(documents.count) filtered ratings")
+                print("✅ Friend feed loaded successfully with \(documents.count) ratings")
             }
         }
     }
@@ -154,12 +176,45 @@ class FeedViewModel: ObservableObject {
     /// Legacy fallback for friend ratings (no visibility/deleted filters)
     private func loadLegacyFriendRatings(currentUserId: String, friends: [String]) {
         print("🔄 Loading legacy friend ratings...")
-        let legacyQuery = db.collection("ratings")
-            .whereField("userId", in: friends)
-            .order(by: "timestamp", descending: true)
-            .limit(to: 20)
         
-        legacyQuery.getDocuments { [weak self] snapshot, error in
+        // First try to load some recent ratings that might have photos
+        let recentQuery = db.collection("ratings")
+            .order(by: "timestamp", descending: true)
+            .limit(to: 10)
+        
+        recentQuery.getDocuments { [weak self] snapshot, error in
+            if let documents = snapshot?.documents, !documents.isEmpty {
+                print("🔍 Found \(documents.count) recent ratings, checking for photos...")
+                
+                // Check if any have photos
+                let ratingsWithPhotos = documents.filter { doc in
+                    let data = doc.data()
+                    let hasPhoto = data["photoURL"] as? String != nil && !(data["photoURL"] as? String ?? "").isEmpty
+                    if hasPhoto {
+                        print("🎉 Found rating with photo: \(doc.documentID)")
+                    }
+                    return hasPhoto
+                }
+                
+                if !ratingsWithPhotos.isEmpty {
+                    print("✅ Found \(ratingsWithPhotos.count) ratings with photos - processing these first!")
+                    DispatchQueue.main.async {
+                        self?.processFriendRatingDocuments(ratingsWithPhotos)
+                        self?.hasLoadedData = true
+                        self?.isLoading = false
+                        self?.isSwitchingFeedType = false
+                    }
+                    return
+                }
+            }
+            
+            // Fallback to original legacy query
+            let legacyQuery = self?.db.collection("ratings")
+                .whereField("userId", in: friends)
+                .order(by: "timestamp", descending: true)
+                .limit(to: 20)
+        
+            legacyQuery?.getDocuments { [weak self] snapshot, error in
             DispatchQueue.main.async {
                 self?.isLoading = false
                 self?.isSwitchingFeedType = false
@@ -191,42 +246,38 @@ class FeedViewModel: ObservableObject {
             }
         }
     }
+    }
     
     /// Loads community ratings with fallback to legacy data
     private func loadCommunityRatingsWithFallback() {
         let initialLimit = initialLoadComplete ? 20 : 10
         
-        // Try filtered query first
-        let filteredQuery = db.collection("ratings")
-            .whereField("visibility", isEqualTo: "public")
-            .whereField("deleted", isEqualTo: false)
+        // Use the original simple query that was working before
+        let query = db.collection("ratings")
             .order(by: "timestamp", descending: true)
             .limit(to: initialLimit)
         
-        filteredQuery.getDocuments { [weak self] snapshot, error in
-            if let error = error {
-                print("❌ Filtered community query failed: \(error.localizedDescription)")
-                // Fallback to legacy query
-                self?.loadLegacyCommunityRatings(limit: initialLimit)
-                return
-            }
-            
-            guard let documents = snapshot?.documents, !documents.isEmpty else {
-                print("⚠️ Filtered community query returned no results, trying legacy query...")
-                // Fallback to legacy query
-                self?.loadLegacyCommunityRatings(limit: initialLimit)
-                return
-            }
-            
-            // Success with filtered query
+        query.getDocuments { [weak self] snapshot, error in
             DispatchQueue.main.async {
                 self?.isLoading = false
                 self?.isSwitchingFeedType = false
+                
+                if let error = error {
+                    self?.error = error.localizedDescription
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    self?.reviews = []
+                    self?.filteredReviews = []
+                    return
+                }
+                
+                self?.processRatingDocuments(documents)
+                self?.hasLoadedData = true
+                self?.initialLoadComplete = true
+                print("✅ Community feed loaded successfully with \(documents.count) ratings")
             }
-            self?.processRatingDocuments(documents)
-            self?.hasLoadedData = true
-            self?.initialLoadComplete = true
-            print("✅ Community feed loaded successfully with \(documents.count) filtered ratings")
         }
     }
     
@@ -273,6 +324,107 @@ class FeedViewModel: ObservableObject {
     func refreshAfterRatingSubmission() {
         print("🔄 Manually refreshing feed after rating submission...")
         refreshFeed()
+    }
+    
+    // 🆕 Smart refresh method that can update only changed items
+    func smartRefreshFeed(changedItems: [String]? = nil) {
+        if let changedItems = changedItems, !changedItems.isEmpty {
+            print("🔄 Smart refresh: Updating \(changedItems.count) changed items...")
+            updateChangedItems(changedItems)
+        } else {
+            print("🔄 Smart refresh: No specific changes, doing full refresh...")
+            refreshFeed()
+        }
+    }
+    
+    // 🆕 Update only specific changed items in the feed
+    private func updateChangedItems(_ itemIds: [String]) {
+        guard !itemIds.isEmpty else { return }
+        
+        let db = Firestore.firestore()
+        
+        // Get the updated documents using individual gets
+        let group = DispatchGroup()
+        var documents: [DocumentSnapshot] = []
+        
+        for itemId in itemIds {
+            group.enter()
+            let docRef = db.collection("ratings").document(itemId)
+            docRef.getDocument { snapshot, error in
+                defer { group.leave() }
+                if let snapshot = snapshot, snapshot.exists {
+                    documents.append(snapshot)
+                }
+            }
+        }
+        
+        group.notify(queue: .main) {
+            // Update the feed with the new documents
+            for document in documents {
+                self.updateFeedItem(with: document)
+            }
+        }
+    }
+    
+    // 🆕 Update a single feed item with new data
+    private func updateFeedItem(with document: DocumentSnapshot) {
+        guard let data = document.data() else { return }
+        
+        DispatchQueue.main.async {
+            // Find and update the item in our reviews array
+            if let index = self.reviews.firstIndex(where: { $0.id == document.documentID }) {
+                // Update the existing item with new data
+                var updatedItem = self.reviews[index]
+                
+                // Update reaction counts if they exist
+                if let reactions = data["reactions"] as? [String: Int] {
+                    // Note: We need to make reactions mutable in ReviewFeedItem
+                    // For now, we'll refresh the entire feed
+                    print("🔄 Reactions updated, refreshing entire feed for now...")
+                    self.refreshFeed()
+                    return
+                }
+                
+                // Update other fields as needed
+                if let comment = data["comment"] as? String {
+                    // Note: We need to make comment mutable in ReviewFeedItem
+                    // For now, we'll refresh the entire feed
+                    print("🔄 Comment updated, refreshing entire feed for now...")
+                    self.refreshFeed()
+                    return
+                }
+                
+                // If no special handling needed, just refresh the feed
+                self.refreshFeed()
+            }
+        }
+    }
+    
+    // 🆕 Schedule a debounced reaction update
+    private func scheduleReactionUpdate() {
+        // Cancel existing timer
+        reactionUpdateTimer?.invalidate()
+        
+        // Schedule new timer with 300ms delay
+        reactionUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.processPendingReactionUpdates()
+            }
+        }
+    }
+    
+    // 🆕 Process all pending reaction updates at once
+    private func processPendingReactionUpdates() {
+        guard !pendingReactionUpdates.isEmpty else { return }
+        
+        print("🔄 Processing \(pendingReactionUpdates.count) pending reaction updates...")
+        
+        // For now, we'll do a full refresh since we need to update reaction counts
+        // In the future, we could implement more granular updates
+        refreshFeed()
+        
+        // Clear pending updates
+        pendingReactionUpdates.removeAll()
     }
     
     // MARK: - Debug and Migration Functions
@@ -329,6 +481,8 @@ class FeedViewModel: ObservableObject {
     // Add a method to listen for rating update notifications
     func startListeningForNotifications() {
         print("🔔 Setting up notification listener for rating updates...")
+        
+        // Listen for rating updates
         NotificationCenter.default.addObserver(
             forName: .ratingUpdated,
             object: nil,
@@ -337,11 +491,44 @@ class FeedViewModel: ObservableObject {
             print("🔄 Rating update notification received, refreshing feed...")
             self?.refreshFeed()
         }
+        
+        // 🆕 Listen for reaction updates
+        NotificationCenter.default.addObserver(
+            forName: .reactionUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("🔄 Reaction update notification received, scheduling debounced update...")
+            self?.scheduleReactionUpdate()
+        }
+        
+        // 🆕 Listen for comment engagement updates
+        NotificationCenter.default.addObserver(
+            forName: .commentEngagementUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("🔄 Comment engagement update notification received, refreshing feed...")
+            self?.refreshFeed()
+        }
+        
+        // 🆕 Listen for review visibility changes
+        NotificationCenter.default.addObserver(
+            forName: .reviewVisibilityChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("🔄 Review visibility change notification received, refreshing feed...")
+            self?.refreshFeed()
+        }
     }
     
     // Add a method to stop listening for notifications
     func stopListeningForNotifications() {
         NotificationCenter.default.removeObserver(self, name: .ratingUpdated, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .reactionUpdated, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .commentEngagementUpdated, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .reviewVisibilityChanged, object: nil)
     }
     
     // Add a method to validate rating data
@@ -353,6 +540,8 @@ class FeedViewModel: ObservableObject {
     // Clean up notification observers
     deinit {
         NotificationCenter.default.removeObserver(self)
+        reactionUpdateTimer?.invalidate()
+        reactionUpdateTimer = nil
     }
     
     func loadFeed() {
@@ -669,6 +858,11 @@ class FeedViewModel: ObservableObject {
                 let chaiStrengthRating = self.extractChaiStrengthRating(from: data["chaiStrengthRating"])
                 let flavorNotes = self.extractFlavorNotes(from: data["flavorNotes"])
                 
+                // Debug: Log photo data
+                let photoURL = data["photoURL"] as? String
+                let hasPhoto = data["hasPhoto"] as? Bool ?? false
+                print("🔍 Rating \(document.documentID) photo data: photoURL=\(photoURL ?? "nil"), hasPhoto=\(hasPhoto)")
+                
                 // Create ReviewFeedItem
                 let feedItem = ReviewFeedItem(
                     id: document.documentID,
@@ -684,8 +878,8 @@ class FeedViewModel: ObservableObject {
                     creaminessRating: creaminessRating,
                     chaiStrengthRating: chaiStrengthRating,
                     flavorNotes: flavorNotes,
-                    photoURL: data["photoURL"] as? String,
-                    hasPhoto: data["hasPhoto"] as? Bool ?? false,
+                    photoURL: photoURL,
+                    hasPhoto: hasPhoto,
                     gamificationScore: data["gamificationScore"] as? Int ?? 0,
                     isFirstReview: data["isFirstReview"] as? Bool ?? false,
                     isNewSpot: data["isNewSpot"] as? Bool ?? false,

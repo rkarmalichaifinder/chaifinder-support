@@ -39,6 +39,9 @@ struct FriendsView: View {
     @State private var showingInviteSheet = false
     @State private var selectedUserToInvite: UserProfile?
     
+    // Weekly Challenge states
+    @State private var showingWeeklyChallenge = false
+    
 
 
     private lazy var db: Firestore = {
@@ -125,6 +128,9 @@ struct FriendsView: View {
                             if let currentUser = currentUser {
                                 myProfileSection(currentUser)
                                 
+                                // Weekly Challenge Section
+                                weeklyChallengeSection
+                                
                                 // Incoming Friend Requests
                                 if !incomingRequests.isEmpty {
                                     incomingRequestsSection
@@ -163,7 +169,7 @@ struct FriendsView: View {
                             .aspectRatio(contentMode: .fit)
                             .frame(height: 24)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
-                        Text("Friends")
+                        Text("Social")
                             .font(DesignSystem.Typography.titleMedium)
                             .fontWeight(.bold)
                     }
@@ -171,11 +177,14 @@ struct FriendsView: View {
             }
             .sheet(isPresented: $showingInviteSheet) {
                 if let user = selectedUserToInvite {
-                    InviteUserSheet(user: user) {
+                    InviteUserSheet(user: user, currentUser: currentUser) {
                         // Refresh data after invitation
                         reloadData()
                     }
                 }
+            }
+            .sheet(isPresented: $showingWeeklyChallenge) {
+                WeeklyChallengeView()
             }
             .onAppear {
                 print("🔄 FriendsView onAppear - users.count: \(users.count), currentUser: \(currentUser?.displayName ?? "nil")")
@@ -245,6 +254,34 @@ struct FriendsView: View {
             }
         }
         .navigationViewStyle(.stack)
+        .searchBarKeyboardDismissible()
+        .onAppear {
+            print("🔄 FriendsView onAppear - users.count: \(users.count), currentUser: \(currentUser?.displayName ?? "nil")")
+            
+            // Check if user is authenticated before trying to load data
+            guard Auth.auth().currentUser != nil else {
+                print("⚠️ User not authenticated, skipping data load")
+                return
+            }
+            
+            // Always ensure we have data when the view appears
+            if users.isEmpty || currentUser == nil {
+                print("🔄 Data is empty or missing, reloading")
+                reloadData()
+            } else {
+                print("🔄 Data appears to be valid, no reload needed")
+            }
+            
+            setupIncomingRequestsListener()
+            
+            // Re-apply search if there's active search text
+            if !searchText.isEmpty {
+                print("🔍 Re-applying search on view appear: '\(searchText)'")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    performSearch(searchText)
+                }
+            }
+        }
     }
     
     // MARK: - View Components
@@ -604,37 +641,40 @@ struct FriendsView: View {
                                 .cornerRadius(DesignSystem.CornerRadius.small)
                                 .lineLimit(1)
                         } else {
-                            Button(action: { sendFriendRequest(to: user) }) {
-                                if sendingToUser == user.uid {
-                                    ProgressView().scaleEffect(0.8)
-                                } else if sentRequests.contains(user.uid) || isRequestSent(to: user) {
-                                    Text("Requested")
-                                        .font(DesignSystem.Typography.caption)
-                                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                                        .lineLimit(1)
-                                } else {
-                                    VStack(spacing: 0) {
-                                        Text("Send")
+                            // Only show the Send Request button if it's not the current user
+                            if currentUser?.uid != user.uid {
+                                Button(action: { sendFriendRequest(to: user) }) {
+                                    if sendingToUser == user.uid {
+                                        ProgressView().scaleEffect(0.8)
+                                    } else if sentRequests.contains(user.uid) || isRequestSent(to: user) {
+                                        Text("Requested")
                                             .font(DesignSystem.Typography.caption)
-                                            .fontWeight(.medium)
+                                            .foregroundColor(DesignSystem.Colors.textSecondary)
                                             .lineLimit(1)
-                                            .allowsTightening(false)
-                                        Text("Request")
-                                            .font(DesignSystem.Typography.caption)
-                                            .fontWeight(.medium)
-                                            .lineLimit(1)
-                                            .allowsTightening(false)
+                                    } else {
+                                        VStack(spacing: 0) {
+                                            Text("Send")
+                                                .font(DesignSystem.Typography.caption)
+                                                .fontWeight(.medium)
+                                                .lineLimit(1)
+                                                .allowsTightening(false)
+                                            Text("Request")
+                                                .font(DesignSystem.Typography.caption)
+                                                .fontWeight(.medium)
+                                                .lineLimit(1)
+                                                .allowsTightening(false)
+                                        }
+                                        .multilineTextAlignment(.center)
+                                        .fixedSize(horizontal: true, vertical: true)
                                     }
-                                    .multilineTextAlignment(.center)
-                                    .fixedSize(horizontal: true, vertical: true)
                                 }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, DesignSystem.Spacing.sm)
+                                .padding(.vertical, DesignSystem.Spacing.xs)
+                                .background(DesignSystem.Colors.primary)
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                                .disabled(sendingToUser != nil)
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
-                            .background(DesignSystem.Colors.primary)
-                            .cornerRadius(DesignSystem.CornerRadius.small)
-                            .disabled(sendingToUser != nil)
                         }
                     }
                     .layoutPriority(2)
@@ -652,37 +692,40 @@ struct FriendsView: View {
                                 .cornerRadius(DesignSystem.CornerRadius.small)
                                 .lineLimit(1)
                         } else {
-                            Button(action: { sendFriendRequest(to: user) }) {
-                                if sendingToUser == user.uid {
-                                    ProgressView().scaleEffect(0.8)
-                                } else if sentRequests.contains(user.uid) || isRequestSent(to: user) {
-                                    Text("Requested")
-                                        .font(DesignSystem.Typography.caption)
-                                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                                        .lineLimit(1)
-                                } else {
-                                    VStack(spacing: 0) {
-                                        Text("Send")
+                            // Only show the Send Request button if it's not the current user
+                            if currentUser?.uid != user.uid {
+                                Button(action: { sendFriendRequest(to: user) }) {
+                                    if sendingToUser == user.uid {
+                                        ProgressView().scaleEffect(0.8)
+                                    } else if sentRequests.contains(user.uid) || isRequestSent(to: user) {
+                                        Text("Requested")
                                             .font(DesignSystem.Typography.caption)
-                                            .fontWeight(.medium)
+                                            .foregroundColor(DesignSystem.Colors.textSecondary)
                                             .lineLimit(1)
-                                            .allowsTightening(false)
-                                        Text("Request")
-                                            .font(DesignSystem.Typography.caption)
-                                            .fontWeight(.medium)
-                                            .lineLimit(1)
-                                            .allowsTightening(false)
+                                    } else {
+                                        VStack(spacing: 0) {
+                                            Text("Send")
+                                                .font(DesignSystem.Typography.caption)
+                                                .fontWeight(.medium)
+                                                .lineLimit(1)
+                                                .allowsTightening(false)
+                                            Text("Request")
+                                                .font(DesignSystem.Typography.caption)
+                                                .fontWeight(.medium)
+                                                .lineLimit(1)
+                                                .allowsTightening(false)
+                                        }
+                                        .multilineTextAlignment(.center)
+                                        .fixedSize(horizontal: true, vertical: true)
                                     }
-                                    .multilineTextAlignment(.center)
-                                    .fixedSize(horizontal: true, vertical: true)
                                 }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, DesignSystem.Spacing.sm)
+                                .padding(.vertical, DesignSystem.Spacing.xs)
+                                .background(DesignSystem.Colors.primary)
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                                .disabled(sendingToUser != nil)
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
-                            .background(DesignSystem.Colors.primary)
-                            .cornerRadius(DesignSystem.CornerRadius.small)
-                            .disabled(sendingToUser != nil)
                         }
                     }
                     .layoutPriority(2)
@@ -730,16 +773,23 @@ struct FriendsView: View {
                     let previousCount = self.incomingRequests.count
                     self.incomingRequests = documents.compactMap { doc -> UserProfile? in
                         let data = doc.data()
+                        
+                        // The friend request document now contains the sender's profile information
+                        let uid = data["uid"] as? String ?? doc.documentID
+                        let displayName = data["displayName"] as? String ?? "Unknown User"
+                        let email = data["email"] as? String ?? "unknown@email.com"
+                        let photoURL = data["photoURL"] as? String
+                        
                         return UserProfile(
                             id: doc.documentID,
-                            uid: data["uid"] as? String ?? doc.documentID,
-                            displayName: data["displayName"] as? String ?? "Unknown User",
-                            email: data["email"] as? String ?? "unknown",
-                            photoURL: data["photoURL"] as? String,
-                            friends: data["friends"] as? [String] ?? [],
-                            incomingRequests: data["incomingRequests"] as? [String] ?? [],
-                            outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
-                            bio: data["bio"] as? String
+                            uid: uid,
+                            displayName: displayName,
+                            email: email,
+                            photoURL: photoURL,
+                            friends: [], // Friend requests don't have friends array
+                            incomingRequests: [], // Friend requests don't have incoming requests
+                            outgoingRequests: [], // Friend requests don't have outgoing requests
+                            bio: nil // Friend requests don't have bio
                         )
                     }
                     
@@ -869,35 +919,80 @@ struct FriendsView: View {
             }
         
         // Load outgoing friend requests
-        Firestore.firestore().collection("users").document(currentUserId)
-            .collection("outgoingFriendRequests")
-            .getDocuments { snapshot, error in
+        loadOutgoingRequests()
+    }
+    
+    private func loadOutgoingRequests() {
+        // Check if Firebase is initialized before accessing Auth
+        if FirebaseApp.app() == nil {
+            print("⚠️ Firebase not initialized, skipping outgoing requests load")
+            return
+        }
+        
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        print("📤 Loading outgoing friend requests...")
+        
+        // Get the current user's outgoing requests array first
+        Firestore.firestore().collection("users").document(currentUserId).getDocument { userDoc, userError in
+            if let userError = userError {
+                print("❌ Error loading current user: \(userError.localizedDescription)")
+                return
+            }
+            
+            guard let userData = userDoc?.data(),
+                  let outgoingRequestUIDs = userData["outgoingRequests"] as? [String],
+                  !outgoingRequestUIDs.isEmpty else {
+                print("📤 No outgoing requests found")
                 DispatchQueue.main.async {
+                    self.outgoingRequests = []
+                }
+                return
+            }
+            
+            print("📤 Found \(outgoingRequestUIDs.count) outgoing request UIDs: \(outgoingRequestUIDs)")
+            
+            // Fetch the actual user profiles for the outgoing requests
+            let batch = Firestore.firestore().batch()
+            var userProfiles: [UserProfile] = []
+            let group = DispatchGroup()
+            
+            for uid in outgoingRequestUIDs {
+                group.enter()
+                Firestore.firestore().collection("users").document(uid).getDocument { doc, error in
+                    defer { group.leave() }
+                    
                     if let error = error {
-                        print("❌ Error loading outgoing requests: \(error.localizedDescription)")
+                        print("❌ Error loading user \(uid): \(error.localizedDescription)")
                         return
                     }
                     
-                    guard let documents = snapshot?.documents else { return }
-                    
-                    self.outgoingRequests = documents.compactMap { doc -> UserProfile? in
-                        let data = doc.data()
-                        return UserProfile(
-                            id: doc.documentID,
-                            uid: data["uid"] as? String ?? doc.documentID,
-                            displayName: data["displayName"] as? String ?? "Unknown User",
-                            email: data["email"] as? String ?? "unknown",
-                            photoURL: data["photoURL"] as? String,
-                            friends: data["friends"] as? [String] ?? [],
-                            incomingRequests: data["incomingRequests"] as? [String] ?? [],
-                            outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
-                            bio: data["bio"] as? String
-                        )
+                    guard let data = doc?.data() else {
+                        print("❌ User document not found for \(uid)")
+                        return
                     }
                     
-
+                    let userProfile = UserProfile(
+                        id: doc?.documentID,
+                        uid: data["uid"] as? String ?? uid,
+                        displayName: data["displayName"] as? String ?? "Unknown User",
+                        email: data["email"] as? String ?? "unknown@email.com",
+                        photoURL: data["photoURL"] as? String,
+                        friends: data["friends"] as? [String] ?? [],
+                        incomingRequests: data["incomingRequests"] as? [String] ?? [],
+                        outgoingRequests: data["outgoingRequests"] as? [String] ?? [],
+                        bio: data["bio"] as? String
+                    )
+                    
+                    userProfiles.append(userProfile)
                 }
             }
+            
+            group.notify(queue: .main) {
+                print("📤 Loaded \(userProfiles.count) outgoing request profiles")
+                self.outgoingRequests = userProfiles
+            }
+        }
     }
     
     private func isFriend(_ user: UserProfile) -> Bool {
@@ -1117,6 +1212,9 @@ struct FriendsView: View {
                     .disableAutocorrection(true)
                     .accessibilityLabel("Search for users")
                     .accessibilityHint("Type to search for users by name, email, or bio")
+                    .submitLabel(.search)
+                    .keyboardType(.default)
+                    .textContentType(.none)
                     .onChange(of: searchText) { newValue in
                         // Debounced search
                         Task {
@@ -1130,6 +1228,7 @@ struct FriendsView: View {
                     }
                     .onSubmit {
                         performSearch(searchText)
+                        // Keep focus to allow continued typing
                     }
                     .onTapGesture {
                         // Show search suggestions when tapping the search field
@@ -1733,11 +1832,62 @@ struct FriendsView: View {
         // 3. Provide analytics on invitation success rates
         print("📧 Email invitation would be sent to: \(email)")
     }
+    
+    // MARK: - Weekly Challenge Section
+    private var weeklyChallengeSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            HStack {
+                Text("🎯 Weekly Challenge")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Button("View All") {
+                    showingWeeklyChallenge = true
+                }
+                .font(DesignSystem.Typography.bodySmall)
+                .foregroundColor(DesignSystem.Colors.accent)
+            }
+            
+            // Challenge Preview Card
+            Button(action: { showingWeeklyChallenge = true }) {
+                HStack {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        Text("Current Challenge")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        
+                        Text("Tap to view details")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.medium)
+                            .foregroundColor(DesignSystem.Colors.textPrimary)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 16))
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+                .padding(DesignSystem.Spacing.md)
+                .background(DesignSystem.Colors.cardBackground)
+                .cornerRadius(DesignSystem.CornerRadius.medium)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                        .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .iPadCardStyle()
+    }
 }
 
 // MARK: - Invite User Sheet
 struct InviteUserSheet: View {
     let user: UserProfile
+    let currentUser: UserProfile?
     let onComplete: () -> Void
     
     @Environment(\.dismiss) private var dismiss
@@ -1789,29 +1939,41 @@ struct InviteUserSheet: View {
                 
                 // Action Buttons
                 VStack(spacing: DesignSystem.Spacing.md) {
-                    Button(action: {
-                        sendFriendRequest()
-                    }) {
-                        HStack(spacing: 8) {
-                            if isInviting {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
-                                Image(systemName: "person.badge.plus")
-                                    .font(.system(size: 16))
+                    // Only show the Send Friend Request button if it's not the current user
+                    if currentUser?.uid != user.uid {
+                        Button(action: {
+                            sendFriendRequest()
+                        }) {
+                            HStack(spacing: 8) {
+                                if isInviting {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else {
+                                    Image(systemName: "person.badge.plus")
+                                        .font(.system(size: 16))
+                                }
+                                Text(isInviting ? "Sending Request..." : "Send Friend Request")
+                                    .font(DesignSystem.Typography.bodyMedium)
+                                    .fontWeight(.semibold)
                             }
-                            Text(isInviting ? "Sending Request..." : "Send Friend Request")
-                                .font(DesignSystem.Typography.bodyMedium)
-                                .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(DesignSystem.Colors.primary)
+                            .cornerRadius(DesignSystem.CornerRadius.medium)
                         }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(DesignSystem.Colors.primary)
-                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .disabled(isInviting)
+                    } else {
+                        // Show a message that this is the current user
+                        Text("This is your profile")
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(DesignSystem.Colors.border.opacity(0.3))
+                            .cornerRadius(DesignSystem.CornerRadius.medium)
                     }
-                    .disabled(isInviting)
                     
                     Button(action: {
                         dismiss()
@@ -1930,31 +2092,33 @@ struct SearchResultRow: View {
                 } else {
                     // Action buttons - horizontal layout with increased widths
                     HStack(spacing: 6) {
-                        // Send friend request
-                        Button(action: {
-                            sendFriendRequest()
-                        }) {
-                            HStack(spacing: 4) {
-                                if isInviting {
-                                    ProgressView()
-                                        .scaleEffect(0.6)
-                                        .frame(width: 16, height: 16)
-                                } else {
-                                    Image(systemName: "person.badge.plus")
-                                        .font(.system(size: 12))
+                        // Send friend request - only show if it's not the current user
+                        if currentUser?.uid != user.uid {
+                            Button(action: {
+                                sendFriendRequest()
+                            }) {
+                                HStack(spacing: 4) {
+                                    if isInviting {
+                                        ProgressView()
+                                            .scaleEffect(0.6)
+                                            .frame(width: 16, height: 16)
+                                    } else {
+                                        Image(systemName: "person.badge.plus")
+                                            .font(.system(size: 12))
+                                    }
+                                    Text(isInviting ? "Sending..." : "Add")
+                                        .font(DesignSystem.Typography.caption)
+                                        .fontWeight(.medium)
                                 }
-                                Text(isInviting ? "Sending..." : "Add")
-                                    .font(DesignSystem.Typography.caption)
-                                    .fontWeight(.medium)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(DesignSystem.Colors.primary)
+                                .cornerRadius(DesignSystem.CornerRadius.small)
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(DesignSystem.Colors.primary)
-                            .cornerRadius(DesignSystem.CornerRadius.small)
+                            .disabled(isInviting)
+                            .frame(width: 75) // Increased width to prevent wrapping
                         }
-                        .disabled(isInviting)
-                        .frame(width: 75) // Increased width to prevent wrapping
                         
                         // Invite via Email
                         Button(action: {

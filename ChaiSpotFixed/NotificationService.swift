@@ -445,7 +445,7 @@ class NotificationService: NSObject, ObservableObject {
         
         let content = UNMutableNotificationContent()
         content.title = "🔥 Keep Your Streak Alive!"
-        content.body = "Don't break your chai rating streak! Rate a spot today to keep it going."
+                    content.body = "Don't break your weekly chai rating streak! Rate 3+ spots this week to keep it going."
         content.sound = .default
         
         // Schedule for 8 PM if user hasn't rated today

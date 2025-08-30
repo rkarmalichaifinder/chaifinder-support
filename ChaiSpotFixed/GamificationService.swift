@@ -65,8 +65,34 @@ class GamificationService: ObservableObject {
     
 
     
-    // 🔥 Calculate and update streak
-    func updateStreak(lastReviewDate: Date) -> (currentStreak: Int, longestStreak: Int, isNewStreak: Bool) {
+    // 🔥 Calculate and update weekly streak
+    func updateWeeklyStreak(lastWeekReviewCount: Int, targetPerWeek: Int = 3) async -> (currentStreak: Int, longestStreak: Int, isNewStreak: Bool) {
+        var newCurrentStreak = 0
+        var newLongestStreak = 0
+        var isNewStreak = false
+        
+        if lastWeekReviewCount >= targetPerWeek {
+            // Weekly goal met - extend streak
+            newCurrentStreak = currentStreak + 1
+            isNewStreak = true
+            
+            // Check for streak milestones and trigger notifications
+            checkStreakMilestones(newStreak: newCurrentStreak)
+            
+            // Update total score after streak change
+            await updateTotalScore()
+        } else {
+            // Weekly goal not met - reset streak
+            newCurrentStreak = 0
+        }
+        
+        newLongestStreak = max(longestStreak, newCurrentStreak)
+        
+        return (newCurrentStreak, newLongestStreak, isNewStreak)
+    }
+    
+    // 🔥 Calculate and update streak (keeping for backward compatibility)
+    func updateStreak(lastReviewDate: Date) async -> (currentStreak: Int, longestStreak: Int, isNewStreak: Bool) {
         let calendar = Calendar.current
         let now = Date()
         
@@ -84,6 +110,9 @@ class GamificationService: ObservableObject {
             
             // Check for streak milestones and trigger notifications
             checkStreakMilestones(newStreak: newCurrentStreak)
+            
+            // Update total score after streak change
+            await updateTotalScore()
         } else if daysSinceLastReview == 0 {
             // Same day - maintain current streak
             newCurrentStreak = currentStreak
@@ -120,6 +149,9 @@ class GamificationService: ObservableObject {
                 DispatchQueue.main.async {
                     self.notificationService.notifyBadgeUnlocked(badge: awardedBadge)
                 }
+                
+                // Update total score after awarding badge
+                await updateTotalScore()
             }
         }
         
@@ -145,6 +177,9 @@ class GamificationService: ObservableObject {
                 DispatchQueue.main.async {
                     self.notificationService.notifyAchievementUnlocked(achievement: achievement)
                 }
+                
+                // Update total score after awarding achievement
+                await updateTotalScore()
             }
         }
         
@@ -312,6 +347,60 @@ class GamificationService: ObservableObject {
     // 🔄 Refresh gamification data
     func refreshData() {
         loadUserGamificationData()
+    }
+    
+    // 🎯 Calculate total score from all user activities
+    func calculateTotalScore() -> Int {
+        var total = 0
+        
+        // Add points from all achievements
+        for achievement in userAchievements {
+            total += achievement.points
+        }
+        
+        // Add points from badges (if badges have point values)
+        total += userBadges.count * 10 // 10 points per badge
+        
+        // Add points from current streak
+        total += currentStreak * 5 // 5 points per week of streak
+        
+        // Add points from longest streak milestone
+        if longestStreak >= 52 { total += 100 }      // 1 year
+        else if longestStreak >= 26 { total += 75 }  // 6 months
+        else if longestStreak >= 12 { total += 50 }  // 3 months
+        else if longestStreak >= 8 { total += 25 }   // 2 months
+        else if longestStreak >= 4 { total += 15 }   // 1 month
+        else if longestStreak >= 2 { total += 10 }   // 2 weeks
+        
+        return total
+    }
+    
+    // 🔄 Update total score in Firestore
+    func updateTotalScore() async {
+        guard let userId = auth.currentUser?.uid else { return }
+        
+        let newTotalScore = calculateTotalScore()
+        
+        do {
+            try await db.collection("users").document(userId).updateData([
+                "totalScore": newTotalScore
+            ])
+            
+            await MainActor.run {
+                self.totalScore = newTotalScore
+            }
+            
+            print("✅ Updated total score to: \(newTotalScore)")
+        } catch {
+            print("❌ Error updating total score: \(error)")
+        }
+    }
+    
+    // 🔄 Update total score locally (non-async version)
+    func updateTotalScoreLocally() {
+        let newTotalScore = calculateTotalScore()
+        self.totalScore = newTotalScore
+        print("✅ Updated local total score to: \(newTotalScore)")
     }
     
     // 🎯 Trigger weekly challenge notification

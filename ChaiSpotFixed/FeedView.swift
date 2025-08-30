@@ -1,6 +1,7 @@
 import SwiftUI
 import Firebase
 import FirebaseFirestore
+import Combine
 
 struct FeedView: View {
     @StateObject private var viewModel = FeedViewModel()
@@ -9,6 +10,7 @@ struct FeedView: View {
     @State private var showingSearchSuggestions = false
     @State private var isReapplyingSearch = false
     @State private var persistSearchAcrossFeeds = true
+    @FocusState private var isSearchFocused: Bool
     
     @EnvironmentObject var sessionStore: SessionStore
     
@@ -55,7 +57,19 @@ struct FeedView: View {
             .refreshable {
                 viewModel.refreshFeed()
             }
-            .keyboardDismissible()
+            .searchBarKeyboardDismissible()
+            .onAppear {
+                // Start listening for rating update notifications
+                viewModel.startListeningForNotifications()
+                
+                if viewModel.reviews.isEmpty {
+                    viewModel.refreshFeed()
+                }
+            }
+            .onDisappear {
+                // Stop listening for notifications when view disappears
+                viewModel.stopListeningForNotifications()
+            }
         }
         .navigationViewStyle(.stack)
         .sheet(isPresented: $showingAddReview) {
@@ -63,10 +77,18 @@ struct FeedView: View {
             Text("Add Review")
                 .font(DesignSystem.Typography.titleLarge)
         }
+        .searchBarKeyboardDismissible()
         .onAppear {
+            // Start listening for rating update notifications
+            viewModel.startListeningForNotifications()
+            
             if viewModel.reviews.isEmpty {
                 viewModel.refreshFeed()
             }
+        }
+        .onDisappear {
+            // Stop listening for notifications when view disappears
+            viewModel.stopListeningForNotifications()
         }
     }
     
@@ -169,27 +191,27 @@ struct FeedView: View {
                 TextField("Search reviews, locations, cities, users...", text: $searchText)
                     .font(DesignSystem.Typography.bodyMedium)
                     .foregroundColor(DesignSystem.Colors.textPrimary)
-                    .autocorrectionDisabled(true)
-                    .autocapitalization(.none)
+                    .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
-                    .textContentType(.none)
+                    .focused($isSearchFocused)
                     .accessibilityLabel("Search reviews")
                     .accessibilityHint("Type to search through reviews, locations, cities, and reviewers")
+                    .textFieldStyle(PlainTextFieldStyle())
                     .onChange(of: searchText) { newValue in
-                        // Debounced search
-                        Task {
-                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
-                            await MainActor.run {
-                                if searchText == newValue {
-                                    viewModel.filterReviews(searchText)
-                                }
-                            }
-                        }
+                        // Simple search without debouncing
+                        viewModel.filterReviews(newValue)
                     }
                     .onTapGesture {
-                        showingSearchSuggestions = true
+                        isSearchFocused = true
                     }
+                    .onSubmit {
+                        // Keep focus when submitting to allow continued typing
+                        // Don't dismiss keyboard
+                    }
+                    .submitLabel(.search)
+                    .keyboardType(.default)
+                    .textContentType(.none)
+
                 
                 if !searchText.isEmpty {
                     Button(action: { 
@@ -234,10 +256,15 @@ struct FeedView: View {
             }
             #endif
             
-            // Search suggestions
-            if showingSearchSuggestions && searchText.isEmpty {
-                searchSuggestionsView
-            }
+            // Debug search text info (always show for troubleshooting)
+
+            
+
+            
+            // Search suggestions (temporarily disabled to test focus issue)
+            // if showingSearchSuggestions && searchText.isEmpty {
+            //     searchSuggestionsView
+            // }
         }
     }
     

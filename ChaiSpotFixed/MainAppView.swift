@@ -20,18 +20,17 @@ struct MainAppView: View {
             
             FriendsView()
                 .tabItem {
-                    Label("Social", systemImage: "person.3")
+                    Label("Social", systemImage: "person.2")
                 }
                 .tag(2)
-                
+            
             ProfileView()
                 .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
+                    Label("Profile", systemImage: "person.circle")
                 }
                 .tag(3)
         }
-        .accentColor(DesignSystem.Colors.primary)
-        .environmentObject(sessionStore)
+        .accentColor(.orange)
     }
 }
 
