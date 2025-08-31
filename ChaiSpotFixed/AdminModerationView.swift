@@ -223,6 +223,7 @@ struct ReportDetailView: View {
             }
             .navigationTitle("Report Details")
             .navigationBarTitleDisplayMode(.inline)
+            .keyboardDismissible()
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
