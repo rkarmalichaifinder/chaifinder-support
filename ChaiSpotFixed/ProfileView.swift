@@ -280,11 +280,10 @@ struct ProfileView: View {
                             }
                     }
                     
-                    // Celebratory Streak Banner (left of profile picture, rotated 45 degrees)
+                    // Celebratory Streak Banner (top left of profile picture, rotated -90 degrees)
                     HStack {
                         // Streak Banner
                         VStack {
-                            Spacer()
                             HStack {
                                 ZStack {
                                     // Celebratory background with gradient and sparkles
@@ -296,8 +295,8 @@ struct ProfileView: View {
                                                     DesignSystem.Colors.accent.opacity(0.8),
                                                     DesignSystem.Colors.accent
                                                 ]),
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
+                                                startPoint: .bottomLeading,
+                                                endPoint: .topTrailing
                                             )
                                         )
                                         .frame(width: UIDevice.current.userInterfaceIdiom == .pad ? 140 : 120, 
@@ -318,7 +317,7 @@ struct ProfileView: View {
                                             }
                                         )
                                     
-                                    // Streak text with celebration
+                                    // Streak text with celebration - positioned to start from bottom-left
                                     VStack(spacing: 2) {
                                         Text("\(gamificationService.currentStreak)")
                                             .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 18 : 16, weight: .bold))
@@ -329,8 +328,10 @@ struct ProfileView: View {
                                             .foregroundColor(.white)
                                             .minimumScaleFactor(0.7)
                                     }
+                                    .offset(x: UIDevice.current.userInterfaceIdiom == .pad ? -10 : -8, 
+                                           y: UIDevice.current.userInterfaceIdiom == .pad ? 8 : 6)
                                 }
-                                .rotationEffect(.degrees(45))
+                                .rotationEffect(.degrees(-45))
                                 .offset(x: UIDevice.current.userInterfaceIdiom == .pad ? -25 : -20, 
                                        y: UIDevice.current.userInterfaceIdiom == .pad ? -25 : -20)
                                 Spacer()
