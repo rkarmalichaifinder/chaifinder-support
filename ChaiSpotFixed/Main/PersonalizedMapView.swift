@@ -8,6 +8,7 @@ import FirebaseAuth
 struct PersonalizedMapView: View {
     @StateObject private var vm = PersonalizedMapViewModel()
     @EnvironmentObject var session: SessionStore
+    @FocusState private var isSearchFocused: Bool
     // Map region - dynamic based on user location or spots
     @State private var mapRegion = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
@@ -364,6 +365,7 @@ struct PersonalizedMapView: View {
                     .keyboardType(.default)
                     .submitLabel(.search)
                     .textContentType(.none)
+                    .focused($isSearchFocused)
                     .accessibilityLabel("Search chai spots or locations")
                     .accessibilityHint("Type to search through chai spots or search for a location to center the map")
                     .onChange(of: vm.searchText) { newValue in

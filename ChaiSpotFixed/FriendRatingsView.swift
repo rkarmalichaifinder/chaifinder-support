@@ -146,30 +146,41 @@ struct FriendRatingsView: View {
                     self.friendRatings = documents.compactMap { document -> Rating? in
                         let data = document.data()
                         
-                        guard let spotId = data["spotId"] as? String,
-                              let userId = data["userId"] as? String,
-                              let value = data["value"] as? Int else {
+                        guard let spotId = data["spotId"] as? String ?? data["spot"] as? String ?? data["location"] as? String,
+                              let userId = data["userId"] as? String ?? data["user"] as? String ?? data["uid"] as? String,
+                              let value = data["value"] as? Int ?? data["rating"] as? Int ?? data["score"] as? Int else {
                             print("⚠️ FriendRatingsView: Invalid rating document: \(document.documentID)")
                             print("🔍 Debug info: data keys: \(Array(data.keys))")
-                            print("🔍 Debug info: spotId type: \(type(of: data["spotId"])), userId type: \(type(of: data["userId"])), value type: \(type(of: data["value"]))")
+                            print("🔍 Debug info: spotId type: \(type(of: data["spotId"] ?? data["spot"] ?? data["location"] ?? "nil")), userId type: \(type(of: data["userId"] ?? data["user"] ?? data["uid"] ?? "nil")), value type: \(type(of: data["value"] ?? data["rating"] ?? data["score"] ?? "nil"))")
                             return nil
                         }
                         
-                        print("🔍 FriendRatingsView: Processing rating for spotId: \(spotId), userId: \(userId), value: \(value)")
+                        print("🔍 FriendRatingsView: Processing rating for spotId: '\(spotId)', userId: '\(userId)', value: \(value)")
+                        print("🔍 FriendRatingsView: Available fields: \(Array(data.keys))")
                         
-                        let username = data["username"] as? String ?? data["userName"] as? String
-                        let comment = data["comment"] as? String
-                        let timestamp = data["timestamp"] as? Timestamp
-                        let likes = data["likes"] as? Int
-                        let dislikes = data["dislikes"] as? Int
-                        let creaminessRating = data["creaminessRating"] as? Int
-                        let chaiStrengthRating = data["chaiStrengthRating"] as? Int
-                        let flavorNotes = data["flavorNotes"] as? [String]
+                        let username = data["username"] as? String ?? data["userName"] as? String ?? data["displayName"] as? String
+                        let comment = data["comment"] as? String ?? data["review"] as? String
+                        let timestamp = data["timestamp"] as? Timestamp ?? data["createdAt"] as? Timestamp ?? data["date"] as? Timestamp
+                        let likes = data["likes"] as? Int ?? data["likeCount"] as? Int
+                        let dislikes = data["dislikes"] as? Int ?? data["dislikeCount"] as? Int
+                        let creaminessRating = data["creaminessRating"] as? Int ?? data["creaminess"] as? Int
+                        let chaiStrengthRating = data["chaiStrengthRating"] as? Int ?? data["strength"] as? Int
+                        let flavorNotes = data["flavorNotes"] as? [String] ?? data["notes"] as? [String]
+                        let spotName = data["spotName"] as? String ?? data["name"] as? String
+                        let spotAddress = data["spotAddress"] as? String ?? data["address"] as? String
+                        let chaiType = data["chaiType"] as? String ?? data["type"] as? String
+                        let photoURL = data["photoURL"] as? String ?? data["photo"] as? String
+                        let hasPhoto = data["hasPhoto"] as? Bool ?? (photoURL != nil && !photoURL!.isEmpty)
+                        let gamificationScore = data["gamificationScore"] as? Int ?? data["score"] as? Int ?? 0
+                        let visibility = data["visibility"] as? String ?? data["privacy"] as? String ?? "public"
+                        
+                        print("🔍 FriendRatingsView: Found spotName in rating: \(spotName ?? "nil")")
                         
                         return Rating(
                             spotId: spotId,
                             userId: userId,
                             username: username,
+                            spotName: spotName, // Use the spotName from the rating document
                             value: value,
                             comment: comment,
                             timestamp: timestamp?.dateValue(),
@@ -177,19 +188,156 @@ struct FriendRatingsView: View {
                             dislikes: dislikes,
                             creaminessRating: creaminessRating,
                             chaiStrengthRating: chaiStrengthRating,
-                            flavorNotes: flavorNotes
+                            flavorNotes: flavorNotes,
+                            chaiType: chaiType,
+                            photoURL: photoURL,
+                            hasPhoto: hasPhoto,
+                            reactions: [:],
+                            isStreakReview: false,
+                            gamificationScore: gamificationScore,
+                            isFirstReview: false,
+                            isNewSpot: false,
+                            visibility: visibility
                         )
                     }
                     
                     print("✅ FriendRatingsView: Loaded \(self.friendRatings.count) ratings")
                     for rating in self.friendRatings {
-                        print("🔍 Rating: spotId=\(rating.spotId), value=\(rating.value)")
+                        print("🔍 Rating: spotId='\(rating.spotId)', value=\(rating.value), spotName='\(rating.spotName ?? "nil")'")
                     }
+                    
+                    // Debug: Check what spot IDs we're working with
+                    self.debugSpotIds()
+                    
+                    // Load spot names for ratings that don't have them
+                    self.loadMissingSpotNames()
                     
                     // Debug: Check what's actually in the collections
                     self.debugCollections()
                 }
             }
+    }
+    
+    // MARK: - Load Missing Spot Names
+    
+    private func loadMissingSpotNames() {
+        let db = Firestore.firestore()
+        let collections = ["chaiFinder", "chaiSpots"]
+        
+        // Only load spot names for ratings that don't already have them
+        for (index, rating) in friendRatings.enumerated() {
+            if rating.spotName == nil || rating.spotName?.isEmpty == true {
+                print("🔍 Loading missing spot name for rating \(index), spotId: \(rating.spotId)")
+                loadSpotNameForRating(rating, at: index, from: collections)
+            } else {
+                print("✅ Rating \(index) already has spot name: \(rating.spotName ?? "nil")")
+            }
+        }
+    }
+    
+    private func loadSpotNameForRating(_ rating: Rating, at index: Int, from collections: [String]) {
+        let db = Firestore.firestore()
+        
+        // Try each collection sequentially
+        func tryCollection(at collectionIndex: Int) {
+            guard collectionIndex < collections.count else {
+                // All collections failed, use fallback
+                let fallbackName = "Chai Spot #\(rating.spotId.prefix(6))"
+                print("⚠️ Failed to load spot name for rating \(index) from all collections, using fallback: \(fallbackName)")
+                
+                DispatchQueue.main.async {
+                    if index < self.friendRatings.count {
+                        self.friendRatings[index].spotName = fallbackName
+                    }
+                }
+                return
+            }
+            
+            let collectionName = collections[collectionIndex]
+            print("🔍 Loading spot name for rating \(index) from collection: \(collectionName), spotId: \(rating.spotId)")
+            
+            db.collection(collectionName).document(rating.spotId).getDocument { snapshot, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("❌ Failed to load from collection \(collectionName) for rating \(index): \(error.localizedDescription)")
+                        // Try next collection
+                        tryCollection(at: collectionIndex + 1)
+                        return
+                    }
+                    
+                    guard let data = snapshot?.data() else {
+                        print("⚠️ No data found in collection \(collectionName) for rating \(index), spotId: \(rating.spotId)")
+                        // Try next collection
+                        tryCollection(at: collectionIndex + 1)
+                        return
+                    }
+                    
+                    guard let name = data["name"] as? String, !name.isEmpty else {
+                        print("⚠️ Missing or empty name from collection \(collectionName) for rating \(index)")
+                        print("🔍 Available fields: \(Array(data.keys))")
+                        // Try next collection
+                        tryCollection(at: collectionIndex + 1)
+                        return
+                    }
+                    
+                    print("✅ Successfully loaded spot name for rating \(index): \(name)")
+                    
+                    if index < self.friendRatings.count {
+                        self.friendRatings[index].spotName = name
+                    }
+                }
+            }
+        }
+        
+        // Start with the first collection
+        tryCollection(at: 0)
+    }
+    
+    // MARK: - Debug Spot IDs
+    
+    private func debugSpotIds() {
+        print("🔍 DEBUG: Analyzing spot IDs from ratings...")
+        let uniqueSpotIds = Set(friendRatings.map { $0.spotId })
+        print("🔍 DEBUG: Found \(uniqueSpotIds.count) unique spot IDs:")
+        
+        for spotId in uniqueSpotIds {
+            print("🔍 DEBUG: Spot ID: '\(spotId)' (length: \(spotId.count), contains spaces: \(spotId.contains(" ")), contains dots: \(spotId.contains(".")), contains dashes: \(spotId.contains("-")))")
+        }
+        
+        // Check if any spot IDs look like they might be names instead of IDs
+        for spotId in uniqueSpotIds {
+            if spotId.contains(" ") || spotId.contains(".") || spotId.contains("-") {
+                print("⚠️ DEBUG: Spot ID '\(spotId)' contains spaces or special characters - might be a name instead of ID")
+            }
+            
+            // Check if the spot ID looks like it might be a name (starts with capital letter, contains common words)
+            let commonWords = ["chai", "tea", "coffee", "cafe", "restaurant", "shop", "store", "bar", "lounge"]
+            let lowercasedSpotId = spotId.lowercased()
+            for word in commonWords {
+                if lowercasedSpotId.contains(word) {
+                    print("⚠️ DEBUG: Spot ID '\(spotId)' contains '\(word)' - might be a name instead of ID")
+                }
+            }
+            
+            // Check if the spot ID looks like it might be a name (starts with capital letter)
+            if let firstChar = spotId.first, firstChar.isUppercase {
+                print("⚠️ DEBUG: Spot ID '\(spotId)' starts with capital letter - might be a name instead of ID")
+            }
+            
+            // Check if the spot ID looks like it might be a name (contains multiple words)
+            let words = spotId.components(separatedBy: " ")
+            if words.count > 1 {
+                print("⚠️ DEBUG: Spot ID '\(spotId)' contains multiple words - might be a name instead of ID")
+            }
+            
+            // Check if the spot ID looks like it might be a name (contains common business suffixes)
+            let businessSuffixes = ["inc", "llc", "ltd", "corp", "company", "co", "&", "and"]
+            for suffix in businessSuffixes {
+                if lowercasedSpotId.contains(suffix) {
+                    print("⚠️ DEBUG: Spot ID '\(spotId)' contains business suffix '\(suffix)' - might be a name instead of ID")
+                }
+            }
+        }
     }
     
     // MARK: - Debug Collections
@@ -359,47 +507,48 @@ struct FriendRatingsView: View {
                 print("🔍 Attempting to load spot \(spotId) from collection: \(collectionName)")
                 
                 db.collection(collectionName).document(spotId).getDocument { snapshot, error in
-                DispatchQueue.main.async {
-                    self.loadingSpots.remove(spotId)
-                    
-                    if let error = error {
-                        // Try the next collection if this one failed
-                        print("❌ Failed to load from collection \(collections[currentCollectionIndex - 1]): \(error.localizedDescription)")
-                        tryNextCollection()
-                        return
+                    DispatchQueue.main.async {
+                        self.loadingSpots.remove(spotId)
+                        
+                        if let error = error {
+                            // Try the next collection if this one failed
+                            print("❌ Failed to load from collection \(collections[currentCollectionIndex - 1]): \(error.localizedDescription)")
+                            tryNextCollection()
+                            return
+                        }
+                        
+                        guard let data = snapshot?.data(),
+                              let name = data["name"] as? String,
+                              let address = data["address"] as? String,
+                              let latitude = data["latitude"] as? Double,
+                              let longitude = data["longitude"] as? Double,
+                              let chaiTypes = data["chaiTypes"] as? [String] else {
+                            // Data is missing, try the next collection
+                            print("⚠️ Missing data from collection \(collections[currentCollectionIndex - 1]) for spot \(spotId)")
+                            tryNextCollection()
+                            return
+                        }
+                        
+                        let averageRating = data["averageRating"] as? Double ?? 0.0
+                        let ratingCount = data["ratingCount"] as? Int ?? 0
+                        
+                        print("✅ Successfully loaded spot details from \(collectionName): \(name)")
+                        
+                        self.spotDetailsCache[spotId] = (name, address)
+                        
+                        let spot = ChaiSpot(
+                            id: spotId,
+                            name: name,
+                            address: address,
+                            latitude: latitude,
+                            longitude: longitude,
+                            chaiTypes: chaiTypes,
+                            averageRating: averageRating,
+                            ratingCount: ratingCount
+                        )
+                        
+                        completion(spot)
                     }
-                    
-                    guard let data = snapshot?.data(),
-                          let name = data["name"] as? String,
-                          let address = data["address"] as? String,
-                          let latitude = data["latitude"] as? Double,
-                          let longitude = data["longitude"] as? Double,
-                          let chaiTypes = data["chaiTypes"] as? [String] else {
-                        // Data is missing, try the next collection
-                        print("⚠️ Missing data from collection \(collections[currentCollectionIndex - 1]) for spot \(spotId)")
-                        tryNextCollection()
-                        return
-                    }
-                    
-                    let averageRating = data["averageRating"] as? Double ?? 0.0
-                    let ratingCount = data["ratingCount"] as? Int ?? 0
-                    
-                    print("✅ Successfully loaded spot details from \(collectionName): \(name)")
-                    
-                    self.spotDetailsCache[spotId] = (name, address)
-                    
-                    let spot = ChaiSpot(
-                        id: spotId,
-                        name: name,
-                        address: address,
-                        latitude: latitude,
-                        longitude: longitude,
-                        chaiTypes: chaiTypes,
-                        averageRating: averageRating,
-                        ratingCount: ratingCount
-                    )
-                    
-                    completion(spot)
                 }
             }
         }
@@ -411,22 +560,19 @@ struct FriendRatingsView: View {
 struct FriendRatingCard: View {
     let rating: Rating
     let onTap: () -> Void
-    @State private var spotName = "Loading..."
-    @State private var spotAddress = "Loading..."
-    @State private var isLoading = false
     
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(spotName)
+                        Text(rating.spotName ?? "Loading spot name...")
                             .font(DesignSystem.Typography.bodyLarge)
                             .fontWeight(.semibold)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
+                            .foregroundColor(rating.spotName == nil ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textPrimary)
                             .lineLimit(1)
                         
-                        Text(spotAddress)
+                        Text(rating.spotName == nil ? "Loading..." : "Tap to view details")
                             .font(DesignSystem.Typography.bodySmall)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
                             .lineLimit(1)
@@ -533,152 +679,5 @@ struct FriendRatingCard: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
-        .onAppear {
-            loadSpotDetails()
-        }
     }
-    
-    private func loadSpotDetails() {
-        // Load spot details from cache or fetch them
-        let db = Firestore.firestore()
-        
-        print("🔍 FriendRatingCard: Loading spot details for spotId: \(rating.spotId)")
-        
-        // Try both collections
-        let collections = ["chaiFinder", "chaiSpots"]
-        var currentCollectionIndex = 0
-        
-        func tryNextCollection() {
-            guard currentCollectionIndex < collections.count else {
-                // All collections failed, use fallback
-                print("⚠️ FriendRatingCard: All fallback searches failed, using fallback")
-                spotName = "Chai Spot (Details Unavailable)"
-                spotAddress = "Location information not found"
-                return
-            }
-            
-            let collectionName = collections[currentCollectionIndex]
-            currentCollectionIndex += 1
-            
-            print("🔍 FriendRatingCard: Attempting to load spot \(rating.spotId) from collection: \(collectionName)")
-            
-            db.collection(collectionName).document(rating.spotId).getDocument { snapshot, error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        print("❌ FriendRatingCard: Failed to load from collection \(collectionName): \(error.localizedDescription)")
-                        print("🔍 Debug info: Error code: \(error._code), Error domain: \(error._domain)")
-                        tryNextCollection()
-                        return
-                    }
-                    
-                    guard let data = snapshot?.data() else {
-                        print("⚠️ FriendRatingCard: No data found in collection \(collectionName) for spot \(rating.spotId)")
-                        print("🔍 Debug info: Document exists: \(snapshot?.exists ?? false)")
-                        tryNextCollection()
-                        return
-                    }
-                    
-                    print("🔍 FriendRatingCard: Found document in \(collectionName) with fields: \(Array(data.keys))")
-                    
-                    guard let name = data["name"] as? String,
-                          let address = data["address"] as? String else {
-                        print("⚠️ FriendRatingCard: Missing name or address from collection \(collectionName) for spot \(rating.spotId)")
-                        print("🔍 Debug info: name type: \(type(of: data["name"])), address type: \(type(of: data["address"]))")
-                        print("🔍 Debug info: name value: \(data["name"] ?? "nil"), address value: \(data["address"] ?? "nil")")
-                        tryNextCollection()
-                        return
-                    }
-                    
-                    // Successfully loaded spot details
-                    print("✅ FriendRatingCard: Successfully loaded spot details from \(collectionName): \(name)")
-                    spotName = name
-                    spotAddress = address
-                }
-            }
-        }
-        
-        // Fallback: Try to find spot by searching collections
-        func tryFallbackSearch() {
-            print("🔍 FriendRatingCard: Trying fallback search for spotId: \(rating.spotId)")
-            
-            // Try to find any spot that might match this ID
-            let searchCollections = ["chaiFinder", "chaiSpots"]
-            var searchIndex = 0
-            
-            func searchNextCollection() {
-                guard searchIndex < searchCollections.count else {
-                    // All searches failed, use fallback
-                    spotName = "Chai Spot (Details Unavailable)"
-                    spotAddress = "Location information not found"
-                    print("⚠️ FriendRatingCard: All fallback searches failed for \(rating.spotId). Using fallback name: \(spotName)")
-                    return
-                }
-                
-                let collectionName = searchCollections[searchIndex]
-                searchIndex += 1
-                
-                print("🔍 FriendRatingCard: Fallback searching in collection: \(collectionName)")
-                
-                // Try to find any document that might contain this spotId
-                db.collection(collectionName).getDocuments { snapshot, error in
-                    DispatchQueue.main.async {
-                        if let error = error {
-                            print("❌ FriendRatingCard: Fallback search failed in \(collectionName): \(error.localizedDescription)")
-                            searchNextCollection()
-                            return
-                        }
-                        
-                        guard let documents = snapshot?.documents else {
-                            print("⚠️ FriendRatingCard: No documents found in \(collectionName)")
-                            searchNextCollection()
-                            return
-                        }
-                        
-                        print("🔍 FriendRatingCard: Found \(documents.count) documents in \(collectionName)")
-                        
-                        // Look for any document that might be related
-                        for document in documents {
-                            let data = document.data()
-                            let docId = document.documentID
-                            
-                            // Check if this document ID contains our spotId or vice versa
-                            if docId.contains(rating.spotId) || rating.spotId.contains(docId) {
-                                if let name = data["name"] as? String, let address = data["address"] as? String {
-                                    print("✅ FriendRatingCard: Found matching spot in fallback search: \(name)")
-                                    spotName = name
-                                    spotAddress = address
-                                    return
-                                }
-                            }
-                            
-                            // Also check if the document has any identifying information that might match
-                            if let name = data["name"] as? String {
-                                // Check if the name contains any part of the spotId (in case spotId is a name fragment)
-                                let lowercasedName = name.lowercased()
-                                let lowercasedSpotId = rating.spotId.lowercased()
-                                
-                                if lowercasedName.contains(lowercasedSpotId) || lowercasedSpotId.contains(lowercasedName) {
-                                    if let address = data["address"] as? String {
-                                        print("✅ FriendRatingCard: Found spot by name similarity: \(name)")
-                                        spotName = name
-                                        spotAddress = address
-                                        return
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // No match found, try next collection
-                        searchNextCollection()
-                    }
-                }
-            }
-            
-            searchNextCollection()
-        }
-        
-        tryNextCollection()
-        tryFallbackSearch()
-    }
-}
 }

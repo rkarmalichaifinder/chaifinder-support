@@ -66,6 +66,7 @@ struct ReviewCardView: View {
     @State private var showingActionSheet = false
     @State private var showingReportSheet = false
     @State private var showingBlockAlert = false
+    @State private var showingMoreOptions = false
     @StateObject private var moderationService = ContentModerationService()
     
     // 🎮 NEW: Social reactions states
@@ -83,296 +84,322 @@ struct ReviewCardView: View {
     }
     
     var body: some View {
-        Button(action: {
-            showingComments = true
-        }) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                // 🎮 NEW: Social Reactions - Compact horizontal layout with no text wrapping
-                HStack(spacing: 6) {
-                    ForEach(Rating.ReactionType.allCases, id: \.self) { reactionType in
-                        ReactionButton(
-                            reactionType: reactionType,
-                            isSelected: selectedReaction == reactionType,
-                            onTap: {
-                                handleReaction(reactionType)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            // 🎮 NEW: Social Reactions - Compact horizontal layout with no text wrapping
+            HStack(spacing: 8) { // Increased spacing between buttons
+                // Reaction buttons
+                ForEach(Rating.ReactionType.allCases, id: \.self) { reactionType in
+                    ReactionButton(
+                        reactionType: reactionType,
+                        isSelected: selectedReaction == reactionType,
+                        onTap: {
+                            handleReaction(reactionType)
+                        }
+                    )
+                }
+                
+                Spacer()
+                
+                // Reaction counts section - only show if there are valid reactions
+                if !userReactions.filter({ $0.value > 0 }).isEmpty {
+                    reactionCountsView
+                }
+            }
+            .padding(.bottom, 4) // Reduced from 6 to 4 for more compact layout
+            
+            // Main content wrapped in button for comments
+            Button(action: {
+                showingComments = true
+            }) {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    // Header
+                    HStack(alignment: .top, spacing: 8) {
+                        // Profile Icon
+                        Circle()
+                            .fill(DesignSystem.Colors.primary)
+                            .frame(width: 36, height: 36)
+                            .overlay(
+                                Text(String(review.username.prefix(1)).uppercased())
+                                    .font(DesignSystem.Typography.bodySmall)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                            )
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(review.username)
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .fontWeight(.semibold)
+                                .foregroundColor(DesignSystem.Colors.textPrimary)
+                            
+                            Text(review.timestamp.timeAgoDisplay())
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                        }
+                        
+                        Spacer()
+                        
+                        // Rating stars
+                        HStack(spacing: 1) {
+                            ForEach(1...5, id: \.self) { i in
+                                Image(systemName: i <= review.rating ? "star.fill" : "star")
+                                    .foregroundColor(i <= review.rating ? .yellow : .gray.opacity(0.3))
+                                    .font(.system(size: 10))
                             }
-                        )
+                        }
                     }
                     
-                    Spacer()
+                    // 🎮 NEW: Photo Display
+                    if let photoURL = review.photoURL, !photoURL.isEmpty {
+                        VStack(spacing: 6) {
+                            CachedAsyncImage(url: photoURL, cornerRadius: 12)
+                                .frame(height: 200)
+                            
+                            // Photo bonus indicator
+                            HStack(spacing: 6) {
+                                Image(systemName: "camera.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.caption)
+                                
+                                Text("Photo included (+15 points)")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(.orange)
+                                    .fontWeight(.medium)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.1))
+                            .cornerRadius(8)
+                        }
+                    }
                     
-                    // Show reaction counts if any exist
-                    if !userReactions.isEmpty {
-                        HStack(spacing: 6) {
-                            ForEach(Array(userReactions.keys.sorted()), id: \.self) { reactionType in
-                                if let count = userReactions[reactionType], count > 0 {
-                                    HStack(spacing: 3) { // Increased from 2 to 3 for better spacing
-                                        Text(Rating.ReactionType(rawValue: reactionType)?.emoji ?? "👍")
-                                            .font(.caption)
-                                        
-                                        Text("\(count)")
-                                            .font(DesignSystem.Typography.caption)
-                                            .fontWeight(.medium)
-                                            .foregroundColor(.secondary)
+                    // Spot Information
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(spotName == "Loading..." ? review.spotName : spotName)
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .fontWeight(.semibold)
+                            .foregroundColor(DesignSystem.Colors.primary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        
+                        Text(spotAddress == "Loading..." ? review.spotAddress : spotAddress)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.top, 4)
+                    
+                    // Chai Type
+                    if let chaiType = review.chaiType, !chaiType.isEmpty {
+                        HStack {
+                            Text("Chai Type:")
+                                .font(DesignSystem.Typography.bodySmall)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            Text(chaiType)
+                                .font(DesignSystem.Typography.bodySmall)
+                                .fontWeight(.medium)
+                                .foregroundColor(DesignSystem.Colors.primary)
+                                .padding(.horizontal, DesignSystem.Spacing.sm)
+                                .padding(.vertical, 2)
+                                .background(DesignSystem.Colors.primary.opacity(0.1))
+                                .cornerRadius(DesignSystem.CornerRadius.small)
+                        }
+                    }
+                    
+                    // Improved Rating Information Layout - More Compact
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Rating Details")
+                            .font(DesignSystem.Typography.bodySmall)
+                            .fontWeight(.semibold)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        
+                        // Compact rating layout with better spacing
+                        VStack(spacing: 6) {
+                            // Creaminess Rating
+                            if let creaminessRating = review.creaminessRating {
+                                HStack(spacing: 8) {
+                                    Text("Creaminess")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                        .frame(width: 70, alignment: .leading)
+                                    
+                                    HStack(spacing: 2) {
+                                        ForEach(1...5, id: \.self) { i in
+                                            Image(systemName: i <= creaminessRating ? "drop.fill" : "drop")
+                                                .foregroundColor(i <= creaminessRating ? .brown : .gray.opacity(0.3))
+                                                .font(.system(size: 10))
+                                        }
                                     }
-                                    .padding(.horizontal, 6) // Increased from 4 to 6
-                                    .padding(.vertical, 3) // Increased from 2 to 3
-                                    .background(Color.gray.opacity(0.08)) // Reduced from 0.1 to 0.08 for subtler appearance
-                                    .cornerRadius(8) // Increased from 6 to 8 for consistency
+                                    
+                                    Text("\(creaminessRating)/5")
+                                        .font(DesignSystem.Typography.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                                        .frame(width: 25, alignment: .trailing)
+                                }
+                            }
+                            
+                            // Chai Strength Rating
+                            if let chaiStrengthRating = review.chaiStrengthRating {
+                                HStack(spacing: 8) {
+                                    Text("Strength")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                        .frame(width: 70, alignment: .leading)
+                                    
+                                    HStack(spacing: 2) {
+                                        ForEach(1...5, id: \.self) { i in
+                                            Image(systemName: i <= chaiStrengthRating ? "leaf.fill" : "leaf")
+                                                .foregroundColor(i <= chaiStrengthRating ? .green : .gray.opacity(0.3))
+                                                .font(.system(size: 10))
+                                        }
+                                    }
+                                    
+                                    Text("\(chaiStrengthRating)/5")
+                                        .font(DesignSystem.Typography.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                                        .frame(width: 25, alignment: .trailing)
                                 }
                             }
                         }
                     }
-                }
-                .padding(.bottom, 4) // Reduced from 6 to 4 for more compact layout
-                
-                // Header
-                HStack(alignment: .top, spacing: 8) {
-                    // Profile Icon
-                    Circle()
-                        .fill(DesignSystem.Colors.primary)
-                        .frame(width: 36, height: 36)
-                        .overlay(
-                            Text(String(review.username.prefix(1)).uppercased())
-                                .font(DesignSystem.Typography.bodySmall)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                        )
+                    .padding(.top, 6)
                     
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(review.username)
-                            .font(DesignSystem.Typography.bodyMedium)
-                            .fontWeight(.semibold)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
-                        
-                        Text(review.timestamp.timeAgoDisplay())
-                            .font(DesignSystem.Typography.caption)
+                    // Flavor Notes - Always show with "NR" if missing
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        Text("Flavor Notes:")
+                            .font(DesignSystem.Typography.bodySmall)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
-                    }
-                    
-                    Spacer()
-                    
-                    // Rating stars
-                    HStack(spacing: 1) {
-                        ForEach(1...5, id: \.self) { i in
-                            Image(systemName: i <= review.rating ? "star.fill" : "star")
-                                .foregroundColor(i <= review.rating ? .yellow : .gray.opacity(0.3))
-                                .font(.system(size: 10))
+                        
+                        if let flavorNotes = review.flavorNotes, !flavorNotes.isEmpty {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: DesignSystem.Spacing.xs) {
+                                ForEach(flavorNotes, id: \.self) { note in
+                                    Text(note)
+                                        .font(DesignSystem.Typography.bodySmall)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, DesignSystem.Spacing.xs)
+                                        .padding(.vertical, 2)
+                                        .background(DesignSystem.Colors.flavorNotesRating)
+                                        .cornerRadius(DesignSystem.CornerRadius.small)
+                                }
+                            }
+                        } else {
+                            // Show "NR" for missing flavor notes
+                            Text("NR")
+                                .font(DesignSystem.Typography.bodySmall)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .italic()
+                                .padding(.horizontal, DesignSystem.Spacing.xs)
+                                .padding(.vertical, 2)
+                                .background(DesignSystem.Colors.border.opacity(0.3))
+                                .cornerRadius(DesignSystem.CornerRadius.small)
                         }
                     }
-                }
-                
-                // 🎮 NEW: Photo Display
-                if let photoURL = review.photoURL, !photoURL.isEmpty {
-                    VStack(spacing: 6) {
-                        CachedAsyncImage(url: photoURL, cornerRadius: 12)
-                            .frame(height: 200)
-                        
-                        // Photo bonus indicator
+                    .padding(.top, DesignSystem.Spacing.xs)
+                    
+                    // Comment
+                    if let comment = review.comment, !comment.isEmpty {
+                        Text(comment)
+                            .font(DesignSystem.Typography.bodyMedium)
+                            .foregroundColor(DesignSystem.Colors.textPrimary)
+                            .lineLimit(3)
+                            .padding(.top, DesignSystem.Spacing.xs)
+                    }
+                    
+                    // Gamification Score
+                    if review.gamificationScore > 0 {
                         HStack(spacing: 6) {
-                            Image(systemName: "camera.fill")
-                                .foregroundColor(.orange)
+                            Image(systemName: "star.fill")
+                                .foregroundColor(.yellow)
                                 .font(.caption)
                             
-                            Text("Photo included (+15 points)")
+                            Text("+\(review.gamificationScore) points")
                                 .font(DesignSystem.Typography.caption)
-                                .foregroundColor(.orange)
+                                .foregroundColor(.yellow)
                                 .fontWeight(.medium)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(Color.orange.opacity(0.1))
+                        .background(Color.yellow.opacity(0.1))
                         .cornerRadius(8)
                     }
-                }
-                
-                // Spot Information
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(spotName == "Loading..." ? review.spotName : spotName)
-                        .font(DesignSystem.Typography.bodyMedium)
-                        .fontWeight(.semibold)
-                        .foregroundColor(DesignSystem.Colors.primary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
                     
-                    Text(spotAddress == "Loading..." ? review.spotAddress : spotAddress)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.top, 4)
-                
-                // Chai Type
-                if let chaiType = review.chaiType, !chaiType.isEmpty {
+                    // Footer
                     HStack {
-                        Text("Chai Type:")
-                            .font(DesignSystem.Typography.bodySmall)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        // Like button
+                        Button(action: {
+                            toggleLike()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: isLiked ? "heart.fill" : "heart")
+                                    .foregroundColor(isLiked ? .red : .gray)
+                                    .font(.caption)
+                                
+                                Text("\(likeCount)")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
                         
-                        Text(chaiType)
-                            .font(DesignSystem.Typography.bodySmall)
-                            .fontWeight(.medium)
-                            .foregroundColor(DesignSystem.Colors.primary)
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, 2)
-                            .background(DesignSystem.Colors.primary.opacity(0.1))
-                            .cornerRadius(DesignSystem.CornerRadius.small)
-                    }
-                }
-                
-                // Improved Rating Information Layout - More Compact
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Rating Details")
-                        .font(DesignSystem.Typography.bodySmall)
-                        .fontWeight(.semibold)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                    
-                    // Compact rating layout with better spacing
-                    VStack(spacing: 6) {
-                        // Creaminess Rating
-                        if let creaminessRating = review.creaminessRating {
-                            HStack(spacing: 8) {
-                                Text("Creaminess")
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                                    .frame(width: 70, alignment: .leading)
+                        // Comments button
+                        Button(action: {
+                            showingComments = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "bubble.left")
+                                    .foregroundColor(.gray)
+                                    .font(.caption)
                                 
-                                HStack(spacing: 2) {
-                                    ForEach(1...5, id: \.self) { i in
-                                        Image(systemName: i <= creaminessRating ? "drop.fill" : "drop")
-                                            .foregroundColor(i <= creaminessRating ? .brown : .gray.opacity(0.3))
-                                            .font(.system(size: 10))
-                                    }
-                                }
-                                
-                                Text("\(creaminessRating)/5")
+                                Text("Comments")
                                     .font(DesignSystem.Typography.caption)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(DesignSystem.Colors.textPrimary)
-                                    .frame(width: 25, alignment: .trailing)
+                                    .foregroundColor(.gray)
                             }
                         }
+                        .buttonStyle(PlainButtonStyle())
                         
-                        // Chai Strength Rating
-                        if let chaiStrengthRating = review.chaiStrengthRating {
-                            HStack(spacing: 8) {
-                                Text("Strength")
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                                    .frame(width: 70, alignment: .leading)
-                                
-                                HStack(spacing: 2) {
-                                    ForEach(1...5, id: \.self) { i in
-                                        Image(systemName: i <= chaiStrengthRating ? "leaf.fill" : "leaf")
-                                            .foregroundColor(i <= chaiStrengthRating ? .green : .gray.opacity(0.3))
-                                            .font(.system(size: 10))
-                                    }
-                                }
-                                
-                                Text("\(chaiStrengthRating)/5")
-                                    .font(DesignSystem.Typography.caption)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(DesignSystem.Colors.textPrimary)
-                                    .frame(width: 25, alignment: .trailing)
-                            }
+                        Spacer()
+                        
+                        // Share button
+                        Button(action: {
+                            showingShareSheet = true
+                        }) {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundColor(.gray)
+                                .font(.caption)
                         }
-                    }
-                }
-                .padding(.top, 6)
-                
-                // Flavor Notes - Always show with "NR" if missing
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text("Flavor Notes:")
-                        .font(DesignSystem.Typography.bodySmall)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                    
-                    if let flavorNotes = review.flavorNotes, !flavorNotes.isEmpty {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: DesignSystem.Spacing.xs) {
-                            ForEach(flavorNotes, id: \.self) { note in
-                                Text(note)
-                                    .font(DesignSystem.Typography.bodySmall)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, DesignSystem.Spacing.xs)
-                                    .padding(.vertical, 2)
-                                    .background(DesignSystem.Colors.flavorNotesRating)
-                                    .cornerRadius(DesignSystem.CornerRadius.small)
-                            }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        // More options button
+                        Button(action: {
+                            showingMoreOptions = true
+                        }) {
+                            Image(systemName: "ellipsis")
+                                .foregroundColor(.gray)
+                                .font(.caption)
                         }
-                    } else {
-                        // Show "NR" for missing flavor notes
-                        Text("NR")
-                            .font(DesignSystem.Typography.bodySmall)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                            .italic()
-                            .padding(.horizontal, DesignSystem.Spacing.xs)
-                            .padding(.vertical, 2)
-                            .background(DesignSystem.Colors.border.opacity(0.3))
-                            .cornerRadius(DesignSystem.CornerRadius.small)
+                        .buttonStyle(PlainButtonStyle())
                     }
+                    .padding(.top, DesignSystem.Spacing.sm)
                 }
-                .padding(.top, DesignSystem.Spacing.xs)
-                
-                // Comment
-                if let comment = review.comment, !comment.isEmpty {
-                    Text(comment)
-                        .font(DesignSystem.Typography.bodyMedium)
-                        .foregroundColor(DesignSystem.Colors.textPrimary)
-                        .padding(.top, DesignSystem.Spacing.xs)
-                }
-                
-                // Action Buttons
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    Button(action: {
-                        toggleLike()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: isLiked ? "heart.fill" : "heart")
-                                .foregroundColor(isLiked ? .red : DesignSystem.Colors.textSecondary)
-                            Text("\(likeCount)")
-                                .font(DesignSystem.Typography.bodySmall)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                        }
-                    }
-                    
-                    Button(action: {
-                        showingComments = true
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "bubble.left")
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            Text("Comments")
-                                .font(DesignSystem.Typography.bodySmall)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        showingShareSheet = true
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                    }
-                }
-                .padding(.top, DesignSystem.Spacing.sm)
+                .padding(DesignSystem.Spacing.md)
+                .background(DesignSystem.Colors.cardBackground)
+                .cornerRadius(DesignSystem.CornerRadius.medium)
+                .shadow(
+                    color: Color.black.opacity(0.03), // Very subtle shadow
+                    radius: 2,
+                    x: 0,
+                    y: 1
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                        .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1) // Reduced from 0.15 opacity and 0.2 lineWidth
+                )
             }
-            .padding(DesignSystem.Spacing.md)
-            .background(DesignSystem.Colors.cardBackground)
-            .cornerRadius(DesignSystem.CornerRadius.medium)
-            .shadow(
-                color: Color.black.opacity(0.03), // Very subtle shadow
-                radius: 2,
-                x: 0,
-                y: 1
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                    .stroke(DesignSystem.Colors.border.opacity(0.08), lineWidth: 0.1) // Reduced from 0.15 opacity and 0.2 lineWidth
-            )
+            .buttonStyle(PlainButtonStyle())
         }
-        .buttonStyle(PlainButtonStyle())
         .sheet(isPresented: $showingComments) {
             CommentListView(
                 spotId: review.spotId,
@@ -409,19 +436,39 @@ struct ReviewCardView: View {
                 contentPreview: "\(review.username): \(review.comment ?? "No comment")"
             )
         }
-        .actionSheet(isPresented: $showingActionSheet) {
-            ActionSheet(
-                title: Text("Review Options"),
-                buttons: [
-                    .default(Text("Report Review")) {
-                        showingReportSheet = true
-                    },
-                    .default(Text("Block \(review.username)")) {
-                        showingBlockAlert = true
-                    },
-                    .cancel()
-                ]
-            )
+        .sheet(isPresented: $showingMoreOptions) {
+            confirmationDialog(
+                "Review Options",
+                isPresented: $showingMoreOptions,
+                titleVisibility: .visible
+            ) {
+                Button("Report Review") {
+                    showingReportSheet = true
+                    showingMoreOptions = false
+                }
+                
+                Button("Block \(review.username)", role: .destructive) {
+                    showingBlockAlert = true
+                    showingMoreOptions = false
+                }
+                
+                Button("Cancel", role: .cancel) { }
+            }
+        }
+        .confirmationDialog(
+            "Review Options",
+            isPresented: $showingActionSheet,
+            titleVisibility: .visible
+        ) {
+            Button("Report Review") {
+                showingReportSheet = true
+            }
+            
+            Button("Block \(review.username)", role: .destructive) {
+                showingBlockAlert = true
+            }
+            
+            Button("Cancel", role: .cancel) { }
         }
         .alert("Block User", isPresented: $showingBlockAlert) {
             Button("Cancel", role: .cancel) { }
@@ -440,7 +487,9 @@ struct ReviewCardView: View {
     
     // 🎮 NEW: Handle reaction
     private func handleReaction(_ reactionType: Rating.ReactionType) {
-        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        guard let currentUserId = Auth.auth().currentUser?.uid else { 
+            return 
+        }
         
         let db = Firestore.firestore()
         let ratingRef = db.collection("ratings").document(review.id)
@@ -450,6 +499,7 @@ struct ReviewCardView: View {
             let currentCount = userReactions[reactionType.rawValue] ?? 0
             let newCount = max(0, currentCount - 1)
             
+            // Update total reaction count
             ratingRef.updateData([
                 "reactions.\(reactionType.rawValue)": newCount
             ]) { error in
@@ -470,6 +520,7 @@ struct ReviewCardView: View {
             let currentCount = userReactions[reactionType.rawValue] ?? 0
             let newCount = currentCount + 1
             
+            // Update total reaction count
             ratingRef.updateData([
                 "reactions.\(reactionType.rawValue)": newCount
             ]) { error in
@@ -513,6 +564,31 @@ struct ReviewCardView: View {
         // Check if user has already reacted to this review
         // This would need to be implemented separately if you want to track individual user reactions
         // For now, we'll just display the total reaction counts
+    }
+    
+    // MARK: - Computed Views
+    
+    /// Reaction counts display view
+    private var reactionCountsView: some View {
+        let validReactions = userReactions.filter { $0.value > 0 }
+        
+        return HStack(spacing: 6) {
+            ForEach(Array(validReactions.keys.sorted()), id: \.self) { reactionType in
+                HStack(spacing: 3) {
+                    Text(Rating.ReactionType(rawValue: reactionType)?.emoji ?? "👍")
+                        .font(.caption)
+                    
+                    Text("\(validReactions[reactionType]!)")
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.gray.opacity(0.08))
+                .cornerRadius(8)
+            }
+        }
     }
     
     // 🆕 Create enhanced share message with deep link
@@ -852,9 +928,12 @@ struct ReactionButton: View {
     
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 4) { // Increased from 3 to 4 for better spacing
+            HStack(spacing: 4) {
                 Text(reactionType.emoji)
-                    .font(.system(size: 14)) // Increased from 12 to 14 for better visibility
+                    .font(.system(size: 18)) // Increased size for better visibility
+                    .minimumScaleFactor(0.9) // Higher minimum scale to prevent clipping
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false) // Ensure emoji doesn't get compressed
                 
                 Text(reactionType.displayName)
                     .font(DesignSystem.Typography.caption)
@@ -862,22 +941,22 @@ struct ReactionButton: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
-            .foregroundColor(isSelected ? .white : DesignSystem.Colors.textSecondary)
-            .padding(.horizontal, 8) // Increased from 6 to 8 for better touch target
-            .padding(.vertical, 6) // Increased from 4 to 6 for better touch target
-            .frame(minWidth: 64, maxWidth: 76) // Increased from 60/70 to 64/76 for better touch target
+            .foregroundColor(isSelected ? .white : DesignSystem.Colors.textPrimary)
+            .padding(.horizontal, 10) // Increased padding for better spacing
+            .padding(.vertical, 8) // Increased padding for better touch target
+            .frame(minWidth: 70, maxWidth: 85) // Increased width to accommodate larger emoji
             .background(
-                RoundedRectangle(cornerRadius: 8) // Increased from 6 to 8 for better visual appeal
-                    .fill(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.06)) // Reduced from 0.08 to 0.06 for subtler appearance
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.1))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8) // Increased from 6 to 8
-                    .stroke(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.15), lineWidth: 0.5) // Reduced from 0.2 to 0.15 for subtler appearance
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? DesignSystem.Colors.primary : Color.gray.opacity(0.2), lineWidth: 0.5)
             )
         }
         .buttonStyle(PlainButtonStyle())
-        .scaleEffect(isSelected ? 1.02 : 1.0) // Reduced from 1.05 to 1.02 for subtler animation
-        .animation(.easeInOut(duration: 0.15), value: isSelected) // Increased from 0.1 to 0.15 for smoother animation
+        .scaleEffect(isSelected ? 1.02 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
         .accessibilityLabel("\(reactionType.displayName) reaction")
         .accessibilityHint("Double tap to \(isSelected ? "remove" : "add") \(reactionType.displayName) reaction")
         .accessibilityAddTraits(isSelected ? .isSelected : [])

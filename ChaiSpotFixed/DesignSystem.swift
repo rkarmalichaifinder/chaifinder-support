@@ -149,35 +149,15 @@ struct DesignSystem {
         struct SearchBarKeyboardDismissible: ViewModifier {
             func body(content: Content) -> some View {
                 content
-                    .onTapGesture {
-                        // Dismiss keyboard by resigning first responder
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
                     .gesture(
                         DragGesture()
                             .onEnded { value in
-                                // Dismiss keyboard on downward swipe with lower threshold for search bars
-                                if value.translation.height > 30 {
+                                // Only dismiss keyboard on significant downward swipe
+                                if value.translation.height > 100 {
                                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                                 }
                             }
                     )
-                    .simultaneousGesture(
-                        // Additional gesture for better keyboard dismissal
-                        TapGesture()
-                            .onEnded { _ in
-                                // Small delay to ensure tap outside search field
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                                }
-                            }
-                    )
-                    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                        // Ensure keyboard is properly dismissed
-                        DispatchQueue.main.async {
-                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        }
-                    }
             }
         }
     }

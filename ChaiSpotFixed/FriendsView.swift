@@ -38,6 +38,7 @@ struct FriendsView: View {
     @State private var isSearching = false
     @State private var showingInviteSheet = false
     @State private var selectedUserToInvite: UserProfile?
+    @FocusState private var isSearchFocused: Bool
     
     // Weekly Challenge states
     @State private var showingWeeklyChallenge = false
@@ -1210,6 +1211,7 @@ struct FriendsView: View {
                     .autocapitalization(.none)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
+                    .focused($isSearchFocused)
                     .accessibilityLabel("Search for users")
                     .accessibilityHint("Type to search for users by name, email, or bio")
                     .submitLabel(.search)
