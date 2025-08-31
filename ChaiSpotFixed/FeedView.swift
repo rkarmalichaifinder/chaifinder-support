@@ -94,9 +94,15 @@ struct FeedView: View {
     
     // MARK: - Header Section
     private var headerSection: some View {
-        VStack(spacing: 4) { // Reduced from 8 to 4
-            // Header with refresh button - more compact
+        VStack(spacing: DesignSystem.Spacing.sm) { // Reduced spacing for more compact design
             HStack {
+                // Brand title - consistent with other pages
+                Text("chai finder")
+                    .font(DesignSystem.Typography.titleLarge)
+                    .fontWeight(.bold)
+                    .foregroundColor(DesignSystem.Colors.primary)
+                    .accessibilityLabel("App title: chai finder")
+                
                 Spacer()
                 
                 // Refresh button
@@ -108,22 +114,15 @@ struct FeedView: View {
                     Image(systemName: "arrow.clockwise")
                         .foregroundColor(DesignSystem.Colors.primary)
                         .font(.system(size: 16))
-                        .frame(width: 40, height: 40)
-                        .background(DesignSystem.Colors.primary.opacity(0.1))
-                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .frame(width: 32, height: 32)
                 }
+                .frame(width: 32, height: 32)
+                .background(DesignSystem.Colors.primary.opacity(0.1))
+                .cornerRadius(DesignSystem.CornerRadius.small)
                 .disabled(viewModel.isLoading)
                 .accessibilityLabel("Refresh feed")
                 .accessibilityHint("Double tap to refresh the feed")
             }
-
-            // Brand title - more compact
-            Text("chai finder")
-                .font(DesignSystem.Typography.titleLarge)
-                .fontWeight(.bold)
-                .foregroundColor(DesignSystem.Colors.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel("App title: chai finder")
             
             // Feed Type Toggle - more compact
             VStack(alignment: .leading, spacing: 2) { // Reduced from 4 to 2
@@ -173,8 +172,7 @@ struct FeedView: View {
             searchBarSection
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.top, 1) // Reduced from 2 to 1
-        .padding(.bottom, 4) // Reduced from 8 to 4
+        .padding(.vertical, DesignSystem.Spacing.sm)
         .background(DesignSystem.Colors.background)
         .iPadOptimized()
     }

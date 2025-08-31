@@ -428,7 +428,7 @@ struct FriendDetailView: View {
                         let userId = data["userId"] as? String ?? ""
                         let username = data["username"] as? String ?? data["userName"] as? String
                         let spotName = data["spotName"] as? String
-                        let value = data["value"] as? Int ?? 0
+                        let ratingValue = data["rating"] as? Int ?? 0
                         let comment = data["comment"] as? String
                         let timestamp = (data["timestamp"] as? Timestamp)?.dateValue()
                         let likes = data["likes"] as? Int ?? 0
@@ -449,7 +449,7 @@ struct FriendDetailView: View {
                             userId: userId,
                             username: username,
                             spotName: spotName,
-                            value: value,
+                            value: ratingValue,
                             comment: comment,
                             timestamp: timestamp,
                             likes: likes,
@@ -486,7 +486,7 @@ struct FriendDetailView: View {
         for (index, rating) in ratingsWithoutNames.enumerated() {
             group.enter()
             
-            db.collection("chaiSpots").document(rating.spotId).getDocument { snapshot, error in
+            db.collection("chaiFinder").document(rating.spotId).getDocument { snapshot, error in
                 defer { group.leave() }
                 
                 if let error = error {

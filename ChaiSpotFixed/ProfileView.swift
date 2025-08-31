@@ -56,8 +56,7 @@ struct ProfileView: View {
                         achievementsSection
                     }
 
-                    // 🎯 Weekly Challenge
-                    weeklyChallengeSection
+                    // Weekly Challenge section removed (already available in Social)
 
                     // 📍 Saved Spots
                     savedSpotsSection
@@ -167,12 +166,14 @@ struct ProfileView: View {
     
     // MARK: - Header Section
     private var headerSection: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
+        VStack(spacing: DesignSystem.Spacing.sm) { // Reduced spacing for more compact design
             HStack {
-                Text("Profile")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                    .accessibilityLabel("Current page: Profile")
+                // Brand title - consistent with other pages
+                Text("chai finder")
+                    .font(DesignSystem.Typography.titleLarge)
+                    .fontWeight(.bold)
+                    .foregroundColor(DesignSystem.Colors.primary)
+                    .accessibilityLabel("App title: chai finder")
                 
                 Spacer()
                 
@@ -185,26 +186,20 @@ struct ProfileView: View {
                     Image(systemName: "arrow.clockwise")
                         .foregroundColor(DesignSystem.Colors.primary)
                         .font(.system(size: 16))
-                        .frame(width: 44, height: 44)
-                        .background(DesignSystem.Colors.primary.opacity(0.1))
-                        .cornerRadius(DesignSystem.CornerRadius.medium)
+                        .frame(width: 32, height: 32)
                         .rotationEffect(.degrees(isRefreshing ? 360 : 0))
                         .animation(isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isRefreshing)
                 }
+                .frame(width: 32, height: 32)
+                .background(DesignSystem.Colors.primary.opacity(0.1))
+                .cornerRadius(DesignSystem.CornerRadius.small)
                 .disabled(isRefreshing)
                 .accessibilityLabel("Refresh profile")
                 .accessibilityHint("Double tap to refresh profile data")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text("chai finder")
-                .font(DesignSystem.Typography.titleLarge)
-                .fontWeight(.bold)
-                .foregroundColor(DesignSystem.Colors.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel("App title: chai finder")
         }
-        .padding(DesignSystem.Spacing.lg)
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
         .background(DesignSystem.Colors.background)
         .iPadOptimized()
     }
@@ -212,7 +207,7 @@ struct ProfileView: View {
     // MARK: - Profile Header Section
     private var profileHeaderSection: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
-            // Profile Image
+            // Profile Image with Streak Badge
             Button(action: {
                 showingEditPhoto = true
             }) {
@@ -283,6 +278,69 @@ struct ProfileView: View {
                             .onAppear {
                                 print("🔍 Showing default profile icon - photoURL: \(sessionStore.userProfile?.photoURL ?? "nil")")
                             }
+                    }
+                    
+                    // Celebratory Streak Banner (left of profile picture, rotated 45 degrees)
+                    HStack {
+                        // Streak Banner
+                        VStack {
+                            Spacer()
+                            HStack {
+                                ZStack {
+                                    // Celebratory background with gradient and sparkles
+                                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                                        .fill(
+                                            LinearGradient(
+                                                gradient: Gradient(colors: [
+                                                    DesignSystem.Colors.accent,
+                                                    DesignSystem.Colors.accent.opacity(0.8),
+                                                    DesignSystem.Colors.accent
+                                                ]),
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .frame(width: UIDevice.current.userInterfaceIdiom == .pad ? 140 : 120, 
+                                               height: UIDevice.current.userInterfaceIdiom == .pad ? 50 : 40)
+                                        .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+                                        .overlay(
+                                            // Sparkle effect
+                                            ZStack {
+                                                ForEach(0..<3) { index in
+                                                    Image(systemName: "sparkle")
+                                                        .foregroundColor(.white.opacity(0.6))
+                                                        .font(.system(size: 8))
+                                                        .offset(
+                                                            x: CGFloat(index * 15 - 15),
+                                                            y: CGFloat(index * 8 - 8)
+                                                        )
+                                                }
+                                            }
+                                        )
+                                    
+                                    // Streak text with celebration
+                                    VStack(spacing: 2) {
+                                        Text("\(gamificationService.currentStreak)")
+                                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 18 : 16, weight: .bold))
+                                            .foregroundColor(.white)
+                                        
+                                        Text("WEEK STREAK!")
+                                            .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 10 : 8, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .minimumScaleFactor(0.7)
+                                    }
+                                }
+                                .rotationEffect(.degrees(45))
+                                .offset(x: UIDevice.current.userInterfaceIdiom == .pad ? -25 : -20, 
+                                       y: UIDevice.current.userInterfaceIdiom == .pad ? -25 : -20)
+                                Spacer()
+                            }
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                    .onAppear {
+                        print("🔍 Streak banner appeared - currentStreak: \(gamificationService.currentStreak)")
                     }
                     
                     // Edit indicator
@@ -486,55 +544,7 @@ struct ProfileView: View {
         .iPadCardStyle()
     }
     
-    // MARK: - Weekly Challenge Section
-    private var weeklyChallengeSection: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
-            HStack {
-                Text("🎯 Weekly Challenge")
-                    .font(DesignSystem.Typography.headline)
-                    .fontWeight(.semibold)
-                
-                Spacer()
-                
-                Button("View All") {
-                    showingWeeklyChallenge = true
-                }
-                .font(DesignSystem.Typography.bodySmall)
-                .foregroundColor(DesignSystem.Colors.accent)
-            }
-            
-            // Challenge Preview Card
-            Button(action: { showingWeeklyChallenge = true }) {
-                HStack {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        Text("Current Challenge")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                        
-                        Text("Tap to view details")
-                            .font(DesignSystem.Typography.bodyMedium)
-                            .fontWeight(.medium)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 16))
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                }
-                .padding(DesignSystem.Spacing.md)
-                .background(DesignSystem.Colors.cardBackground)
-                .cornerRadius(DesignSystem.CornerRadius.medium)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                        .stroke(DesignSystem.Colors.border, lineWidth: 1)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-        .iPadCardStyle()
-    }
+
     
     // MARK: - Saved Spots Section
     private var savedSpotsSection: some View {

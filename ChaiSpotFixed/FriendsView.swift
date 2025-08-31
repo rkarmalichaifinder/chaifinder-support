@@ -105,31 +105,29 @@ struct FriendsView: View {
                 } else {
                     ScrollView {
                         // Header
-                        VStack(spacing: DesignSystem.Spacing.md) {
-                            Text("Social")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Text("chai finder")
-                                .font(DesignSystem.Typography.titleLarge)
-                                .fontWeight(.bold)
-                                .foregroundColor(DesignSystem.Colors.primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(spacing: DesignSystem.Spacing.sm) { // Reduced spacing for more compact design
+                            HStack {
+                                // Brand title - consistent with other pages
+                                Text("chai finder")
+                                    .font(DesignSystem.Typography.titleLarge)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(DesignSystem.Colors.primary)
+                                    .accessibilityLabel("App title: chai finder")
+                                
+                                Spacer()
+                            }
                             
                             // Search Bar
                             searchBarSection
                         }
-                        .padding(DesignSystem.Spacing.lg)
+                        .padding(.horizontal, DesignSystem.Spacing.md)
+                        .padding(.vertical, DesignSystem.Spacing.sm)
                         .background(DesignSystem.Colors.background)
                         .iPadOptimized()
 
                         VStack(spacing: DesignSystem.Spacing.lg) {
-                            // My Profile Section
+                            // Weekly Challenge Section
                             if let currentUser = currentUser {
-                                myProfileSection(currentUser)
-                                
-                                // Weekly Challenge Section
                                 weeklyChallengeSection
                                 
                                 // Incoming Friend Requests
@@ -162,20 +160,6 @@ struct FriendsView: View {
                 }
             }
             .navigationBarHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 8) {
-                        Image("AppLogo")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(height: 24)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                        Text("Social")
-                            .font(DesignSystem.Typography.titleMedium)
-                            .fontWeight(.bold)
-                    }
-                }
-            }
             .sheet(isPresented: $showingInviteSheet) {
                 if let user = selectedUserToInvite {
                     InviteUserSheet(user: user, currentUser: currentUser) {
@@ -287,41 +271,7 @@ struct FriendsView: View {
     
     // MARK: - View Components
     
-    private func myProfileSection(_ user: UserProfile) -> some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            Text("My Profile")
-                .font(DesignSystem.Typography.headline)
-                .fontWeight(.bold)
-                .foregroundColor(DesignSystem.Colors.textPrimary)
-            
-            HStack {
-                profileImage(for: user)
-                    .frame(width: 60, height: 60)
-                
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text(user.displayName)
-                        .font(DesignSystem.Typography.bodyLarge)
-                        .fontWeight(.semibold)
-                        .foregroundColor(DesignSystem.Colors.textPrimary)
-                    
-                    Text(user.email)
-                        .font(DesignSystem.Typography.bodyMedium)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                }
-                
-                Spacer()
-            }
-        }
-        .padding(DesignSystem.Spacing.lg)
-        .background(DesignSystem.Colors.cardBackground)
-        .cornerRadius(DesignSystem.CornerRadius.medium)
-        .shadow(
-            color: DesignSystem.Shadows.small.color,
-            radius: DesignSystem.Shadows.small.radius,
-            x: DesignSystem.Shadows.small.x,
-            y: DesignSystem.Shadows.small.y
-        )
-    }
+
     
     private var incomingRequestsSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -1333,25 +1283,7 @@ struct FriendsView: View {
     // MARK: - Search Suggestions View
     private var searchSuggestionsView: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("💡 Search tips")
-                .font(DesignSystem.Typography.caption)
-                .foregroundColor(DesignSystem.Colors.textSecondary)
-                .padding(.horizontal, 4)
-            
-            Text("• Try searching by name (e.g., 'John', 'Smith')")
-                .font(DesignSystem.Typography.caption2)
-                .foregroundColor(DesignSystem.Colors.textSecondary)
-                .padding(.horizontal, 4)
-            
-            Text("• Search by email (e.g., 'john@example.com')")
-                .font(DesignSystem.Typography.caption2)
-                .foregroundColor(DesignSystem.Colors.textSecondary)
-                .padding(.horizontal, 4)
-            
-            Text("• Use partial matches (e.g., 'joh' will find 'John')")
-                .font(DesignSystem.Typography.caption2)
-                .foregroundColor(DesignSystem.Colors.textSecondary)
-                .padding(.horizontal, 4)
+            // Search tips removed for cleaner interface
             
             // Debug info (development only)
             #if DEBUG

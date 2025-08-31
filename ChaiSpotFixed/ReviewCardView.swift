@@ -85,9 +85,9 @@ struct ReviewCardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            // 🎮 NEW: Social Reactions - Compact horizontal layout with no text wrapping
-            HStack(spacing: 8) { // Increased spacing between buttons
-                // Reaction buttons
+            // 🎮 NEW: Social Reactions - Full width layout to hide any empty boxes
+            HStack(spacing: 0) {
+                // Reaction buttons - each takes equal space
                 ForEach(Rating.ReactionType.allCases, id: \.self) { reactionType in
                     ReactionButton(
                         reactionType: reactionType,
@@ -96,13 +96,7 @@ struct ReviewCardView: View {
                             handleReaction(reactionType)
                         }
                     )
-                }
-                
-                Spacer()
-                
-                // Reaction counts section - only show if there are valid reactions
-                if !userReactions.filter({ $0.value > 0 }).isEmpty {
-                    reactionCountsView
+                    .frame(maxWidth: .infinity) // Make each button take equal space
                 }
             }
             .padding(.bottom, 4) // Reduced from 6 to 4 for more compact layout
@@ -572,23 +566,30 @@ struct ReviewCardView: View {
     private var reactionCountsView: some View {
         let validReactions = userReactions.filter { $0.value > 0 }
         
-        return HStack(spacing: 6) {
-            ForEach(Array(validReactions.keys.sorted()), id: \.self) { reactionType in
-                HStack(spacing: 3) {
-                    Text(Rating.ReactionType(rawValue: reactionType)?.emoji ?? "👍")
-                        .font(.caption)
-                    
-                    Text("\(validReactions[reactionType]!)")
-                        .font(DesignSystem.Typography.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Color.gray.opacity(0.08))
-                .cornerRadius(8)
-            }
+        // Only return a view if there are actually valid reactions
+        if validReactions.isEmpty {
+            return AnyView(EmptyView())
         }
+        
+        return AnyView(
+            HStack(spacing: 6) {
+                ForEach(Array(validReactions.keys.sorted()), id: \.self) { reactionType in
+                    HStack(spacing: 3) {
+                        Text(Rating.ReactionType(rawValue: reactionType)?.emoji ?? "👍")
+                            .font(.caption)
+                        
+                        Text("\(validReactions[reactionType]!)")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.gray.opacity(0.08))
+                    .cornerRadius(8)
+                }
+            }
+        )
     }
     
     // 🆕 Create enhanced share message with deep link
