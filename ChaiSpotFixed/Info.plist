@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>GIDClientID</key>
-	<string>587784566464-a20p386bmiuvgaigq61snprnbb0fqios.apps.googleusercontent.com</string>
+	<string>1031321306480-kd7q1l665fgpreapmamb72j5p1ehlnrd.apps.googleusercontent.com</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,9 +13,9 @@
 	<key>CFBundleDisplayName</key>
 	<string>Chai Finder</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.5</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>UISupportedInterfaceOrientations</key>
@@ -32,7 +32,7 @@
 			<string>Google OAuth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.587784566464-a20p386bmiuvgaigq61snprnbb0fqios</string>
+				<string>com.googleusercontent.apps.1031321306480-kd7q1l665fgpreapmamb72j5p1ehlnrd</string>
 			</array>
 		</dict>
 	</array>
@@ -64,7 +64,6 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
-		<string>background-fetch</string>
 	</array>
 </dict>
 </plist>

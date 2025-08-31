@@ -1083,42 +1083,12 @@ struct FriendsView: View {
         }
     }
     
-    // MARK: - Invite Specific User via Email
-    private func inviteByEmail(for user: UserProfile) {
-        let currentUserName = currentUser?.displayName ?? "Your friend"
-        
-        // Create a personalized invitation for the specific user
-        let subject = "Join our chai-loving community with Chai Finder! 🫖"
-        
-        let body = """
-        Hey \(user.displayName)!
-        
-        I've been using **Chai Finder**, a social app that connects chai lovers through shared experiences and trusted recommendations — and I think you'd love it too!
-        
-        🫶 What makes Chai Finder special:
-        • See where your friends actually love to get chai
-        • Get personalized recommendations based on your taste
-        • Share your own chai ratings and comments
-        • Save your favorite spots for next time
-        • Connect over your love of good chai
-        
-        📍 It's perfect for discovering authentic chai through people you trust — whether it's cutting chai, kadak chai, or anything in between.
-        
-        👉 Download the app:
-        **iOS App Store:** https://apps.apple.com/us/app/chai-finder/id6747459183
-        
-        Once you're in, add me so we can swap chai spots!
-        
-        Cheers to better chai,
-        \(currentUserName)
-        """
-        
+    // MARK: - Send Email to Existing User
+    private func sendEmail(to user: UserProfile) {
         // Check if device can send emails
         if MFMailComposeViewController.canSendMail() {
             let mailComposer = MFMailComposeViewController()
             mailComposer.mailComposeDelegate = MailCoordinator.shared
-            mailComposer.setSubject(subject)
-            mailComposer.setMessageBody(body, isHTML: false)
             mailComposer.setToRecipients([user.email])
             
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -1127,8 +1097,7 @@ struct FriendsView: View {
             }
         } else {
             // Fallback to activity view controller if email is not available
-            let emailContent = "Subject: \(subject)\n\n\(body)"
-            let av = UIActivityViewController(activityItems: [emailContent], applicationActivities: nil)
+            let av = UIActivityViewController(activityItems: [""], applicationActivities: nil)
             
             // Set the activity type to prefer email
             av.excludedActivityTypes = [
@@ -1303,9 +1272,9 @@ struct FriendsView: View {
                 .foregroundColor(DesignSystem.Colors.primary)
                 .padding(.horizontal, 4)
                 
-                Button("Simple Search") {
-                    let results = performSimpleSearch(query: "test")
-                    print("🧪 Simple search test results: \(results.count)")
+                Button("Enhanced Search") {
+                    let results = performLocalSearch(query: "test", searchWords: ["test"])
+                    print("🧪 Enhanced search test results: \(results.count)")
                 }
                 .font(DesignSystem.Typography.caption2)
                 .foregroundColor(DesignSystem.Colors.primary)
@@ -1344,7 +1313,7 @@ struct FriendsView: View {
                             showingInviteSheet = true
                         },
                         onInviteViaEmail: {
-                            inviteByEmail(for: user)
+                            sendEmail(to: user)
                         },
                         onTap: {
                             selectedFriend = user
@@ -1420,8 +1389,11 @@ struct FriendsView: View {
         print("🔍 Performing search for: '\(query)'")
         isSearching = true
         
-        // Start with simple local search for immediate results
-        let localResults = performSimpleSearch(query: query)
+        let queryLower = query.lowercased().trimmingCharacters(in: .whitespaces)
+        let searchWords = queryLower.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        
+        // Start with enhanced local search for immediate results
+        let localResults = performLocalSearch(query: queryLower, searchWords: searchWords)
         searchResults = localResults
         
         // Then try enhanced search with Firestore (asynchronous)
@@ -1459,25 +1431,53 @@ struct FriendsView: View {
         return localResults
     }
     
-    /// Local search in existing users array
+    /// Local search in existing users array with improved partial matching
     private func performLocalSearch(query: String, searchWords: [String]) -> [UserProfile] {
-        return users.filter { user in
-            // Create searchable text for the user
-            let searchableText = createSearchableText(for: user)
+        let results = users.filter { user in
+            // Create enhanced searchable text for the user
+            let searchableText = createEnhancedSearchableText(for: user)
             
-            // Check if ALL search words are found
-            let allWordsFound = searchWords.allSatisfy { searchWord in
+            // Check if ANY search word is found (more flexible than requiring ALL words)
+            let anyWordFound = searchWords.contains { searchWord in
                 searchableText.contains(searchWord)
             }
             
-            return allWordsFound
+            // Also check for exact phrase match (higher priority)
+            let exactPhraseFound = searchableText.contains(query)
+            
+            return anyWordFound || exactPhraseFound
         }
+        
+        // Filter out current user and existing connections
+        let currentUserId = currentUser?.uid ?? ""
+        let filteredResults = results.filter { user in
+            user.uid != currentUserId &&
+            !(currentUser?.friends?.contains(user.uid) ?? false) &&
+            !sentRequests.contains(user.uid) &&
+            !incomingRequests.contains { $0.uid == user.uid } &&
+            !outgoingRequests.contains { $0.uid == user.uid }
+        }
+        
+        // Sort by relevance
+        let sortedResults = sortResultsByRelevance(filteredResults, searchWords: searchWords)
+        
+        return sortedResults
     }
     
-    /// Create comprehensive searchable text for a user
-    private func createSearchableText(for user: UserProfile) -> String {
+    /// Create comprehensive searchable text for a user with better indexing for partial matches
+    private func createEnhancedSearchableText(for user: UserProfile) -> String {
         var searchText = user.displayName.lowercased()
         searchText += " " + user.email.lowercased()
+        
+        // Add email parts for better matching
+        let emailParts = user.email.lowercased().components(separatedBy: "@")
+        if emailParts.count > 0 {
+            searchText += " " + emailParts[0] // username part
+        }
+        
+        // Add display name parts for better matching
+        let nameParts = user.displayName.lowercased().components(separatedBy: " ")
+        searchText += " " + nameParts.joined(separator: " ")
         
         // Add additional searchable fields if available
         if let bio = user.bio {
@@ -1487,21 +1487,23 @@ struct FriendsView: View {
         return searchText
     }
     
-    /// Enhanced Firestore search with better query strategies
+    /// Enhanced Firestore search with multiple strategies for better partial matching
     private func performFirestoreSearch(query: String, searchWords: [String]) -> [UserProfile] {
         let db = Firestore.firestore()
         var results: [UserProfile] = []
         var completedQueries = 0
-        let totalQueries = 2
+        let totalQueries = 3 // Increased to include more search strategies
         
-        // Search by display name (prefix search)
+        let queryLower = query.lowercased().trimmingCharacters(in: .whitespaces)
+        
+        // Strategy 1: Prefix search by display name (existing)
         db.collection("users")
-            .whereField("displayName", isGreaterThanOrEqualTo: query)
-            .whereField("displayName", isLessThan: query + "\u{f8ff}")
+            .whereField("displayName", isGreaterThanOrEqualTo: queryLower)
+            .whereField("displayName", isLessThan: queryLower + "\u{f8ff}")
             .limit(to: 20)
             .getDocuments { snapshot, error in
                 if let error = error {
-                    print("❌ Error searching users by name: \(error.localizedDescription)")
+                    print("❌ Error searching users by name prefix: \(error.localizedDescription)")
                 } else if let documents = snapshot?.documents {
                     for document in documents {
                         if let userProfile = self.createUserProfile(from: document) {
@@ -1512,25 +1514,21 @@ struct FriendsView: View {
                 
                 completedQueries += 1
                 if completedQueries == totalQueries {
-                    // All queries completed, update results
-                    DispatchQueue.main.async {
-                        self.updateSearchResults(results: results)
-                    }
+                    self.updateSearchResults(results: results)
                 }
             }
         
-        // Search by email (prefix search)
+        // Strategy 2: Prefix search by email (existing)
         db.collection("users")
-            .whereField("email", isGreaterThanOrEqualTo: query)
-            .whereField("email", isLessThan: query + "\u{f8ff}")
+            .whereField("email", isGreaterThanOrEqualTo: queryLower)
+            .whereField("email", isLessThan: queryLower + "\u{f8ff}")
             .limit(to: 20)
             .getDocuments { snapshot, error in
                 if let error = error {
-                    print("❌ Error searching users by email: \(error.localizedDescription)")
+                    print("❌ Error searching users by email prefix: \(error.localizedDescription)")
                 } else if let documents = snapshot?.documents {
                     for document in documents {
                         if let userProfile = self.createUserProfile(from: document) {
-                            // Avoid duplicates
                             if !results.contains(where: { $0.uid == userProfile.uid }) {
                                 results.append(userProfile)
                             }
@@ -1540,10 +1538,36 @@ struct FriendsView: View {
                 
                 completedQueries += 1
                 if completedQueries == totalQueries {
-                    // All queries completed, update results
-                    DispatchQueue.main.async {
-                        self.updateSearchResults(results: results)
+                    self.updateSearchResults(results: results)
+                }
+            }
+        
+        // Strategy 3: Get more users and filter locally for better partial matching
+        db.collection("users")
+            .limit(to: 100) // Get more users for local filtering
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    print("❌ Error getting users for local filtering: \(error.localizedDescription)")
+                } else if let documents = snapshot?.documents {
+                    for document in documents {
+                        if let userProfile = self.createUserProfile(from: document) {
+                            // Check if this user matches our search criteria
+                            let searchableText = self.createEnhancedSearchableText(for: userProfile)
+                            let anyWordFound = searchWords.contains { searchWord in
+                                searchableText.contains(searchWord)
+                            }
+                            let exactPhraseFound = searchableText.contains(queryLower)
+                            
+                            if (anyWordFound || exactPhraseFound) && !results.contains(where: { $0.uid == userProfile.uid }) {
+                                results.append(userProfile)
+                            }
+                        }
                     }
+                }
+                
+                completedQueries += 1
+                if completedQueries == totalQueries {
+                    self.updateSearchResults(results: results)
                 }
             }
         
@@ -1579,7 +1603,7 @@ struct FriendsView: View {
         DispatchQueue.main.async {
             self.searchResults = sortedResults
             self.isSearching = false
-            print("🔍 Firestore search completed: Found \(sortedResults.count) total results")
+            print("🔍 Search completed: Found \(sortedResults.count) total results (local + Firestore)")
         }
     }
     
@@ -1623,22 +1647,41 @@ struct FriendsView: View {
         }
     }
     
-    /// Calculate search relevance score for a user
+    /// Calculate search relevance score for a user with improved partial matching
     private func calculateUserSearchRelevance(_ user: UserProfile, searchWords: [String]) -> Int {
         var score = 0
         let searchText = searchWords.joined(separator: " ").lowercased()
+        let displayName = user.displayName.lowercased()
+        let email = user.email.lowercased()
         
-        // Exact matches get highest scores
-        if user.displayName.lowercased().contains(searchText) { score += 100 }
-        if user.email.lowercased().contains(searchText) { score += 80 }
+        // Exact phrase matches get highest scores
+        if displayName.contains(searchText) { score += 100 }
+        if email.contains(searchText) { score += 80 }
         if let bio = user.bio, bio.lowercased().contains(searchText) { score += 60 }
         
-        // Partial word matches get lower scores
+        // Exact word matches get high scores
         for word in searchWords {
-            if user.displayName.lowercased().contains(word) { score += 10 }
-            if user.email.lowercased().contains(word) { score += 8 }
-            if let bio = user.bio, bio.lowercased().contains(word) { score += 6 }
+            if displayName.contains(word) { score += 20 }
+            if email.contains(word) { score += 15 }
+            if let bio = user.bio, bio.lowercased().contains(word) { score += 10 }
         }
+        
+        // Partial matches get lower scores
+        for word in searchWords {
+            // Check if word appears anywhere in the display name
+            if displayName.contains(word) { score += 5 }
+            
+            // Check email username part
+            let emailParts = email.components(separatedBy: "@")
+            if emailParts.count > 0 && emailParts[0].contains(word) { score += 4 }
+            
+            // Check bio if available
+            if let bio = user.bio, bio.lowercased().contains(word) { score += 3 }
+        }
+        
+        // Bonus for starting with search term (prefix match)
+        if displayName.hasPrefix(searchWords.first ?? "") { score += 15 }
+        if email.hasPrefix(searchWords.first ?? "") { score += 10 }
         
         return score
     }
@@ -1660,6 +1703,13 @@ struct FriendsView: View {
             let searchTerm = String(firstUser.displayName.prefix(3))
             print("🧪 Testing search for '\(searchTerm)' (first 3 chars of '\(firstUser.displayName)')")
             performSearch(searchTerm)
+            
+            // Test partial match in middle of name
+            if firstUser.displayName.count > 4 {
+                let middleTerm = String(firstUser.displayName.dropFirst(1).prefix(3))
+                print("🧪 Testing partial match '\(middleTerm)' (middle chars of '\(firstUser.displayName)')")
+                performSearch(middleTerm)
+            }
         } else {
             print("🧪 No users available for testing")
         }
@@ -1667,6 +1717,11 @@ struct FriendsView: View {
         // Test with empty search
         print("🧪 Testing empty search")
         performSearch("")
+        
+        // Test enhanced search specifically
+        print("🧪 Testing enhanced local search")
+        let enhancedResults = performLocalSearch(query: "test", searchWords: ["test"])
+        print("🧪 Enhanced search results: \(enhancedResults.count)")
     }
     
     /// Get search statistics for debugging

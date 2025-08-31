@@ -34,7 +34,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		9A3E0AFD2DF8F47100EFB26E /* ChaiSpotFixed.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChaiSpotFixed.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9A3E0AFD2DF8F47100EFB26E /* .app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = .app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9A3E0B0A2DF8F47200EFB26E /* ChaiSpotFixedTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChaiSpotFixedTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9A3E0B142DF8F47200EFB26E /* ChaiSpotFixedUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChaiSpotFixedUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -117,7 +117,7 @@
 		9A3E0AFE2DF8F47100EFB26E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				9A3E0AFD2DF8F47100EFB26E /* ChaiSpotFixed.app */,
+				9A3E0AFD2DF8F47100EFB26E /* .app */,
 				9A3E0B0A2DF8F47200EFB26E /* ChaiSpotFixedTests.xctest */,
 				9A3E0B142DF8F47200EFB26E /* ChaiSpotFixedUITests.xctest */,
 			);
@@ -170,7 +170,7 @@
 				9A83DC182E5BCBD100867F5A /* FirebaseStorage */,
 			);
 			productName = ChaiSpotFixed;
-			productReference = 9A3E0AFD2DF8F47100EFB26E /* ChaiSpotFixed.app */;
+			productReference = 9A3E0AFD2DF8F47100EFB26E /* .app */;
 			productType = "com.apple.product-type.application";
 		};
 		9A3E0B092DF8F47200EFB26E /* ChaiSpotFixedTests */ = {
@@ -486,12 +486,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7;
-				PRODUCT_BUNDLE_IDENTIFIER = rfk.ChaiSpotFixed;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -521,7 +515,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = rfk.ChaiSpotFixed;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -538,7 +532,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = rfk.ChaiSpotFixedTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -556,7 +550,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = rfk.ChaiSpotFixedTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -572,7 +566,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = rfk.ChaiSpotFixedUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -588,7 +582,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = rfk.ChaiSpotFixedUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;

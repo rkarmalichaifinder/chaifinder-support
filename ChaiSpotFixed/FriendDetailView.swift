@@ -428,7 +428,21 @@ struct FriendDetailView: View {
                         let userId = data["userId"] as? String ?? ""
                         let username = data["username"] as? String ?? data["userName"] as? String
                         let spotName = data["spotName"] as? String
-                        let ratingValue = data["rating"] as? Int ?? 0
+                        
+                        // 🔧 FIX: Use the correct field name "value" instead of "rating"
+                        guard let ratingValue = data["value"] as? Int else {
+                            print("❌ FriendDetailView: Rating \(doc.documentID) missing or invalid value field")
+                            print("🔍 Available fields: \(Array(data.keys))")
+                            print("🔍 Value field value: \(data["value"] ?? "nil")")
+                            return nil
+                        }
+                        
+                        // 🔧 FIX: Validate rating value is within expected range
+                        guard ratingValue >= 1 && ratingValue <= 5 else {
+                            print("❌ FriendDetailView: Rating \(doc.documentID) has invalid value: \(ratingValue) (should be 1-5)")
+                            return nil
+                        }
+                        
                         let comment = data["comment"] as? String
                         let timestamp = (data["timestamp"] as? Timestamp)?.dateValue()
                         let likes = data["likes"] as? Int ?? 0

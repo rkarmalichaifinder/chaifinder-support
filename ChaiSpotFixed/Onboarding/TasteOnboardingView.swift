@@ -58,6 +58,7 @@ struct TasteOnboardingView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .overlay(
             // Loading overlay
             Group {

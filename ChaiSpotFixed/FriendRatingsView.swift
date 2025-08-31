@@ -147,12 +147,31 @@ struct FriendRatingsView: View {
                         let data = document.data()
                         
                         guard let spotId = data["spotId"] as? String,
-                              let userId = data["userId"] as? String,
-                              let rating = data["rating"] as? Int else {
+                              let userId = data["userId"] as? String else {
                             print("⚠️ FriendRatingsView: Invalid rating document: \(document.documentID)")
                             print("🔍 Debug info: data keys: \(Array(data.keys))")
-                            print("🔍 Debug info: spotId type: \(type(of: data["spotId"] ?? "nil")), userId type: \(type(of: data["userId"] ?? "nil")), rating type: \(type(of: data["rating"] ?? "nil"))")
+                            print("🔍 Debug info: spotId type: \(type(of: data["spotId"] ?? "nil")), userId type: \(type(of: data["userId"] ?? "nil"))")
                             return nil
+                        }
+                        
+                        // 🔧 FIX: Use the correct field name "value" instead of "rating"
+                        guard let rating = data["value"] as? Int else {
+                            print("❌ FriendRatingsView: Rating \(document.documentID) missing or invalid value field")
+                            print("🔍 Available fields: \(Array(data.keys))")
+                            print("🔍 Value field value: \(data["value"] ?? "nil")")
+                            return nil
+                        }
+                        
+                        // 🔧 FIX: Validate rating value is within expected range
+                        guard rating >= 1 && rating <= 5 else {
+                            print("❌ FriendRatingsView: Rating \(document.documentID) has invalid value: \(rating) (should be 1-5)")
+                            return nil
+                        }
+                        
+                        // 🔧 FIX: Clamp rating to valid range instead of rejecting
+                        let clampedRating = max(1, min(5, rating))
+                        if clampedRating != rating {
+                            print("⚠️ FriendRatingsView: Rating \(document.documentID) value \(rating) clamped to \(clampedRating)")
                         }
                         
                         print("🔍 FriendRatingsView: Processing rating for spotId: '\(spotId)', userId: '\(userId)', rating: \(rating)")
@@ -206,17 +225,8 @@ struct FriendRatingsView: View {
                         print("🔍 Rating: spotId='\(rating.spotId)', value=\(rating.value), spotName='\(rating.spotName ?? "nil")'")
                     }
                     
-                    // Debug: Check what's in the rating documents
-                    self.debugRatingData()
-                    
-                    // Debug: Check recent ratings for spotName field
-                    self.debugRecentRatings()
-                    
                     // Load spot names for ratings that don't have them
                     self.loadMissingSpotNames()
-                    
-                    // Debug: Check what's actually in the collections
-                    self.debugCollections()
                 }
             }
     }
@@ -357,30 +367,25 @@ struct FriendRatingsView: View {
                 
                 for (index, document) in documents.enumerated() {
                     let data = document.data()
-                    print("🔍 Debug: Document \(index + 1) ID: \(document.documentID)")
-                    print("🔍 Debug: All fields in document \(index + 1):")
-                    for (key, value) in data {
-                        print("  - \(key): \(value) (type: \(type(of: value)))")
-                    }
-                    print("---")
-                }
-                
-                // Check specific fields we're looking for
-                if let firstDoc = documents.first {
-                    let data = firstDoc.data()
-                    print("🔍 Debug: Checking specific fields in first document:")
-                    print("  - spotName: \(data["spotName"] ?? "nil")")
-                    print("  - spotAddress: \(data["spotAddress"] ?? "nil")")
+                    print("🔍 Debug: Document \(index) - ID: \(document.documentID)")
                     print("  - spotId: \(data["spotId"] ?? "nil")")
-                    print("  - rating: \(data["rating"] ?? "nil")")
                     print("  - userId: \(data["userId"] ?? "nil")")
+                    print("  - rating: \(data["rating"] ?? "nil") (type: \(type(of: data["rating"] ?? "nil")))")
+                    print("  - spotName: \(data["spotName"] ?? "nil")")
+                    print("  - Available fields: \(Array(data.keys))")
                     
-                    // Check for alternative field names
-                    print("🔍 Debug: Checking alternative field names:")
-                    print("  - name: \(data["name"] ?? "nil")")
-                    print("  - address: \(data["address"] ?? "nil")")
-                    print("  - value: \(data["value"] ?? "nil")")
-                    print("  - score: \(data["score"] ?? "nil")")
+                    // Check if rating is actually 0 or missing
+                    if let ratingValue = data["rating"] {
+                        if let intValue = ratingValue as? Int {
+                            print("  - Rating as Int: \(intValue)")
+                        } else if let doubleValue = ratingValue as? Double {
+                            print("  - Rating as Double: \(doubleValue)")
+                        } else {
+                            print("  - Rating as other type: \(ratingValue)")
+                        }
+                    } else {
+                        print("  - Rating field is missing!")
+                    }
                 }
             }
     }
@@ -610,6 +615,118 @@ struct FriendRatingsView: View {
         
         attemptLoad()
     }
+    
+    // MARK: - Data Fix Functions
+    
+    /// Fixes invalid rating values in the database
+    func fixInvalidRatings(completion: @escaping (Error?) -> Void) {
+        print("🔧 Starting to fix invalid ratings...")
+        let db = Firestore.firestore()
+        var lastDoc: DocumentSnapshot?
+        var totalProcessed = 0
+        var totalFixed = 0
+        
+        func processBatch() {
+            var query: Query = db.collection("ratings")
+                .order(by: FieldPath.documentID())
+                .limit(to: 100)
+            
+            if let last = lastDoc {
+                query = query.start(afterDocument: last)
+            }
+            
+            query.getDocuments { snapshot, error in
+                if let error = error {
+                    print("❌ Error processing batch: \(error.localizedDescription)")
+                    completion(error)
+                    return
+                }
+                
+                guard let snapshot = snapshot, !snapshot.documents.isEmpty else {
+                    print("✅ Fix completed! Total processed: \(totalProcessed), Total fixed: \(totalFixed)")
+                    completion(nil)
+                    return
+                }
+                
+                let batch = db.batch()
+                var batchFixed = 0
+                
+                for doc in snapshot.documents {
+                    let data = doc.data()
+                    var needsUpdate = false
+                    var patch: [String: Any] = [:]
+                    
+                    // Check for invalid rating values
+                    if let ratingValue = data["rating"] {
+                        if let intValue = ratingValue as? Int {
+                            if intValue < 1 || intValue > 5 {
+                                print("🔧 Fixing invalid rating value: \(intValue) -> 3")
+                                patch["rating"] = 3
+                                needsUpdate = true
+                            }
+                        } else if let doubleValue = ratingValue as? Double {
+                            let intValue = Int(doubleValue)
+                            if intValue < 1 || intValue > 5 {
+                                print("🔧 Fixing invalid rating value: \(doubleValue) -> 3")
+                                patch["rating"] = 3
+                                needsUpdate = true
+                            } else if doubleValue != Double(intValue) {
+                                print("🔧 Converting Double to Int: \(doubleValue) -> \(intValue)")
+                                patch["rating"] = intValue
+                                needsUpdate = true
+                            }
+                        } else if let stringValue = ratingValue as? String, let intValue = Int(stringValue) {
+                            if intValue < 1 || intValue > 5 {
+                                print("🔧 Fixing invalid rating value: \(stringValue) -> 3")
+                                patch["rating"] = 3
+                                needsUpdate = true
+                            } else {
+                                print("🔧 Converting String to Int: \(stringValue) -> \(intValue)")
+                                patch["rating"] = intValue
+                                needsUpdate = true
+                            }
+                        } else {
+                            print("🔧 Setting missing/invalid rating to default: 3")
+                            patch["rating"] = 3
+                            needsUpdate = true
+                        }
+                    } else {
+                        print("🔧 Adding missing rating field with default: 3")
+                        patch["rating"] = 3
+                        needsUpdate = true
+                    }
+                    
+                    if needsUpdate {
+                        batch.updateData(patch, forDocument: doc.reference)
+                        batchFixed += 1
+                    }
+                }
+                
+                if batchFixed > 0 {
+                    batch.commit { batchError in
+                        if let batchError = batchError {
+                            print("❌ Batch commit error: \(batchError.localizedDescription)")
+                            completion(batchError)
+                            return
+                        }
+                        
+                        totalProcessed += snapshot.documents.count
+                        totalFixed += batchFixed
+                        print("🔄 Processed batch: \(snapshot.documents.count) docs, fixed: \(batchFixed). Total: \(totalProcessed)/\(totalFixed)")
+                        
+                        lastDoc = snapshot.documents.last
+                        processBatch()
+                    }
+                } else {
+                    totalProcessed += snapshot.documents.count
+                    lastDoc = snapshot.documents.last
+                    processBatch()
+                }
+            }
+        }
+        
+        processBatch()
+    }
 }
 
 struct FriendRatingCard: View {
@@ -635,6 +752,7 @@ struct FriendRatingCard: View {
                     
                     Spacer()
                     
+                    // 🔧 DEBUG: Add debugging for rating value display
                     Text("\(rating.value)★")
                         .font(DesignSystem.Typography.titleMedium)
                         .fontWeight(.bold)

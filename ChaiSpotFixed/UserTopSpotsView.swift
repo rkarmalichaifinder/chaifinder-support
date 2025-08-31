@@ -22,9 +22,10 @@ struct UserTopSpotsView: View {
                     // Header
                     VStack(spacing: DesignSystem.Spacing.md) {
                         HStack {
-                            Text("Top Spots")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            Text("chai finder")
+                                .font(DesignSystem.Typography.titleLarge)
+                                .fontWeight(.bold)
+                                .foregroundColor(DesignSystem.Colors.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             
                             Spacer()
@@ -36,12 +37,6 @@ struct UserTopSpotsView: View {
                             .foregroundColor(DesignSystem.Colors.primary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Text("chai finder")
-                            .font(DesignSystem.Typography.titleLarge)
-                            .fontWeight(.bold)
-                            .foregroundColor(DesignSystem.Colors.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(DesignSystem.Spacing.lg)
                     .background(DesignSystem.Colors.background)
@@ -81,12 +76,12 @@ struct UserTopSpotsView: View {
                                 .font(.system(size: UIDevice.current.userInterfaceIdiom == .pad ? 64 : 48))
                                 .foregroundColor(DesignSystem.Colors.secondary)
                             
-                            Text("No Top Spots Yet")
+                            Text("No 5-Star Favorites Yet")
                                 .font(DesignSystem.Typography.headline)
                                 .fontWeight(.bold)
                                 .foregroundColor(DesignSystem.Colors.textPrimary)
                             
-                            Text("Start rating chai spots to see your favorites here!")
+                            Text("Rate chai spots with 5 stars to see your favorites ranked by community score!")
                                 .font(DesignSystem.Typography.bodyMedium)
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
                                 .multilineTextAlignment(.center)
@@ -209,36 +204,40 @@ struct UserTopSpotsView: View {
                         // Calculate average community scores
                         for (spotId, ratings) in spotRatings {
                             let communityRatings = ratings.filter { $0.userId != Auth.auth().currentUser?.uid }
-                            if !communityRatings.isEmpty {
-                                let averageScore = Double(communityRatings.reduce(0) { $0 + $1.value }) / Double(communityRatings.count)
-                                let totalRatings = communityRatings.count
-                                
-                                // Get spot details
-                                let spotDetail = spotDetails[spotId] ?? (name: "Unknown Location", address: "Address not available")
-                                
-                                let topSpot = TopSpotItem(
-                                    id: spotId,
-                                    name: spotDetail.name,
-                                    address: spotDetail.address,
-                                    userRating: 5,
-                                    communityScore: averageScore,
-                                    communityRatingCount: totalRatings
-                                )
-                                allSpots.append(topSpot)
-                            }
+                            let averageScore = communityRatings.isEmpty ? 0.0 : Double(communityRatings.reduce(0) { $0 + $1.value }) / Double(communityRatings.count)
+                            let totalRatings = communityRatings.count
+                            
+                            // Get spot details
+                            let spotDetail = spotDetails[spotId] ?? (name: "Unknown Location", address: "Address not available")
+                            
+                            let topSpot = TopSpotItem(
+                                id: spotId,
+                                name: spotDetail.name,
+                                address: spotDetail.address,
+                                userRating: 5,
+                                communityScore: averageScore,
+                                communityRatingCount: totalRatings
+                            )
+                            allSpots.append(topSpot)
                         }
                         
                         processedCount += batchSpotIds.count
                         
                         // Check if we've processed all batches
                         if processedCount >= spotIds.count {
-                            // Sort by community score (descending) and take top 10
-                            let sortedSpots = allSpots
-                                .sorted { $0.communityScore > $1.communityScore }
-                                .prefix(10)
-                            
-                            self.isLoading = false
-                            self.topSpots = Array(sortedSpots)
+                            // Check if we have all spot details, if not, fetch missing ones
+                            let missingSpotIds = Set(spotIds).subtracting(Set(spotDetails.keys))
+                            if !missingSpotIds.isEmpty {
+                                self.fetchMissingSpotDetails(for: Array(missingSpotIds), currentSpots: allSpots)
+                            } else {
+                                // Sort by community score (descending) and take top 10
+                                let sortedSpots = allSpots
+                                    .sorted { $0.communityScore > $1.communityScore }
+                                    .prefix(10)
+                                
+                                self.isLoading = false
+                                self.topSpots = Array(sortedSpots)
+                            }
                         } else {
                             // Process next batch
                             let nextBatchStart = processedCount
@@ -253,6 +252,71 @@ struct UserTopSpotsView: View {
         // Start with first batch
         let firstBatch = Array(spotIds.prefix(batchSize))
         processBatch(firstBatch)
+    }
+    
+    private func fetchMissingSpotDetails(for spotIds: [String], currentSpots: [TopSpotItem]) {
+        let group = DispatchGroup()
+        var spotDetails: [String: (name: String, address: String)] = [:]
+        var fetchError: String?
+        
+        for spotId in spotIds {
+            group.enter()
+            
+            // Try both collections - chaiFinder and chaiSpots
+            db.collection("chaiFinder").document(spotId).getDocument { snapshot, error in
+                if let error = error {
+                    // Try chaiSpots collection
+                    self.db.collection("chaiSpots").document(spotId).getDocument { snapshot2, error2 in
+                        if let error2 = error2 {
+                            fetchError = "Failed to fetch spot details"
+                        } else if let data = snapshot2?.data() {
+                            let name = data["name"] as? String ?? "Unknown Location"
+                            let address = data["address"] as? String ?? "Address not available"
+                            spotDetails[spotId] = (name: name, address: address)
+                        }
+                        group.leave()
+                    }
+                } else if let data = snapshot?.data() {
+                    let name = data["name"] as? String ?? "Unknown Location"
+                    let address = data["address"] as? String ?? "Address not available"
+                    spotDetails[spotId] = (name: name, address: address)
+                    group.leave()
+                } else {
+                    group.leave()
+                }
+            }
+        }
+        
+        group.notify(queue: .main) {
+            if let error = fetchError {
+                self.isLoading = false
+                self.error = error
+                return
+            }
+            
+            // Update current spots with missing details
+            var updatedSpots = currentSpots
+            for (index, spot) in currentSpots.enumerated() {
+                if let details = spotDetails[spot.id] {
+                    updatedSpots[index] = TopSpotItem(
+                        id: spot.id,
+                        name: details.name,
+                        address: details.address,
+                        userRating: spot.userRating,
+                        communityScore: spot.communityScore,
+                        communityRatingCount: spot.communityRatingCount
+                    )
+                }
+            }
+            
+            // Sort by community score (descending) and take top 10
+            let sortedSpots = updatedSpots
+                .sorted { $0.communityScore > $1.communityScore }
+                .prefix(10)
+            
+            self.isLoading = false
+            self.topSpots = Array(sortedSpots)
+        }
     }
 }
 
@@ -317,20 +381,26 @@ struct TopSpotCard: View {
                         }
                     }
                     
-                    // Community score
+                                        // Community score
                     HStack(spacing: 4) {
                         Text("Community:")
                             .font(DesignSystem.Typography.caption)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
                         
-                        Text(String(format: "%.1f★", spot.communityScore))
-                            .font(DesignSystem.Typography.bodyMedium)
-                            .fontWeight(.medium)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
-                        
-                        Text("(\(spot.communityRatingCount))")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        if spot.communityRatingCount > 0 {
+                            Text(String(format: "%.1f★", spot.communityScore))
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .fontWeight(.medium)
+                                .foregroundColor(DesignSystem.Colors.textPrimary)
+                            
+                            Text("(\(spot.communityRatingCount))")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                        } else {
+                            Text("No ratings yet")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                        }
                     }
                 }
             }

@@ -77,19 +77,6 @@ struct FeedView: View {
             Text("Add Review")
                 .font(DesignSystem.Typography.titleLarge)
         }
-        .searchBarKeyboardDismissible()
-        .onAppear {
-            // Start listening for rating update notifications
-            viewModel.startListeningForNotifications()
-            
-            if viewModel.reviews.isEmpty {
-                viewModel.refreshFeed()
-            }
-        }
-        .onDisappear {
-            // Stop listening for notifications when view disappears
-            viewModel.stopListeningForNotifications()
-        }
     }
     
     // MARK: - Header Section
@@ -603,14 +590,7 @@ struct FeedView: View {
             .padding(.top, 2) // Reduced from 8 to 2
             .padding(.bottom, 16)
         }
-        .scrollDismissesKeyboard(.immediately)
-        .gesture(
-            DragGesture()
-                .onChanged { _ in
-                    // Dismiss keyboard when user starts dragging
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-        )
+        .scrollDismissesKeyboard(.interactively)
     }
 }
 

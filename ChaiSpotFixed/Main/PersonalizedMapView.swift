@@ -164,13 +164,9 @@ struct PersonalizedMapView: View {
             } message: {
                 Text("This score shows how well this chai spot matches your personal preferences on a 1-5 scale. It's calculated from your taste preferences, ratings of similar spots, friend recommendations, and community ratings. 4-5 stars = great match, 3-4 stars = good match, 1-2 stars = low match.")
             }
-            .navigationViewStyle(.stack)
-            .searchBarKeyboardDismissible()
-            .onAppear {
-                print("🎯 PersonalizedMapView appeared")
-                setupLocationManager()
-            }
         }
+        .navigationViewStyle(.stack)
+        .searchBarKeyboardDismissible()
     }
     
     // MARK: - Header Section
