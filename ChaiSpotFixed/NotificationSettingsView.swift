@@ -1,471 +1,265 @@
 import SwiftUI
-import UserNotifications
 
 struct NotificationSettingsView: View {
-    @StateObject private var notificationService = NotificationService.shared
-    @State private var showingPermissionAlert = false
-    @State private var permissionAlertMessage = ""
+    @StateObject private var notificationManager = SmartNotificationManager.shared
+    @State private var preferences: NotificationPreferences
+    @State private var showingResetAlert = false
+    
+    init() {
+        _preferences = State(initialValue: SmartNotificationManager.shared.preferences)
+    }
     
     var body: some View {
         NavigationView {
-            List {
-                // Notification Status Section
-                Section(header: Text("Notification Status")) {
-                    HStack {
-                        Image(systemName: notificationService.isNotificationsEnabled ? "bell.fill" : "bell.slash.fill")
-                            .foregroundColor(notificationService.isNotificationsEnabled ? .green : .red)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(notificationService.isNotificationsEnabled ? "Notifications Enabled" : "Notifications Disabled")
-                                .font(.headline)
-                            Text(notificationService.isNotificationsEnabled ? "You'll receive all chai-related notifications" : "Enable notifications to stay updated")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        if !notificationService.isNotificationsEnabled {
-                            Button("Enable") {
-                                requestNotificationPermissions()
+            Form {
+                // Notification Types Section
+                Section(header: Text("Notification Types")) {
+                    ForEach(FeedItemType.allCases, id: \.self) { type in
+                        Toggle(isOn: Binding(
+                            get: { preferences.enabledTypes.contains(type) },
+                            set: { isEnabled in
+                                if isEnabled {
+                                    preferences.enabledTypes.insert(type)
+                                } else {
+                                    preferences.enabledTypes.remove(type)
+                                }
+                                updatePreferences()
                             }
-                            .buttonStyle(.borderedProminent)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    
-                    // Notification Summary
-                    if notificationService.isNotificationsEnabled {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Active Notifications")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                Text("\(notificationService.enabledNotificationCount) of 6 notification types enabled")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            if notificationService.quietHoursEnabled {
-                                Image(systemName: "moon.fill")
-                                    .foregroundColor(.blue)
-                                    .font(.title2)
-                            }
-                        }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(8)
-                        
-                        // Additional status info
-                        if notificationService.digestNotifications || notificationService.quietHoursEnabled {
+                        )) {
                             HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Notification Settings")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
+                                Image(systemName: type.icon)
+                                    .foregroundColor(iconColor(for: type))
+                                    .frame(width: 20)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(type.displayName)
+                                        .font(DesignSystem.Typography.bodyMedium)
+                                        .foregroundColor(DesignSystem.Colors.textPrimary)
                                     
-                                    HStack(spacing: 12) {
-                                        if notificationService.digestNotifications {
-                                            Label("Digest Mode", systemImage: "clock")
-                                                .font(.caption)
-                                                .foregroundColor(.green)
-                                        }
-                                        
-                                        if notificationService.quietHoursEnabled {
-                                            Label("Quiet Hours", systemImage: "moon")
-                                                .font(.caption)
-                                                .foregroundColor(.blue)
-                                        }
-                                    }
-                                }
-                                
-                                Spacer()
-                                
-                                if notificationService.pendingNotificationCount > 0 {
-                                    Text("\(notificationService.pendingNotificationCount) pending")
-                                        .font(.caption)
-                                        .foregroundColor(.orange)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.orange.opacity(0.2))
-                                        .cornerRadius(4)
+                                    Text(description(for: type))
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
                                 }
                             }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(8)
                         }
                     }
                 }
                 
-                // Gamification Notifications Section
-                Section(header: Text("Gamification Notifications")) {
-                    NotificationToggleRow(
-                        title: NotificationPreferenceType.badges.displayName,
-                        description: NotificationPreferenceType.badges.description,
-                        isEnabled: notificationService.badgeNotifications,
-                        onToggle: { enabled in
-                            notificationService.updateNotificationPreference(type: .badges, enabled: enabled)
-                        }
-                    )
-                    
-                    NotificationToggleRow(
-                        title: NotificationPreferenceType.achievements.displayName,
-                        description: NotificationPreferenceType.achievements.description,
-                        isEnabled: notificationService.achievementNotifications,
-                        onToggle: { enabled in
-                            notificationService.updateNotificationPreference(type: .achievements, enabled: enabled)
-                        }
-                    )
-                    
-                    NotificationToggleRow(
-                        title: NotificationPreferenceType.streaks.displayName,
-                        description: NotificationPreferenceType.streaks.description,
-                        isEnabled: notificationService.streakNotifications,
-                        onToggle: { enabled in
-                            notificationService.updateNotificationPreference(type: .streaks, enabled: enabled)
-                        }
-                    )
-                    
-                    NotificationToggleRow(
-                        title: NotificationPreferenceType.weeklyChallenges.displayName,
-                        description: NotificationPreferenceType.weeklyChallenges.description,
-                        isEnabled: notificationService.weeklyChallengeNotifications,
-                        onToggle: { enabled in
-                            notificationService.updateNotificationPreference(type: .weeklyChallenges, enabled: enabled)
-                        }
-                    )
-                }
-                
-                // Social Notifications Section
-                Section(header: Text("Social Notifications")) {
-                    NotificationToggleRow(
-                        title: NotificationPreferenceType.friendActivity.displayName,
-                        description: NotificationPreferenceType.friendActivity.description,
-                        isEnabled: notificationService.friendActivityNotifications,
-                        onToggle: { enabled in
-                            notificationService.updateNotificationPreference(type: .friendActivity, enabled: enabled)
-                        }
-                    )
-                    
-                    NotificationToggleRow(
-                        title: NotificationPreferenceType.friendRequests.displayName,
-                        description: NotificationPreferenceType.friendRequests.description,
-                        isEnabled: notificationService.friendRequestNotifications,
-                        onToggle: { enabled in
-                            notificationService.updateNotificationPreference(type: .friendRequests, enabled: enabled)
-                        }
-                    )
-                }
-                
-                // Notification Timing Section
-                Section(header: Text("Notification Timing")) {
+                // Limits Section
+                Section(header: Text("Notification Limits")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Streak Reminders")
-                            .font(.headline)
-                        Text("Daily reminders at 8:00 PM to maintain your streak")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
                         HStack {
-                            Text("Time")
+                            Text("Max per hour")
                             Spacer()
-                            Text("8:00 PM")
-                                .foregroundColor(.secondary)
+                            Text("\(preferences.maxNotificationsPerHour)")
+                                .foregroundColor(DesignSystem.Colors.primary)
                         }
-                        .padding(.top, 4)
+                        
+                        Slider(
+                            value: Binding(
+                                get: { Double(preferences.maxNotificationsPerHour) },
+                                set: { preferences.maxNotificationsPerHour = Int($0) }
+                            ),
+                            in: 1...10,
+                            step: 1
+                        )
+                        .onChange(of: preferences.maxNotificationsPerHour) { _ in
+                            updatePreferences()
+                        }
                     }
-                    .padding(.vertical, 8)
                     
-                    // Quiet Hours Section
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("Quiet Hours")
-                                .font(.headline)
+                            Text("Max per day")
                             Spacer()
-                            Toggle("", isOn: Binding(
-                                get: { notificationService.quietHoursEnabled },
-                                set: { enabled in
-                                    notificationService.updateQuietHours(
-                                        enabled: enabled,
-                                        start: notificationService.quietHoursStart,
-                                        end: notificationService.quietHoursEnd
-                                    )
-                                }
-                            ))
-                            .labelsHidden()
+                            Text("\(preferences.maxNotificationsPerDay)")
+                                .foregroundColor(DesignSystem.Colors.primary)
                         }
                         
-                        if notificationService.quietHoursEnabled {
-                            Text("Notifications will be silenced during quiet hours")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text("Start Time")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    DatePicker("", selection: Binding(
-                                        get: { notificationService.quietHoursStart },
-                                        set: { start in
-                                            notificationService.updateQuietHours(
-                                                enabled: notificationService.quietHoursEnabled,
-                                                start: start,
-                                                end: notificationService.quietHoursEnd
-                                            )
-                                        }
-                                    ), displayedComponents: .hourAndMinute)
-                                    .labelsHidden()
-                                }
-                                
-                                Spacer()
-                                
-                                VStack(alignment: .trailing) {
-                                    Text("End Time")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    DatePicker("", selection: Binding(
-                                        get: { notificationService.quietHoursEnd },
-                                        set: { end in
-                                            notificationService.updateQuietHours(
-                                                enabled: notificationService.quietHoursEnabled,
-                                                start: notificationService.quietHoursStart,
-                                                end: end
-                                            )
-                                        }
-                                    ), displayedComponents: .hourAndMinute)
-                                    .labelsHidden()
-                                }
-                            }
+                        Slider(
+                            value: Binding(
+                                get: { Double(preferences.maxNotificationsPerDay) },
+                                set: { preferences.maxNotificationsPerDay = Int($0) }
+                            ),
+                            in: 5...50,
+                            step: 5
+                        )
+                        .onChange(of: preferences.maxNotificationsPerDay) { _ in
+                            updatePreferences()
                         }
-                    }
-                    .padding(.vertical, 8)
-                    
-                    // Digest Notifications Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Daily Digest")
-                                .font(.headline)
-                            Spacer()
-                            Toggle("", isOn: Binding(
-                                get: { notificationService.digestNotifications },
-                                set: { enabled in
-                                    notificationService.updateDigestSettings(
-                                        enabled: enabled,
-                                        time: notificationService.digestTime
-                                    )
-                                }
-                            ))
-                            .labelsHidden()
-                        }
-                        
-                        if notificationService.digestNotifications {
-                            Text("Receive a daily summary of all notifications at your preferred time")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            HStack {
-                                Text("Digest Time")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                DatePicker("", selection: Binding(
-                                    get: { notificationService.digestTime },
-                                    set: { time in
-                                        notificationService.updateDigestSettings(
-                                            enabled: notificationService.digestNotifications,
-                                            time: time
-                                        )
-                                    }
-                                ), displayedComponents: .hourAndMinute)
-                                .labelsHidden()
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-                
-                // FCM Token Section (for debugging)
-                if let fcmToken = notificationService.fcmToken {
-                    Section(header: Text("Technical Info")) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("FCM Token")
-                                .font(.headline)
-                            Text(fcmToken)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(3)
-                            
-                            Button("Copy Token") {
-                                UIPasteboard.general.string = fcmToken
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        .padding(.vertical, 8)
                     }
                 }
                 
-                // Actions Section
+                // Quiet Hours Section
+                Section(header: Text("Quiet Hours")) {
+                    HStack {
+                        Text("Start time")
+                        Spacer()
+                        Picker("Start", selection: Binding(
+                            get: { preferences.quietHoursStart },
+                            set: { preferences.quietHoursStart = $0 }
+                        )) {
+                            ForEach(0..<24, id: \.self) { hour in
+                                Text(timeString(hour)).tag(hour)
+                            }
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                        .onChange(of: preferences.quietHoursStart) { _ in
+                            updatePreferences()
+                        }
+                    }
+                    
+                    HStack {
+                        Text("End time")
+                        Spacer()
+                        Picker("End", selection: Binding(
+                            get: { preferences.quietHoursEnd },
+                            set: { preferences.quietHoursEnd = $0 }
+                        )) {
+                            ForEach(0..<24, id: \.self) { hour in
+                                Text(timeString(hour)).tag(hour)
+                            }
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                        .onChange(of: preferences.quietHoursEnd) { _ in
+                            updatePreferences()
+                        }
+                    }
+                    
+                    if isInQuietHours() {
+                        HStack {
+                            Image(systemName: "moon.fill")
+                                .foregroundColor(.blue)
+                            Text("Currently in quiet hours")
+                                .foregroundColor(.blue)
+                                .font(DesignSystem.Typography.caption)
+                        }
+                    }
+                }
+                
+                // Sound & Vibration Section
+                Section(header: Text("Sound & Vibration")) {
+                    Toggle("Sound", isOn: Binding(
+                        get: { preferences.enableSound },
+                        set: { preferences.enableSound = $0 }
+                    ))
+                    .onChange(of: preferences.enableSound) { _ in
+                        updatePreferences()
+                    }
+                    
+                    Toggle("Vibration", isOn: Binding(
+                        get: { preferences.enableVibration },
+                        set: { preferences.enableVibration = $0 }
+                    ))
+                    .onChange(of: preferences.enableVibration) { _ in
+                        updatePreferences()
+                    }
+                    
+                    Toggle("Badge Count", isOn: Binding(
+                        get: { preferences.enableBadge },
+                        set: { preferences.enableBadge = $0 }
+                    ))
+                    .onChange(of: preferences.enableBadge) { _ in
+                        updatePreferences()
+                    }
+                }
+                
+                // Statistics Section
+                Section(header: Text("Statistics")) {
+                    HStack {
+                        Text("Notifications today")
+                        Spacer()
+                        Text("\(notificationManager.notificationCount)")
+                            .foregroundColor(DesignSystem.Colors.primary)
+                    }
+                    
+                    if let lastTime = notificationManager.lastNotificationTime {
+                        HStack {
+                            Text("Last notification")
+                            Spacer()
+                            Text(lastTime, style: .relative)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .font(DesignSystem.Typography.caption)
+                        }
+                    }
+                }
+                
+                // Reset Section
                 Section {
-                    Button("Test All Notifications") {
-                        testAllNotifications()
-                    }
-                    .foregroundColor(.blue)
-                    
-                    Button("Test Badge Notification") {
-                        testBadgeNotification()
-                    }
-                    .foregroundColor(.green)
-                    
-                    Button("Test Friend Request") {
-                        testFriendRequestNotification()
-                    }
-                    .foregroundColor(.purple)
-                    
-                    Button("Test Digest Notification") {
-                        testDigestNotification()
-                    }
-                    .foregroundColor(.indigo)
-                    
-                    Button("Clear All Notifications") {
-                        notificationService.clearAllNotifications()
-                    }
-                    .foregroundColor(.orange)
-                    
-                    Button("Reset Notification Settings") {
-                        resetNotificationSettings()
+                    Button("Reset Notification Count") {
+                        showingResetAlert = true
                     }
                     .foregroundColor(.red)
                 }
             }
             .navigationTitle("Notifications")
             .navigationBarTitleDisplayMode(.large)
-            .alert("Notification Permission", isPresented: $showingPermissionAlert) {
-                Button("OK") { }
-            } message: {
-                Text(permissionAlertMessage)
-            }
-        }
-    }
-    
-    // MARK: - Actions
-    
-    private func requestNotificationPermissions() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-            DispatchQueue.main.async {
-                if granted {
-                    notificationService.isNotificationsEnabled = true
-                    notificationService.registerForRemoteNotifications()
-                    permissionAlertMessage = "Notifications enabled! You'll now receive chai-related updates."
-                } else {
-                    permissionAlertMessage = "Notifications are disabled. You can enable them in Settings > Notifications > Chai Finder."
+            .alert("Reset Notification Count", isPresented: $showingResetAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Reset", role: .destructive) {
+                    notificationManager.resetNotificationCount()
                 }
-                showingPermissionAlert = true
+            } message: {
+                Text("This will reset your daily notification count to 0.")
             }
         }
     }
     
-    private func testAllNotifications() {
-        // Test all notification types with delays
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            notificationService.scheduleGamificationNotification(type: .badgeUnlock, delay: 0.5)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            notificationService.scheduleGamificationNotification(type: .achievementUnlock, delay: 0.5)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            notificationService.scheduleGamificationNotification(type: .streakMilestone, delay: 0.5)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-            notificationService.scheduleGamificationNotification(type: .weeklyChallenge, delay: 0.5)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-            notificationService.notifyFriendActivity(friendName: "Test Friend", activity: "rated a new chai spot!")
+    // MARK: - Helper Methods
+    
+    private func updatePreferences() {
+        notificationManager.updatePreferences(preferences)
+    }
+    
+    private func iconColor(for type: FeedItemType) -> Color {
+        switch type {
+        case .review: return DesignSystem.Colors.primary
+        case .newUser: return DesignSystem.Colors.info
+        case .newSpot: return DesignSystem.Colors.secondary
+        case .achievement: return .orange
+        case .friendActivity: return DesignSystem.Colors.success
+        case .weeklyChallenge: return .red
+        case .weeklyRanking: return .purple
         }
     }
     
-    private func testBadgeNotification() {
-        notificationService.scheduleGamificationNotification(
-            type: .badgeUnlock,
-            delay: 2.0
-        )
-    }
-    
-    private func testFriendRequestNotification() {
-        notificationService.notifyFriendRequest(fromUserName: "Test User")
-    }
-    
-    private func testDigestNotification() {
-        // Add some test notifications to the pending queue
-        notificationService.updateNotificationPreference(type: .badges, enabled: true)
-        notificationService.updateNotificationPreference(type: .achievements, enabled: true)
-        notificationService.updateNotificationPreference(type: .friendActivity, enabled: true)
-        
-        // Add test notifications to pending queue
-        notificationService.notifyBadgeUnlocked(badge: Badge(
-            id: "test1", 
-            name: "First Timer", 
-            description: "Your first chai rating", 
-            iconName: "1.circle.fill", 
-            category: .firstSteps, 
-            requirement: 1, 
-            rarity: .common
-        ))
-        notificationService.notifyAchievementUnlocked(achievement: Achievement(id: "test1", name: "Chai Explorer", description: "Rated 5 different spots", points: 50))
-        notificationService.notifyFriendActivity(friendName: "Test Friend", activity: "rated a new chai spot!")
-        
-        // Trigger digest notification
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            notificationService.triggerDigestNotification()
+    private func description(for type: FeedItemType) -> String {
+        switch type {
+        case .review: return "New reviews from friends and community"
+        case .newUser: return "When new users join chai finder"
+        case .newSpot: return "When new chai spots are discovered"
+        case .achievement: return "When users earn achievements"
+        case .friendActivity: return "Friend activities and updates"
+        case .weeklyChallenge: return "Weekly challenge updates"
+        case .weeklyRanking: return "Weekly ranking updates"
         }
     }
     
-    private func resetNotificationSettings() {
-        // Clear all notifications
-        notificationService.clearAllNotifications()
+    private func timeString(_ hour: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
         
-        // Reset to default settings
-        notificationService.resetNotificationPreferences()
+        let calendar = Calendar.current
+        let date = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()
         
-        permissionAlertMessage = "Notification settings have been reset to defaults."
-        showingPermissionAlert = true
+        return formatter.string(from: date)
+    }
+    
+    private func isInQuietHours() -> Bool {
+        let calendar = Calendar.current
+        let now = Date()
+        let hour = calendar.component(.hour, from: now)
+        
+        if preferences.quietHoursStart < preferences.quietHoursEnd {
+            return hour >= preferences.quietHoursStart || hour < preferences.quietHoursEnd
+        } else {
+            return hour >= preferences.quietHoursStart && hour < preferences.quietHoursEnd
+        }
     }
 }
 
-// MARK: - Notification Toggle Row
-struct NotificationToggleRow: View {
-    let title: String
-    let description: String
-    let isEnabled: Bool
-    let onToggle: (Bool) -> Void
-    
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                Text(description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            Toggle("", isOn: Binding(
-                get: { isEnabled },
-                set: { onToggle($0) }
-            ))
-            .labelsHidden()
-        }
-        .padding(.vertical, 8)
+struct NotificationSettingsView_Previews: PreviewProvider {
+    static var previews: some View {
+        NotificationSettingsView()
     }
-}
-
-#Preview {
-    NotificationSettingsView()
 }

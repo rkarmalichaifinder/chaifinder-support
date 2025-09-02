@@ -16,6 +16,7 @@ class NotificationService: NSObject, ObservableObject {
     @Published var weeklyChallengeNotifications = true
     @Published var friendActivityNotifications = true
     @Published var friendRequestNotifications = true
+    @Published var weeklyRankingNotifications = true
     
     // Notification timing preferences
     @Published var quietHoursEnabled = false
@@ -46,6 +47,7 @@ class NotificationService: NSObject, ObservableObject {
         weeklyChallengeNotifications = UserDefaults.standard.bool(forKey: "notifications.weeklyChallenges")
         friendActivityNotifications = UserDefaults.standard.bool(forKey: "notifications.friendActivity")
         friendRequestNotifications = UserDefaults.standard.bool(forKey: "notifications.friendRequests")
+        weeklyRankingNotifications = UserDefaults.standard.bool(forKey: "notifications.weeklyRankings")
         
         // Load quiet hours preferences
         quietHoursEnabled = UserDefaults.standard.bool(forKey: "notifications.quietHoursEnabled")
@@ -90,6 +92,10 @@ class NotificationService: NSObject, ObservableObject {
             friendRequestNotifications = true
             UserDefaults.standard.set(true, forKey: "notifications.friendRequests")
         }
+        if UserDefaults.standard.object(forKey: "notifications.weeklyRankings") == nil {
+            weeklyRankingNotifications = true
+            UserDefaults.standard.set(true, forKey: "notifications.weeklyRankings")
+        }
     }
     
     func updateNotificationPreference(type: NotificationPreferenceType, enabled: Bool) {
@@ -112,6 +118,9 @@ class NotificationService: NSObject, ObservableObject {
         case .friendRequests:
             friendRequestNotifications = enabled
             UserDefaults.standard.set(enabled, forKey: "notifications.friendRequests")
+        case .weeklyRankings:
+            weeklyRankingNotifications = enabled
+            UserDefaults.standard.set(enabled, forKey: "notifications.weeklyRankings")
         }
     }
     
@@ -122,7 +131,8 @@ class NotificationService: NSObject, ObservableObject {
             .streaks: true,
             .weeklyChallenges: true,
             .friendActivity: true,
-            .friendRequests: true
+            .friendRequests: true,
+            .weeklyRankings: true
         ]
         
         for (type, enabled) in defaultPreferences {
@@ -133,7 +143,7 @@ class NotificationService: NSObject, ObservableObject {
     // Check if any specific notification types are enabled
     var hasAnyNotificationsEnabled: Bool {
         return badgeNotifications || achievementNotifications || streakNotifications || 
-               weeklyChallengeNotifications || friendActivityNotifications || friendRequestNotifications
+               weeklyChallengeNotifications || friendActivityNotifications || friendRequestNotifications || weeklyRankingNotifications
     }
     
     // Get count of enabled notification types
@@ -145,6 +155,7 @@ class NotificationService: NSObject, ObservableObject {
         if weeklyChallengeNotifications { count += 1 }
         if friendActivityNotifications { count += 1 }
         if friendRequestNotifications { count += 1 }
+        if weeklyRankingNotifications { count += 1 }
         return count
     }
     
@@ -532,6 +543,79 @@ class NotificationService: NSObject, ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
     
+    // MARK: - Weekly Ranking Notifications
+    func scheduleWeeklyRankingNotification() {
+        // Check if weekly ranking notifications are enabled
+        guard weeklyRankingNotifications else { return }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "🏆 Your Weekly Ranking"
+        content.body = "Check your position on the leaderboard this week!"
+        content.sound = .default
+        
+        // Schedule for every Sunday at 6 PM
+        var dateComponents = DateComponents()
+        dateComponents.weekday = 1 // Sunday
+        dateComponents.hour = 18
+        dateComponents.minute = 0
+        
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+        let request = UNNotificationRequest(
+            identifier: "weekly_ranking",
+            content: content,
+            trigger: trigger
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ Error scheduling weekly ranking notification: \(error.localizedDescription)")
+            } else {
+                print("✅ Weekly ranking notification scheduled for Sundays at 6 PM")
+            }
+        }
+    }
+    
+    func notifyWeeklyRanking(rank: Int, totalUsers: Int, score: Int) {
+        // Check if weekly ranking notifications are enabled
+        guard weeklyRankingNotifications else { return }
+        
+        // Check if we're in quiet hours
+        guard !isInQuietHours else { return }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "🏆 Your Weekly Ranking"
+        
+        // Create personalized message based on rank
+        let rankMessage: String
+        if rank == 1 {
+            rankMessage = "🎉 You're #1 this week! Amazing job!"
+        } else if rank <= 3 {
+            rankMessage = "🥉 You're in the top 3! Rank #\(rank) out of \(totalUsers) users"
+        } else if rank <= 10 {
+            rankMessage = "🔥 Top 10! You're rank #\(rank) out of \(totalUsers) users"
+        } else {
+            rankMessage = "📊 You're rank #\(rank) out of \(totalUsers) users with \(score) points"
+        }
+        
+        content.body = rankMessage
+        content.sound = .default
+        
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "weeklyRanking_\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: trigger
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ Error sending weekly ranking notification: \(error.localizedDescription)")
+            } else {
+                print("✅ Weekly ranking notification sent")
+            }
+        }
+    }
+    
     // MARK: - Utility Methods
     func clearAllNotifications() {
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
@@ -616,6 +700,7 @@ enum NotificationPreferenceType: String, CaseIterable {
     case weeklyChallenges = "weeklyChallenges"
     case friendActivity = "friendActivity"
     case friendRequests = "friendRequests"
+    case weeklyRankings = "weeklyRankings"
     
     var displayName: String {
         switch self {
@@ -631,6 +716,8 @@ enum NotificationPreferenceType: String, CaseIterable {
             return "👥 Friend Activity"
         case .friendRequests:
             return "🤝 Friend Requests"
+        case .weeklyRankings:
+            return "🏆 Weekly Rankings"
         }
     }
     
@@ -648,6 +735,8 @@ enum NotificationPreferenceType: String, CaseIterable {
             return "See when friends rate new spots"
         case .friendRequests:
             return "Get notified about new friend requests"
+        case .weeklyRankings:
+            return "Get your weekly leaderboard ranking"
         }
     }
 }

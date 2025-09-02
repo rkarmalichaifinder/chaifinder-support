@@ -4,12 +4,29 @@ import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
 
+// 🆕 Search feedback types
+enum SearchType {
+    case none
+    case flavorNotes
+    case location
+    case user
+    case general
+}
+
+struct SearchFeedback {
+    let resultCount: Int
+    let searchType: SearchType
+    let message: String
+}
+
 enum FeedType {
     case friends
     case community
 }
 
 class FeedViewModel: ObservableObject {
+    @Published var feedItems: [FeedItem] = []
+    @Published var filteredFeedItems: [FeedItem] = []
     @Published var reviews: [ReviewFeedItem] = []
     @Published var filteredReviews: [ReviewFeedItem] = []
     @Published var isLoading = false
@@ -30,6 +47,19 @@ class FeedViewModel: ObservableObject {
     // 🆕 Debounced reaction updates
     private var reactionUpdateTimer: Timer?
     private var pendingReactionUpdates: Set<String> = []
+    
+    // 🆕 Real-time listeners
+    private var usersListener: ListenerRegistration?
+    private var spotsListener: ListenerRegistration?
+    private var ratingsListener: ListenerRegistration?
+    private var achievementsListener: ListenerRegistration?
+    
+    // 🆕 Smart notification manager
+    private let notificationManager = SmartNotificationManager.shared
+    
+    // 🆕 Search debouncing
+    private var searchDebounceTimer: Timer?
+    private var lastSearchText: String = ""
     
     // MARK: - Data Migration Functions
     
@@ -480,7 +510,7 @@ class FeedViewModel: ObservableObject {
     
     // Add a method to listen for rating update notifications
     func startListeningForNotifications() {
-        print("🔔 Setting up notification listener for rating updates...")
+        print("🔔 Setting up comprehensive notification listeners...")
         
         // Listen for rating updates
         NotificationCenter.default.addObserver(
@@ -521,6 +551,79 @@ class FeedViewModel: ObservableObject {
             print("🔄 Review visibility change notification received, refreshing feed...")
             self?.refreshFeed()
         }
+        
+        // 🆕 Listen for new user joins
+        NotificationCenter.default.addObserver(
+            forName: .newUserJoined,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            print("🆕 New user joined notification received")
+            if let userData = notification.userInfo?["userData"] as? [String: Any] {
+                self?.handleNewUserJoined(userData)
+            }
+        }
+        
+        // 🆕 Listen for new spot additions
+        NotificationCenter.default.addObserver(
+            forName: .newSpotAdded,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            print("🆕 New spot added notification received")
+            if let spotData = notification.userInfo?["spotData"] as? [String: Any] {
+                self?.handleNewSpotAdded(spotData)
+            }
+        }
+        
+        // 🆕 Listen for friend activity
+        NotificationCenter.default.addObserver(
+            forName: .friendActivity,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            print("🆕 Friend activity notification received")
+            if let activityData = notification.userInfo?["activityData"] as? [String: Any] {
+                self?.handleFriendActivity(activityData)
+            }
+        }
+        
+        // 🆕 Listen for achievements
+        NotificationCenter.default.addObserver(
+            forName: .achievementEarned,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            print("🆕 Achievement earned notification received")
+            if let achievementData = notification.userInfo?["achievementData"] as? [String: Any] {
+                self?.handleAchievementEarned(achievementData)
+            }
+        }
+        
+        // 🆕 Listen for weekly challenges
+        NotificationCenter.default.addObserver(
+            forName: .weeklyChallenge,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            print("🆕 Weekly challenge notification received")
+            if let challengeData = notification.userInfo?["challengeData"] as? [String: Any] {
+                self?.handleWeeklyChallenge(challengeData)
+            }
+        }
+        
+        // 🆕 Listen for general feed refresh
+        NotificationCenter.default.addObserver(
+            forName: .feedRefreshNeeded,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("🔄 Feed refresh needed notification received")
+            self?.refreshFeed()
+        }
+        
+        // 🆕 Set up real-time Firestore listeners
+        setupRealTimeListeners()
     }
     
     // Add a method to stop listening for notifications
@@ -529,6 +632,15 @@ class FeedViewModel: ObservableObject {
         NotificationCenter.default.removeObserver(self, name: .reactionUpdated, object: nil)
         NotificationCenter.default.removeObserver(self, name: .commentEngagementUpdated, object: nil)
         NotificationCenter.default.removeObserver(self, name: .reviewVisibilityChanged, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .newUserJoined, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .newSpotAdded, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .friendActivity, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .achievementEarned, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .weeklyChallenge, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .feedRefreshNeeded, object: nil)
+        
+        // 🆕 Remove real-time listeners
+        removeRealTimeListeners()
     }
     
     // Add a method to validate rating data
@@ -542,6 +654,239 @@ class FeedViewModel: ObservableObject {
         NotificationCenter.default.removeObserver(self)
         reactionUpdateTimer?.invalidate()
         reactionUpdateTimer = nil
+        removeRealTimeListeners()
+    }
+    
+    // MARK: - Real-time Listeners Setup
+    
+    private func setupRealTimeListeners() {
+        print("🎧 Setting up real-time Firestore listeners...")
+        
+        // Listen for new users (limited to recent users to avoid overwhelming)
+        setupUsersListener()
+        
+        // Listen for new spots
+        setupSpotsListener()
+        
+        // Listen for new ratings with enhanced filtering
+        setupRatingsListener()
+        
+        // Listen for achievements
+        setupAchievementsListener()
+    }
+    
+    private func removeRealTimeListeners() {
+        usersListener?.remove()
+        spotsListener?.remove()
+        ratingsListener?.remove()
+        achievementsListener?.remove()
+        
+        usersListener = nil
+        spotsListener = nil
+        ratingsListener = nil
+        achievementsListener = nil
+    }
+    
+    private func setupUsersListener() {
+        // Only listen for users created in the last 24 hours to avoid overwhelming
+        let oneDayAgo = Timestamp(date: Date().addingTimeInterval(-86400))
+        
+        usersListener = db.collection("users")
+            .whereField("createdAt", isGreaterThan: oneDayAgo)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error = error {
+                    print("❌ Users listener error: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else { return }
+                
+                for change in snapshot?.documentChanges ?? [] {
+                    if change.type == .added {
+                        self?.handleNewUserDocument(change.document)
+                    }
+                }
+            }
+    }
+    
+    private func setupSpotsListener() {
+        // Listen for new spots in both collections
+        let oneDayAgo = Timestamp(date: Date().addingTimeInterval(-86400))
+        
+        spotsListener = db.collection("chaiFinder")
+            .whereField("createdAt", isGreaterThan: oneDayAgo)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error = error {
+                    print("❌ Spots listener error: \(error.localizedDescription)")
+                    return
+                }
+                
+                for change in snapshot?.documentChanges ?? [] {
+                    if change.type == .added {
+                        self?.handleNewSpotDocument(change.document)
+                    }
+                }
+            }
+    }
+    
+    private func setupRatingsListener() {
+        // Enhanced ratings listener with better filtering
+        let oneDayAgo = Timestamp(date: Date().addingTimeInterval(-86400))
+        
+        ratingsListener = db.collection("ratings")
+            .whereField("timestamp", isGreaterThan: oneDayAgo)
+            .whereField("deleted", isEqualTo: false)
+            .order(by: "timestamp", descending: true)
+            .limit(to: 50)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error = error {
+                    print("❌ Ratings listener error: \(error.localizedDescription)")
+                    return
+                }
+                
+                for change in snapshot?.documentChanges ?? [] {
+                    if change.type == .added {
+                        self?.handleNewRatingDocument(change.document)
+                    }
+                }
+            }
+    }
+    
+    private func setupAchievementsListener() {
+        // Listen for new achievements
+        let oneDayAgo = Timestamp(date: Date().addingTimeInterval(-86400))
+        
+        achievementsListener = db.collection("achievements")
+            .whereField("timestamp", isGreaterThan: oneDayAgo)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error = error {
+                    print("❌ Achievements listener error: \(error.localizedDescription)")
+                    return
+                }
+                
+                for change in snapshot?.documentChanges ?? [] {
+                    if change.type == .added {
+                        self?.handleNewAchievementDocument(change.document)
+                    }
+                }
+            }
+    }
+    
+    // MARK: - Notification Handlers
+    
+    private func handleNewUserJoined(_ userData: [String: Any]) {
+        guard let feedItem = FeedItemFactory.createFeedItem(from: userData, documentId: UUID().uuidString) else {
+            return
+        }
+        
+        DispatchQueue.main.async {
+            self.addFeedItem(feedItem)
+            self.notificationManager.showNotification(for: feedItem)
+        }
+    }
+    
+    private func handleNewSpotAdded(_ spotData: [String: Any]) {
+        guard let feedItem = FeedItemFactory.createFeedItem(from: spotData, documentId: UUID().uuidString) else {
+            return
+        }
+        
+        DispatchQueue.main.async {
+            self.addFeedItem(feedItem)
+            self.notificationManager.showNotification(for: feedItem)
+        }
+    }
+    
+    private func handleFriendActivity(_ activityData: [String: Any]) {
+        guard let feedItem = FeedItemFactory.createFeedItem(from: activityData, documentId: UUID().uuidString) else {
+            return
+        }
+        
+        DispatchQueue.main.async {
+            self.addFeedItem(feedItem)
+            self.notificationManager.showNotification(for: feedItem)
+        }
+    }
+    
+    private func handleAchievementEarned(_ achievementData: [String: Any]) {
+        guard let feedItem = FeedItemFactory.createFeedItem(from: achievementData, documentId: UUID().uuidString) else {
+            return
+        }
+        
+        DispatchQueue.main.async {
+            self.addFeedItem(feedItem)
+            self.notificationManager.showNotification(for: feedItem)
+        }
+    }
+    
+    private func handleWeeklyChallenge(_ challengeData: [String: Any]) {
+        guard let feedItem = FeedItemFactory.createFeedItem(from: challengeData, documentId: UUID().uuidString) else {
+            return
+        }
+        
+        DispatchQueue.main.async {
+            self.addFeedItem(feedItem)
+            self.notificationManager.showNotification(for: feedItem)
+        }
+    }
+    
+    // MARK: - Document Handlers
+    
+    private func handleNewUserDocument(_ document: DocumentSnapshot) {
+        var data = document.data() ?? [:]
+        data["type"] = "newUser"
+        data["timestamp"] = Timestamp()
+        
+        handleNewUserJoined(data)
+    }
+    
+    private func handleNewSpotDocument(_ document: DocumentSnapshot) {
+        var data = document.data() ?? [:]
+        data["type"] = "newSpot"
+        data["timestamp"] = Timestamp()
+        
+        handleNewSpotAdded(data)
+    }
+    
+    private func handleNewRatingDocument(_ document: DocumentSnapshot) {
+        var data = document.data() ?? [:]
+        data["type"] = "review"
+        
+        // Only show notification for public reviews
+        if data["visibility"] as? String == "public" {
+            if let feedItem = FeedItemFactory.createFeedItem(from: data, documentId: document.documentID) {
+                DispatchQueue.main.async {
+                    self.notificationManager.showNotification(for: feedItem)
+                }
+            }
+        }
+    }
+    
+    private func handleNewAchievementDocument(_ document: DocumentSnapshot) {
+        var data = document.data() ?? [:]
+        data["type"] = "achievement"
+        data["timestamp"] = Timestamp()
+        
+        handleAchievementEarned(data)
+    }
+    
+    // MARK: - Feed Item Management
+    
+    private func addFeedItem(_ item: FeedItem) {
+        // Add to the beginning of the feed
+        feedItems.insert(item, at: 0)
+        
+        // Keep only the last 100 items to prevent memory issues
+        if feedItems.count > 100 {
+            feedItems = Array(feedItems.prefix(100))
+        }
+        
+        // Update filtered items
+        filterFeedItems()
+    }
+    
+    private func filterFeedItems() {
+        // For now, just copy all items. Can be enhanced with search/filtering later
+        filteredFeedItems = feedItems
     }
     
     func loadFeed() {
@@ -779,11 +1124,12 @@ class FeedViewModel: ObservableObject {
                     chaiStrengthRating: chaiStrengthRating,
                     flavorNotes: flavorNotes,
                     photoURL: data["photoURL"] as? String,
-                    hasPhoto: data["hasPhoto"] as? Bool ?? false,
-                    gamificationScore: data["gamificationScore"] as? Int ?? 0,
-                    isFirstReview: data["isFirstReview"] as? Bool ?? false,
-                    isNewSpot: data["isNewSpot"] as? Bool ?? false,
-                    reactions: data["reactions"] as? [String: Int] ?? [:]
+                    likes: data["likes"] as? Int ?? 0,
+                    dislikes: data["dislikes"] as? Int ?? 0,
+                    isRead: false,
+                    visibility: data["visibility"] as? String ?? "public",
+                    deleted: data["deleted"] as? Bool ?? false,
+                    updatedAt: data["updatedAt"] as? Timestamp
                 )
                 
                 return feedItem
@@ -879,11 +1225,12 @@ class FeedViewModel: ObservableObject {
                     chaiStrengthRating: chaiStrengthRating,
                     flavorNotes: flavorNotes,
                     photoURL: photoURL,
-                    hasPhoto: hasPhoto,
-                    gamificationScore: data["gamificationScore"] as? Int ?? 0,
-                    isFirstReview: data["isFirstReview"] as? Bool ?? false,
-                    isNewSpot: data["isNewSpot"] as? Bool ?? false,
-                    reactions: data["reactions"] as? [String: Int] ?? [:]
+                    likes: data["likes"] as? Int ?? 0,
+                    dislikes: data["dislikes"] as? Int ?? 0,
+                    isRead: false,
+                    visibility: data["visibility"] as? String ?? "public",
+                    deleted: data["deleted"] as? Bool ?? false,
+                    updatedAt: data["updatedAt"] as? Timestamp
                 )
                 
                 return feedItem
@@ -1104,6 +1451,27 @@ class FeedViewModel: ObservableObject {
     }
     
     func filterReviews(_ searchText: String) {
+        // 🆕 Cancel previous timer if it exists
+        searchDebounceTimer?.invalidate()
+        
+        // If search text is empty, filter immediately
+        if searchText.isEmpty {
+            lastSearchText = searchText
+            performFilterReviews(searchText)
+            return
+        }
+        
+        // 🆕 Debounce search with 300ms delay
+        searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.lastSearchText = searchText
+                self?.performFilterReviews(searchText)
+            }
+        }
+    }
+    
+    /// Internal function that performs the actual filtering (debounced)
+    private func performFilterReviews(_ searchText: String) {
         if searchText.isEmpty {
             filteredReviews = reviews
             return
@@ -1190,6 +1558,12 @@ class FeedViewModel: ObservableObject {
         if review.chaiType?.lowercased().contains(searchText) ?? false { score += 30 }
         if review.comment?.lowercased().contains(searchText) ?? false { score += 20 }
         
+        // 🆕 Flavor notes exact matches get high priority (structured data)
+        if let flavorNotes = review.flavorNotes {
+            let flavorNotesText = flavorNotes.joined(separator: " ").lowercased()
+            if flavorNotesText.contains(searchText) { score += 45 }
+        }
+        
         // Partial word matches get lower scores
         for word in searchWords {
             if review.spotName.lowercased().contains(word) { score += 10 }
@@ -1200,12 +1574,95 @@ class FeedViewModel: ObservableObject {
             if review.spotAddress.lowercased().contains(word) { score += 4 }
             if review.chaiType?.lowercased().contains(word) ?? false { score += 3 }
             if review.comment?.lowercased().contains(word) ?? false { score += 2 }
+            
+            // 🆕 Flavor notes partial matches get higher priority than comments
+            if let flavorNotes = review.flavorNotes {
+                for flavorNote in flavorNotes {
+                    if flavorNote.lowercased().contains(word) { score += 15 }
+                }
+            }
         }
         
         return score
     }
     
+    /// Returns enhanced search feedback information
+    func getSearchFeedback(for searchText: String) -> SearchFeedback {
+        guard !searchText.isEmpty else {
+            return SearchFeedback(
+                resultCount: reviews.count,
+                searchType: .none,
+                message: "Showing all reviews"
+            )
+        }
+        
+        let searchLower = searchText.lowercased()
+        var flavorNoteMatches = 0
+        var locationMatches = 0
+        var userMatches = 0
+        
+        for review in filteredReviews {
+            // Check for flavor note matches
+            if let flavorNotes = review.flavorNotes {
+                for flavorNote in flavorNotes {
+                    if flavorNote.lowercased().contains(searchLower) {
+                        flavorNoteMatches += 1
+                        break
+                    }
+                }
+            }
+            
+            // Check for location matches
+            if review.spotName.lowercased().contains(searchLower) ||
+               review.cityName.lowercased().contains(searchLower) ||
+               review.neighborhood.lowercased().contains(searchLower) {
+                locationMatches += 1
+            }
+            
+            // Check for user matches
+            if review.username.lowercased().contains(searchLower) {
+                userMatches += 1
+            }
+        }
+        
+        // Determine search type and message
+        let flavorNotes = ["cardamom", "ginger", "cloves", "saffron", "fennel"]
+        if flavorNotes.contains(searchLower) {
+            return SearchFeedback(
+                resultCount: filteredReviews.count,
+                searchType: .flavorNotes,
+                message: "Found \(flavorNoteMatches) reviews with \(searchText) flavor notes"
+            )
+        } else if locationMatches > 0 {
+            return SearchFeedback(
+                resultCount: filteredReviews.count,
+                searchType: .location,
+                message: "Found \(locationMatches) reviews in \(searchText)"
+            )
+        } else if userMatches > 0 {
+            return SearchFeedback(
+                resultCount: filteredReviews.count,
+                searchType: .user,
+                message: "Found \(userMatches) reviews by \(searchText)"
+            )
+        } else {
+            return SearchFeedback(
+                resultCount: filteredReviews.count,
+                searchType: .general,
+                message: "Found \(filteredReviews.count) results for '\(searchText)'"
+            )
+        }
+    }
+    
     // MARK: - Helper Methods
+    
+    /// Cleanup function to invalidate timers
+    func cleanup() {
+        searchDebounceTimer?.invalidate()
+        searchDebounceTimer = nil
+        reactionUpdateTimer?.invalidate()
+        reactionUpdateTimer = nil
+    }
     
     private func formatTimestamp(_ timestamp: Timestamp) -> String {
         let date = timestamp.dateValue()

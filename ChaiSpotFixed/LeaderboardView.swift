@@ -390,6 +390,45 @@ class LeaderboardViewModel: ObservableObject {
         loadLeaderboard()
     }
     
+    func getCurrentUserRanking() async -> (rank: Int, totalUsers: Int, score: Int)? {
+        guard let userId = currentUserId else { return nil }
+        
+        // Load leaderboard data
+        await loadLeaderboardData()
+        
+        // Find current user's entry
+        if let userEntry = leaderboardEntries.first(where: { $0.userId == userId }) {
+            return (rank: userEntry.rank, totalUsers: leaderboardEntries.count, score: userEntry.totalScore)
+        }
+        
+        return nil
+    }
+    
+    private func loadLeaderboardData() async {
+        guard let userId = currentUserId else { return }
+        
+        return await withCheckedContinuation { continuation in
+            // Get current user's friends
+            db.collection("users").document(userId).getDocument { [weak self] document, error in
+                guard let self = self,
+                      let document = document,
+                      let data = document.data(),
+                      let friends = data["friends"] as? [String] else {
+                    continuation.resume()
+                    return
+                }
+                
+                // Add current user to the list
+                var allUserIds = friends
+                allUserIds.append(userId)
+                
+                // Load gamification data for all users
+                self.loadUsersGamificationData(userIds: allUserIds)
+                continuation.resume()
+            }
+        }
+    }
+    
     func switchTimeframe(to timeframe: LeaderboardTimeframe) {
         currentTimeframe = timeframe
         loadLeaderboard()

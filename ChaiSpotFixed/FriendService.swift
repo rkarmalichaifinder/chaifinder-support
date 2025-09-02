@@ -48,6 +48,13 @@ struct FriendService {
                 if let error = error {
                     completion(false)
                 } else {
+                    // 🆕 Post notification for new user joining
+                    NotificationCenter.default.post(
+                        name: .newUserJoined,
+                        object: nil,
+                        userInfo: ["userData": newUserData]
+                    )
+                    print("🆕 Posted newUserJoined notification for \(fallbackName)")
                     completion(true)
                 }
             }

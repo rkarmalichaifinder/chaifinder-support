@@ -63,11 +63,13 @@ struct PersonalizedMapView: View {
                     mapLegend
                 }
                 
-                // Map or List view
+                // Map or List view - make it fill remaining space
                 if vm.isShowingList {
                     listView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     mapViewContent
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .background(DesignSystem.Colors.background)
@@ -171,7 +173,7 @@ struct PersonalizedMapView: View {
     
     // MARK: - Header Section
     private var headerSection: some View {
-        VStack(spacing: DesignSystem.Spacing.sm) { // Reduced spacing for more compact design
+        VStack(spacing: DesignSystem.Spacing.xs) { // Reduced spacing for more compact design
             HStack {
                 // Brand title - consistent with other pages
                 Text("chai finder")
@@ -304,28 +306,9 @@ struct PersonalizedMapView: View {
                 Spacer()
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
-            
-            // Personalization reason - improved styling
-            if let reason = vm.reasonText {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Image(systemName: "lightbulb.fill")
-                        .foregroundColor(DesignSystem.Colors.accent)
-                        .font(.caption)
-                    Text(reason)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .multilineTextAlignment(.leading)
-                    Spacer()
-                }
-                .padding(.horizontal, DesignSystem.Spacing.lg)
-                .padding(.vertical, DesignSystem.Spacing.xs)
-                .background(DesignSystem.Colors.accent.opacity(0.1))
-                .cornerRadius(DesignSystem.CornerRadius.small)
-                .padding(.horizontal, DesignSystem.Spacing.lg)
-            }
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.vertical, DesignSystem.Spacing.sm) // Reduced from md to sm
+        .padding(.vertical, DesignSystem.Spacing.xs) // Reduced from sm to xs
         .background(DesignSystem.Colors.cardBackground)
         .shadow(
             color: Color.black.opacity(0.03), // Very subtle shadow
@@ -343,7 +326,7 @@ struct PersonalizedMapView: View {
     
     // MARK: - Search Bar Section
     private var searchBarSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) { // Reduced spacing from 6 to 4
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(DesignSystem.Colors.textSecondary)
@@ -406,7 +389,7 @@ struct PersonalizedMapView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6) // Reduced from 8 to 6
             .background(DesignSystem.Colors.searchBackground)
             .cornerRadius(DesignSystem.CornerRadius.medium)
             .shadow(
@@ -513,7 +496,7 @@ struct PersonalizedMapView: View {
     
     // MARK: - Map Legend
     private var mapLegend: some View {
-        VStack(spacing: DesignSystem.Spacing.sm) {
+        VStack(spacing: DesignSystem.Spacing.xs) { // Reduced spacing from sm to xs
             // Legend toggles
             HStack(spacing: DesignSystem.Spacing.md) {
                 // Personalized spots toggle
@@ -595,7 +578,7 @@ struct PersonalizedMapView: View {
             }
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
-        .padding(.vertical, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.xs) // Reduced from sm to xs
         .background(DesignSystem.Colors.cardBackground.opacity(0.95))
         .cornerRadius(DesignSystem.CornerRadius.small)
         .shadow(
@@ -762,6 +745,7 @@ struct PersonalizedMapView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if vm.personalizedSpots.isEmpty {
                     emptyStateView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     spotsList
                 }
@@ -826,7 +810,7 @@ struct PersonalizedMapView: View {
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
         }
-        .padding(.vertical, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.xs) // Reduced from sm to xs
         .background(DesignSystem.Colors.cardBackground)
         .shadow(
             color: Color.black.opacity(0.05),
@@ -871,7 +855,7 @@ struct PersonalizedMapView: View {
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
         }
-        .padding(.vertical, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm) // Reduced from md to sm
         .background(DesignSystem.Colors.cardBackground)
         .shadow(
             color: Color.black.opacity(0.02),
@@ -902,6 +886,7 @@ struct PersonalizedMapView: View {
             }
             .padding(DesignSystem.Spacing.lg)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private var emptyStateView: some View {
@@ -1388,7 +1373,6 @@ struct SpotCard: View {
 final class PersonalizedMapViewModel: ObservableObject {
     @Published var allSpots: [ChaiSpot] = []
     @Published var personalizedSpots: [ChaiSpot] = []
-    @Published var reasonText: String?
     @Published var mapView: TappableMapView?
     @Published var isLoading = false
     @Published var isRefreshingPersonalization = false
@@ -1911,38 +1895,6 @@ final class PersonalizedMapViewModel: ObservableObject {
         let personalizedSpots = allSpots.filter { personalizedIds.contains($0.id) }
         
         self.personalizedSpots = personalizedSpots
-        
-        // Generate reason text based on user preferences
-        if let tasteVector = userProfile?.tasteVector, tasteVector.count >= 2 {
-            let creaminess = tasteVector[0]
-            let strength = tasteVector[1]
-            
-            var reasons: [String] = []
-            
-            if creaminess >= 4 {
-                reasons.append("rich, creamy chai")
-            } else if creaminess <= 2 {
-                reasons.append("light, refreshing chai")
-            } else {
-                reasons.append("balanced creaminess")
-            }
-            
-            if strength >= 4 {
-                reasons.append("bold, intense flavors")
-            } else if strength <= 2 {
-                reasons.append("mild, gentle varieties")
-            } else {
-                reasons.append("moderately strong chai")
-            }
-            
-            if let topTasteTags = userProfile?.topTasteTags, !topTasteTags.isEmpty {
-                reasons.append("your favorite flavors: \(topTasteTags.joined(separator: ", "))")
-            }
-            
-            reasonText = "Personalized for you"
-        } else {
-            reasonText = "Based on community ratings and friend recommendations"
-        }
     }
     
     func filterSpots(_ searchText: String) {
@@ -2097,6 +2049,27 @@ final class PersonalizedMapViewModel: ObservableObject {
                     // Post notification to trigger map refresh
                     NotificationCenter.default.post(name: .spotsUpdated, object: nil)
                     print("📢 Posted spotsUpdated notification")
+                    
+                    // 🆕 Post notification for new spot addition
+                    let spotNotificationData: [String: Any] = [
+                        "type": "newSpot",
+                        "spotId": spotId,
+                        "spotName": name,
+                        "spotAddress": address,
+                        "userId": userId,
+                        "username": Auth.auth().currentUser?.displayName ?? "Anonymous",
+                        "timestamp": Timestamp(),
+                        "chaiTypes": chaiTypes,
+                        "latitude": coordinate.latitude,
+                        "longitude": coordinate.longitude
+                    ]
+                    
+                    NotificationCenter.default.post(
+                        name: .newSpotAdded,
+                        object: nil,
+                        userInfo: ["spotData": spotNotificationData]
+                    )
+                    print("🆕 Posted newSpotAdded notification for \(name)")
                     
                     // Map updates happen naturally through the view model's published properties
                 } else {

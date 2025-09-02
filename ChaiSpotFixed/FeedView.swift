@@ -59,16 +59,18 @@ struct FeedView: View {
             }
             .searchBarKeyboardDismissible()
             .onAppear {
-                // Start listening for rating update notifications
+                // Start listening for comprehensive notifications
                 viewModel.startListeningForNotifications()
                 
-                if viewModel.reviews.isEmpty {
+                if viewModel.feedItems.isEmpty && viewModel.reviews.isEmpty {
                     viewModel.refreshFeed()
                 }
             }
             .onDisappear {
                 // Stop listening for notifications when view disappears
                 viewModel.stopListeningForNotifications()
+                // 🆕 Cleanup search debouncing
+                viewModel.cleanup()
             }
         }
         .navigationViewStyle(.stack)
@@ -183,7 +185,7 @@ struct FeedView: View {
                     .accessibilityHint("Type to search through reviews, locations, cities, and reviewers")
                     .textFieldStyle(PlainTextFieldStyle())
                     .onChange(of: searchText) { newValue in
-                        // Simple search without debouncing
+                        // 🆕 Use debounced search instead of immediate filtering
                         viewModel.filterReviews(newValue)
                     }
                     .onTapGesture {
@@ -256,13 +258,16 @@ struct FeedView: View {
     // MARK: - Search Feedback View
     private var searchFeedbackView: some View {
         HStack {
-            Image(systemName: "info.circle.fill")
-                .foregroundColor(DesignSystem.Colors.primary)
+            // 🆕 Enhanced search feedback with icons
+            let feedback = viewModel.getSearchFeedback(for: searchText)
+            
+            Image(systemName: getSearchIcon(for: feedback.searchType))
+                .foregroundColor(getSearchColor(for: feedback.searchType))
                 .font(.system(size: 12))
             
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text("Found \(viewModel.filteredReviews.count) results")
+                    Text(feedback.message)
                         .font(DesignSystem.Typography.caption)
                         .foregroundColor(DesignSystem.Colors.textPrimary)
                     
@@ -300,6 +305,37 @@ struct FeedView: View {
             }
         .padding(.horizontal, 4)
         .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+    
+    // 🆕 Helper functions for search feedback styling
+    private func getSearchIcon(for searchType: SearchType) -> String {
+        switch searchType {
+        case .none:
+            return "info.circle.fill"
+        case .flavorNotes:
+            return "leaf.fill"
+        case .location:
+            return "mappin.circle.fill"
+        case .user:
+            return "person.circle.fill"
+        case .general:
+            return "magnifyingglass.circle.fill"
+        }
+    }
+    
+    private func getSearchColor(for searchType: SearchType) -> Color {
+        switch searchType {
+        case .none:
+            return DesignSystem.Colors.primary
+        case .flavorNotes:
+            return DesignSystem.Colors.flavorNotesRating
+        case .location:
+            return Color.blue
+        case .user:
+            return Color.green
+        case .general:
+            return DesignSystem.Colors.primary
+        }
     }
     
     // MARK: - Debug Search Info View (Development Only)
@@ -508,6 +544,15 @@ struct FeedView: View {
     private var feedContent: some View {
         ScrollView {
             LazyVStack(spacing: 8) {
+                // 🆕 Show comprehensive feed items first
+                ForEach(Array(viewModel.filteredFeedItems.enumerated()), id: \.element.id) { _, item in
+                    FeedItemCardView(item: item) {
+                        handleFeedItemTap(item)
+                    }
+                    .iPadCardStyle()
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+                
                 // Use filteredReviews when searching, otherwise use all reviews
                 let reviewsToShow = searchText.isEmpty ? viewModel.reviews : viewModel.filteredReviews
                 
@@ -591,6 +636,51 @@ struct FeedView: View {
             .padding(.bottom, 16)
         }
         .scrollDismissesKeyboard(.interactively)
+    }
+    
+    // MARK: - Feed Item Tap Handler
+    private func handleFeedItemTap(_ item: any FeedItem) {
+        // Note: We can't modify item.isRead directly since it's a let constant
+        // The read status should be handled by the view model when processing the tap
+        
+        // Handle different item types
+        switch item.type {
+        case .review:
+            if let reviewItem = item as? ReviewFeedItem {
+                // TODO: Navigate to review detail
+                print("📱 Tapped review: \(reviewItem.spotName)")
+            }
+        case .newUser:
+            if let userItem = item as? NewUserFeedItem {
+                // TODO: Navigate to user profile or show add friend option
+                print("📱 Tapped new user: \(userItem.username)")
+            }
+        case .newSpot:
+            if let spotItem = item as? NewSpotFeedItem {
+                // TODO: Navigate to spot detail
+                print("📱 Tapped new spot: \(spotItem.spotName)")
+            }
+        case .achievement:
+            if let achievementItem = item as? AchievementFeedItem {
+                // TODO: Navigate to achievement detail
+                print("📱 Tapped achievement: \(achievementItem.achievementName)")
+            }
+        case .friendActivity:
+            if let activityItem = item as? FriendActivityFeedItem {
+                // TODO: Navigate to activity detail
+                print("📱 Tapped friend activity: \(activityItem.activityDescription)")
+            }
+        case .weeklyChallenge:
+            if let challengeItem = item as? WeeklyChallengeFeedItem {
+                // TODO: Navigate to challenge detail
+                print("📱 Tapped weekly challenge: \(challengeItem.challengeName)")
+            }
+        case .weeklyRanking:
+            if let rankingItem = item as? WeeklyRankingFeedItem {
+                // TODO: Navigate to ranking detail
+                print("📱 Tapped weekly ranking")
+            }
+        }
     }
 }
 

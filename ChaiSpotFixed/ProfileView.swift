@@ -3,6 +3,7 @@ import FirebaseFirestore // Added for Firestore
 
 struct ProfileView: View {
     @EnvironmentObject var sessionStore: SessionStore
+    @EnvironmentObject var weeklyRankingService: WeeklyRankingService
     @StateObject private var gamificationService = GamificationService()
     @State private var showingEditBio = false
     @State private var showingEditName = false
@@ -13,7 +14,6 @@ struct ProfileView: View {
     @State private var showingBlockedUsers = false
     @State private var showingTermsOfService = false
     @State private var showingBadges = false
-    @State private var showingAchievements = false
     @State private var showingPrivacySettings = false
     @State private var showingChaiJourney = false
     @State private var showingWeeklyChallenge = false
@@ -51,10 +51,7 @@ struct ProfileView: View {
                         badgesSection
                     }
 
-                    // 🏆 Achievements Preview
-                    if !gamificationService.userAchievements.isEmpty {
-                        achievementsSection
-                    }
+                    // 🏆 Achievements Preview - Moved to Social View as Leaderboard
 
                     // Weekly Challenge section removed (already available in Social)
 
@@ -118,10 +115,6 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingBadges) {
             BadgeCollectionView(gamificationService: gamificationService)
-                .environmentObject(sessionStore)
-        }
-        .sheet(isPresented: $showingAchievements) {
-            LeaderboardView()
                 .environmentObject(sessionStore)
         }
         .sheet(isPresented: $showingScoreDetails) {
@@ -515,38 +508,6 @@ struct ProfileView: View {
         .iPadCardStyle()
     }
     
-    // MARK: - Achievements Section
-    private var achievementsSection: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
-            HStack {
-                Text("🏆 Achievements")
-                    .font(DesignSystem.Typography.headline)
-                    .fontWeight(.semibold)
-                
-                Spacer()
-                
-                Button("View All") {
-                    showingAchievements = true
-                }
-                .font(DesignSystem.Typography.caption)
-                .foregroundColor(DesignSystem.Colors.primary)
-                .accessibilityLabel("View all achievements")
-            }
-            
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    ForEach(Array(gamificationService.userAchievements.prefix(5)), id: \.id) { achievement in
-                        AchievementView(achievement: achievement)
-                    }
-                }
-                .padding(.horizontal, DesignSystem.Spacing.sm)
-            }
-        }
-        .iPadCardStyle()
-    }
-    
-
-    
     // MARK: - Saved Spots Section
     private var savedSpotsSection: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
@@ -780,6 +741,16 @@ struct ProfileView: View {
                     icon: "doc.text",
                     title: "Terms of Service",
                     action: { showingTermsOfService = true }
+                )
+                
+                SettingsRow(
+                    icon: "trophy",
+                    title: "Test Weekly Ranking",
+                    action: {
+                        Task {
+                            await weeklyRankingService.triggerWeeklyRankingNotification()
+                        }
+                    }
                 )
                 
                 SettingsRow(

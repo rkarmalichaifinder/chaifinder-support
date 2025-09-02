@@ -82,6 +82,22 @@ struct BadgeCollectionView: View {
     }
 }
 
+// MARK: - Badge Color Helper
+extension Badge {
+    func backgroundColor(for isUnlocked: Bool) -> Color {
+        if isUnlocked {
+            switch rarity {
+            case .common: return .yellow
+            case .rare: return .blue
+            case .epic: return .purple
+            case .legendary: return .yellow
+            }
+        } else {
+            return Color(.systemGray5)
+        }
+    }
+}
+
 // 🎖️ Badge Card Component
 struct BadgeCard: View {
     let badge: Badge
@@ -102,6 +118,22 @@ struct BadgeCard: View {
                     Image(systemName: badge.iconName)
                         .font(.system(size: 30))
                         .foregroundColor(isUnlocked ? .white : .gray)
+                    
+                    // Checkmark overlay for earned badges
+                    if isUnlocked {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                    .background(Color.green)
+                                    .clipShape(Circle())
+                            }
+                            Spacer()
+                        }
+                        .frame(width: 60, height: 60)
+                    }
                 }
                 
                 // Badge Info
@@ -124,7 +156,13 @@ struct BadgeCard: View {
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(badgeBorderColor, lineWidth: 1)
+                    .stroke(badgeBorderColor, lineWidth: isUnlocked ? 2 : 1)
+            )
+            .shadow(
+                color: isUnlocked ? badgeBackgroundColor.opacity(0.3) : Color.black.opacity(0.05),
+                radius: isUnlocked ? 4 : 2,
+                x: 0,
+                y: isUnlocked ? 2 : 1
             )
             .scaleEffect(isPressed ? 0.95 : 1.0)
             .animation(.easeInOut(duration: 0.1), value: isPressed)
@@ -136,21 +174,12 @@ struct BadgeCard: View {
     }
     
     private var badgeBackgroundColor: Color {
-        if isUnlocked {
-            switch badge.rarity {
-            case .common: return .gray
-            case .rare: return .blue
-            case .epic: return .purple
-            case .legendary: return .orange
-            }
-        } else {
-            return Color(.systemGray5)
-        }
+        return badge.backgroundColor(for: isUnlocked)
     }
     
     private var badgeBorderColor: Color {
         if isUnlocked {
-            return badgeBackgroundColor
+            return badgeBackgroundColor.opacity(0.8)
         } else {
             return Color(.systemGray4)
         }
@@ -173,6 +202,22 @@ struct BadgeDetailView: View {
                 Image(systemName: badge.iconName)
                     .font(.system(size: 60))
                     .foregroundColor(isUnlocked ? .white : .gray)
+                
+                // Checkmark overlay for earned badges
+                if isUnlocked {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.white)
+                                .background(Color.green)
+                                .clipShape(Circle())
+                        }
+                        Spacer()
+                    }
+                    .frame(width: 120, height: 120)
+                }
             }
             
             // Badge Info
@@ -208,16 +253,7 @@ struct BadgeDetailView: View {
     }
     
     private var badgeBackgroundColor: Color {
-        if isUnlocked {
-            switch badge.rarity {
-            case .common: return .gray
-            case .rare: return .blue
-            case .epic: return .purple
-            case .legendary: return .orange
-            }
-        } else {
-            return Color(.systemGray5)
-        }
+        return badge.backgroundColor(for: isUnlocked)
     }
 }
 

@@ -1174,7 +1174,7 @@ struct BadgeView: View {
         VStack(spacing: DesignSystem.Spacing.sm) {
             Image(systemName: badge.iconName)
                 .font(.system(size: 32))
-                .foregroundColor(DesignSystem.Colors.primary)
+                .foregroundColor(badgeColor)
                 .accessibilityHidden(true)
             
             Text(badge.name)
@@ -1191,6 +1191,15 @@ struct BadgeView: View {
             RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
                 .stroke(DesignSystem.Colors.border, lineWidth: 1)
         )
+    }
+    
+    private var badgeColor: Color {
+        switch badge.rarity {
+        case .common: return .yellow
+        case .rare: return .blue
+        case .epic: return .purple
+        case .legendary: return .yellow
+        }
     }
 }
 

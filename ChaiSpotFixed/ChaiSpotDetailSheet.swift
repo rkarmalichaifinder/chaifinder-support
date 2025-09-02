@@ -343,10 +343,6 @@ struct ChaiSpotDetailSheet: View {
                         .font(DesignSystem.Typography.caption2)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                         .italic()
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(DesignSystem.Colors.border.opacity(0.3))
-                        .cornerRadius(DesignSystem.CornerRadius.small)
                 }
             }
             

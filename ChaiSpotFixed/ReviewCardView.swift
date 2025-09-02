@@ -285,10 +285,6 @@ struct ReviewCardView: View {
                                 .font(DesignSystem.Typography.bodySmall)
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
                                 .italic()
-                                .padding(.horizontal, DesignSystem.Spacing.xs)
-                                .padding(.vertical, 2)
-                                .background(DesignSystem.Colors.border.opacity(0.3))
-                                .cornerRadius(DesignSystem.CornerRadius.small)
                         }
                     }
                     .padding(.top, DesignSystem.Spacing.xs)
@@ -644,7 +640,7 @@ struct ReviewCardView: View {
         var queryParams: [String] = []
         
         if let chaiType = review.chaiType, !chaiType.isEmpty {
-            queryParams.append("chaiType=\(chaiType.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? chaiType)")
+            queryParams.append("chaiType=\(chaiType.addingPercentEncoding(withAllowedCharacters: CharacterSet.urlQueryAllowed) ?? chaiType)")
         }
         
         if let creaminessRating = review.creaminessRating {
@@ -657,7 +653,7 @@ struct ReviewCardView: View {
         
         if let flavorNotes = review.flavorNotes, !flavorNotes.isEmpty {
             let notesString = flavorNotes.joined(separator: ",")
-            queryParams.append("flavors=\(notesString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? notesString)")
+            queryParams.append("flavors=\(notesString.addingPercentEncoding(withAllowedCharacters: CharacterSet.urlQueryAllowed) ?? notesString)")
         }
         
         // Combine deep link with query parameters

@@ -82,10 +82,10 @@ struct Badge: Identifiable, Codable, Equatable {
         
         var color: String {
             switch self {
-            case .common: return "gray"
+            case .common: return "yellow"
             case .rare: return "blue"
             case .epic: return "purple"
-            case .legendary: return "orange"
+            case .legendary: return "yellow"
             }
         }
     }

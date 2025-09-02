@@ -12,6 +12,14 @@ extension Notification.Name {
     static let reactionUpdated = Notification.Name("reactionUpdated")
     static let commentEngagementUpdated = Notification.Name("commentEngagementUpdated")
     static let reviewVisibilityChanged = Notification.Name("reviewVisibilityChanged")
+    
+    // 🆕 New comprehensive activity notifications
+    static let newUserJoined = Notification.Name("newUserJoined")
+    static let newSpotAdded = Notification.Name("newSpotAdded")
+    static let friendActivity = Notification.Name("friendActivity")
+    static let achievementEarned = Notification.Name("achievementEarned")
+    static let weeklyChallenge = Notification.Name("weeklyChallenge")
+    static let feedRefreshNeeded = Notification.Name("feedRefreshNeeded")
 }
 
 struct UnifiedChaiForm: View {

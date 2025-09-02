@@ -124,17 +124,17 @@ struct TappableMapView: UIViewRepresentable {
             return
         }
         
-        // Remove existing annotations (except user location and search pin)
-        let annotationsToRemove = mapView.annotations.filter { annotation in
-            !(annotation is MKUserLocation) && annotation.title != "Search Location"
-        }
-        mapView.removeAnnotations(annotationsToRemove)
+                    // Remove existing annotations (except user location and search pin)
+            let annotationsToRemove = mapView.annotations.filter { annotation in
+                !(annotation is MKUserLocation) && annotation.title != "Search Location"
+            }
+            mapView.removeAnnotations(annotationsToRemove)
 
-        // Create clustered annotations using Coordinator's method
-        let clusteredAnnotations = context.coordinator.createClusteredAnnotations(for: chaiFinder, in: mapView)
-        
-        // Add clustered annotations
-        mapView.addAnnotations(clusteredAnnotations)
+            // Create clustered annotations using Coordinator's method
+            let clusteredAnnotations = context.coordinator.createClusteredAnnotations(for: chaiFinder, in: mapView)
+            
+            // Add clustered annotations
+            mapView.addAnnotations(clusteredAnnotations)
 
         // Add temporary search pin if available
         if let tempSearchCoordinate = tempSearchCoordinate {
@@ -194,14 +194,21 @@ struct TappableMapView: UIViewRepresentable {
             
             // Handle enhanced chai annotations (individual locations)
             if let enhancedAnnotation = annotation as? EnhancedChaiAnnotation {
-                let identifier = enhancedAnnotation.isPersonalized ? "PersonalizedPin" : "CommunityPin"
+                // Use different identifiers for clustered vs individual annotations
+                let identifier: String
+                if enhancedAnnotation.isClustered {
+                    identifier = enhancedAnnotation.isPersonalized ? "ClusteredPersonalizedPin" : "ClusteredCommunityPin"
+                } else {
+                    identifier = enhancedAnnotation.isPersonalized ? "PersonalizedPin" : "CommunityPin"
+                }
                 
                 var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
                 if annotationView == nil {
                     annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
                     annotationView?.canShowCallout = true
                 } else {
-                    annotationView?.annotation = annotation
+                    // When reusing, make sure we properly set the annotation with clustering info
+                    annotationView?.annotation = enhancedAnnotation
                 }
                 
                 if let markerView = annotationView as? MKMarkerAnnotationView {
@@ -217,7 +224,6 @@ struct TappableMapView: UIViewRepresentable {
                     // Use the clustering information from the annotation
                     if enhancedAnnotation.isClustered {
                         // This is a clustered annotation
-                        print("🎯 Clustered annotation: \(enhancedAnnotation.clusterSize) locations")
                         
                         // Show count directly on the marker with better visibility
                         markerView.glyphText = "\(enhancedAnnotation.clusterSize)"
@@ -229,6 +235,12 @@ struct TappableMapView: UIViewRepresentable {
                             DesignSystem.Colors.secondary.toUIColor()
                         
                         // Increase marker size for better visibility
+                        markerView.displayPriority = .required
+                        
+                        // Force the glyph text to be visible
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            markerView.glyphText = "\(enhancedAnnotation.clusterSize)"
+                        }
                         
                         // Add subtle animation for clustered markers
                         UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut], animations: {
@@ -251,11 +263,8 @@ struct TappableMapView: UIViewRepresentable {
                         // Ensure the callout can be shown
                         markerView.canShowCallout = true
                         
-                        print("✅ Added grouped callout with \(enhancedAnnotation.clusterSize) locations")
-                        print("📍 Marker now shows count: \(enhancedAnnotation.clusterSize)")
                     } else {
                         // Single location - show individual callout
-                        print("📍 Single location - showing individual callout")
                         
                         // Show appropriate icon for single location
                         if enhancedAnnotation.isPersonalized {
@@ -270,7 +279,6 @@ struct TappableMapView: UIViewRepresentable {
                         markerView.detailCalloutAccessoryView = calloutView
                         markerView.canShowCallout = true
                         
-                        print("📍 Single location marker configured with icon")
                     }
                 }
                 
@@ -508,18 +516,16 @@ struct TappableMapView: UIViewRepresentable {
             
             if clusteringDistance == 0.0 {
                 distanceDescription = "no clustering (showing all individual locations)"
-            } else if clusteringDistance <= 0.000001 {
-                distanceDescription = "minimal clustering (~0.5m apart)"
-            } else if clusteringDistance <= 0.000005 {
-                distanceDescription = "light clustering (~2m apart)"
-            } else if clusteringDistance <= 0.00001 {
-                distanceDescription = "moderate clustering (~5m apart)"
-            } else if clusteringDistance <= 0.00002 {
-                distanceDescription = "aggressive clustering (~10m apart)"
-            } else if clusteringDistance <= 0.0001 {
-                distanceDescription = "heavy clustering (~50m apart)"
+            } else if clusteringDistance <= 0.0003 {
+                distanceDescription = "minimal clustering (~30m apart)"
+            } else if clusteringDistance <= 0.0009 {
+                distanceDescription = "light clustering (~100m apart)"
+            } else if clusteringDistance <= 0.0045 {
+                distanceDescription = "moderate clustering (~500m apart)"
+            } else if clusteringDistance <= 0.018 {
+                distanceDescription = "aggressive clustering (~2km apart)"
             } else {
-                distanceDescription = "maximum clustering (~100m apart)"
+                distanceDescription = "heavy clustering (~5km apart)"
             }
             
             return "Zoom: \(String(format: "%.4f", currentZoom)) | \(distanceDescription) | \(clusteredAnnotations.count) clusters from \(totalSpots) total spots"
@@ -615,35 +621,35 @@ struct TappableMapView: UIViewRepresentable {
             
             let dynamicDistance: Double
             
-            if zoomLevel <= 0.005 {
+            if zoomLevel <= 0.01 {
                 // High zoom (neighborhood level) - no clustering, show all individual locations
                 // This ensures users can see every chai spot when they're looking at neighborhood level
                 dynamicDistance = 0.0
                 
-            } else if zoomLevel <= 0.02 {
-                // Medium-high zoom (district level) - light clustering for nearby spots
-                // Threshold: ~80 meters - cluster spots that are very close (same block)
-                dynamicDistance = 0.0008
+            } else if zoomLevel <= 0.03 {
+                // Medium-high zoom (district level) - very light clustering for extremely close spots only
+                // Threshold: ~30 meters - cluster spots that are essentially on the same building
+                dynamicDistance = 0.0003
                 
-            } else if zoomLevel <= 0.05 {
-                // Medium zoom (city area level) - moderate clustering
-                // Threshold: ~200 meters - cluster spots within walking distance
-                dynamicDistance = 0.002
+            } else if zoomLevel <= 0.08 {
+                // Medium zoom (city area level) - light clustering for very close spots
+                // Threshold: ~100 meters - cluster spots that are very close (same block)
+                dynamicDistance = 0.0009
                 
-            } else if zoomLevel <= 0.1 {
-                // Medium-low zoom (city level) - more aggressive clustering
-                // Threshold: ~1km - cluster spots within short walking distance
-                dynamicDistance = 0.01
+            } else if zoomLevel <= 0.15 {
+                // Medium-low zoom (city level) - moderate clustering
+                // Threshold: ~500 meters - cluster spots within short walking distance
+                dynamicDistance = 0.0045
                 
-            } else if zoomLevel <= 0.5 {
-                // Low zoom (metropolitan level) - heavy clustering
-                // Threshold: ~5km - cluster spots within medium walking distance
-                dynamicDistance = 0.05
+            } else if zoomLevel <= 0.3 {
+                // Low zoom (metropolitan level) - more aggressive clustering
+                // Threshold: ~2km - cluster spots within medium walking distance
+                dynamicDistance = 0.018
                 
             } else {
-                // Very low zoom (regional level) - maximum clustering
-                // Threshold: ~10km - cluster spots within long walking distance
-                dynamicDistance = 0.1
+                // Very low zoom (regional level) - heavy clustering
+                // Threshold: ~5km - cluster spots within long walking distance
+                dynamicDistance = 0.045
             }
             
             return dynamicDistance
@@ -667,11 +673,9 @@ struct TappableMapView: UIViewRepresentable {
             guard !spots.isEmpty else { return [] }
             
             let dynamicDistance = calculateDynamicDistance(for: mapView)
-            print("🔍 Creating clusters with distance threshold: \(dynamicDistance) (zoom level: \(mapView.region.span.latitudeDelta))")
             
             // SPECIAL CASE: No clustering at neighborhood zoom level
             if dynamicDistance == 0.0 {
-                print("🔍 NO CLUSTERING - creating individual annotations for all spots")
                 var individualAnnotations: [EnhancedChaiAnnotation] = []
                 
                 for spot in spots {
@@ -683,12 +687,13 @@ struct TappableMapView: UIViewRepresentable {
                     individualAnnotations.append(annotation)
                 }
                 
-                print("✅ Created \(individualAnnotations.count) individual annotations (no clustering)")
                 return individualAnnotations
             }
             
             var clusteredAnnotations: [EnhancedChaiAnnotation] = []
             var processedSpots = Set<String>()
+            var clusterCount = 0
+            var individualCount = 0
             
             // ENERGY OPTIMIZATION: Add distance calculation caching
             var distanceCache: [String: Double] = [:]
@@ -708,13 +713,33 @@ struct TappableMapView: UIViewRepresentable {
                     )
                     clusteredAnnotations.append(annotation)
                     processedSpots.insert(spotId)
+                    individualCount += 1
                     
                 } else {
                     // Multiple spots - create clustered annotation
                     let representativeSpot = findRepresentativeSpot(for: nearbySpots)
+                    
+                    // Calculate the center coordinates of the cluster
+                    let totalLat = nearbySpots.reduce(0) { $0 + $1.latitude }
+                    let totalLon = nearbySpots.reduce(0) { $0 + $1.longitude }
+                    let centerLat = totalLat / Double(nearbySpots.count)
+                    let centerLon = totalLon / Double(nearbySpots.count)
+                    
+                    // Create a new ChaiFinder with the center coordinates
+                    let centerSpot = ChaiFinder(
+                        id: representativeSpot.id,
+                        name: representativeSpot.name,
+                        latitude: centerLat,
+                        longitude: centerLon,
+                        address: representativeSpot.address,
+                        chaiTypes: representativeSpot.chaiTypes,
+                        averageRating: representativeSpot.averageRating,
+                        ratingCount: representativeSpot.ratingCount
+                    )
+                    
                     let annotation = EnhancedChaiAnnotation(
-                        spot: representativeSpot,
-                        isPersonalized: parent.personalizedSpotIds.contains(representativeSpot.id ?? "")
+                        spot: centerSpot,
+                        isPersonalized: parent.personalizedSpotIds.contains(centerSpot.id ?? "")
                     )
                     
                     // Store cluster information
@@ -722,6 +747,7 @@ struct TappableMapView: UIViewRepresentable {
                     annotation.clusteredSpots = nearbySpots
                     
                     clusteredAnnotations.append(annotation)
+                    clusterCount += 1
                     
                     // Mark all spots in this cluster as processed
                     for nearbySpot in nearbySpots {
@@ -737,12 +763,6 @@ struct TappableMapView: UIViewRepresentable {
         
         private func findNearbySpots(to spot: ChaiFinder, within distance: Double, in allSpots: [ChaiFinder], cache: inout [String: Double]) -> [ChaiFinder] {
             let spotCoord = CLLocationCoordinate2D(latitude: spot.latitude, longitude: spot.longitude)
-            
-            // DEBUG: Log the spot we're checking and the distance threshold
-            if spot.name.contains("Chaat") || spot.name.contains("Mayuri") {
-                print("🔍 Checking '\(spot.name)' at coordinates: \(spot.latitude), \(spot.longitude)")
-                print("🔍 Distance threshold: \(distance) degrees")
-            }
             
             let nearbySpots = allSpots.filter { otherSpot in
                 guard let spotId = spot.id, let otherId = otherSpot.id else { return false }
@@ -766,22 +786,7 @@ struct TappableMapView: UIViewRepresentable {
                     cache[reverseCacheKey] = calculatedDistance
                 }
                 
-                // DEBUG: Log distances for Chaat House and Mayuri
-                if (spot.name.contains("Chaat") || spot.name.contains("Mayuri")) && 
-                   (otherSpot.name.contains("Chaat") || otherSpot.name.contains("Mayuri")) {
-                    print("🔍 Distance from '\(spot.name)' to '\(otherSpot.name)': \(calculatedDistance) degrees (threshold: \(distance))")
-                    print("🔍 Would cluster? \(calculatedDistance < distance ? "Yes" : "No")")
-                }
-                
                 return calculatedDistance < distance
-            }
-            
-            // DEBUG: Log the result for Chaat House and Mayuri
-            if spot.name.contains("Chaat") || spot.name.contains("Mayuri") {
-                print("🔍 '\(spot.name)' found \(nearbySpots.count) nearby spots")
-                for nearbySpot in nearbySpots {
-                    print("🔍   - \(nearbySpot.name)")
-                }
             }
             
             return nearbySpots

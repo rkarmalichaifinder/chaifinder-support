@@ -1,6 +1,6 @@
 import Foundation
 
-struct ReviewFeedItem: Identifiable {
+struct ReviewItem: Identifiable {
     let id: String
     let spotId: String
     var spotName: String // Made mutable so it can be updated
