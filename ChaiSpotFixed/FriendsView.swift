@@ -129,7 +129,6 @@ struct FriendsView: View {
                         .padding(.horizontal, DesignSystem.Spacing.md)
                         .padding(.vertical, DesignSystem.Spacing.sm)
                         .background(DesignSystem.Colors.background)
-                        .iPadOptimized()
 
                         VStack(spacing: DesignSystem.Spacing.lg) {
                             // Weekly Challenge Section
@@ -164,7 +163,6 @@ struct FriendsView: View {
                             }
                         }
                         .padding(DesignSystem.Spacing.lg)
-                        .iPadOptimized()
                     }
                 }
             }
@@ -254,7 +252,7 @@ struct FriendsView: View {
             }
         }
         .navigationViewStyle(.stack)
-        .searchBarKeyboardDismissible()
+        .keyboardDismissible()
         .onAppear {
             print("🔄 FriendsView onAppear - users.count: \(users.count), currentUser: \(currentUser?.displayName ?? "nil")")
             
