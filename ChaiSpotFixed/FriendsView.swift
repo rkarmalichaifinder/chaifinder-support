@@ -252,7 +252,7 @@ struct FriendsView: View {
             }
         }
         .navigationViewStyle(.stack)
-        .keyboardDismissible()
+        .searchBarKeyboardDismissible()
         .onAppear {
             print("🔄 FriendsView onAppear - users.count: \(users.count), currentUser: \(currentUser?.displayName ?? "nil")")
             
