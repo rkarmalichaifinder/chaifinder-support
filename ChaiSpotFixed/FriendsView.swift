@@ -921,12 +921,95 @@ struct FriendsView: View {
         }
         
         isSearching = true
+        
+        // Try Firestore search first
         performFirestoreSearch(query: queryLower, searchWords: searchWords)
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+        // If Firestore search doesn't return good results, try local search as fallback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if self.searchResults.count < 3 && self.isSearching {
+                print("🔍 Firestore search returned few results, trying local search...")
+                self.performLocalSearch(query: queryLower, searchWords: searchWords)
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
             if self.isSearching {
                 print("⏰ Search timeout reached")
                 self.isSearching = false
+            }
+        }
+    }
+    
+    private func performLocalSearch(query: String, searchWords: [String]) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        print("🔍 Performing local search for: '\(query)'")
+        
+        // Get all users and filter locally
+        let db = Firestore.firestore()
+        let usersRef = db.collection("users")
+        
+        usersRef.getDocuments { snapshot, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Local search error: \(error.localizedDescription)")
+                    self.isSearching = false
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    self.isSearching = false
+                    return
+                }
+                
+                let allUsers = documents.compactMap { doc -> UserProfile? in
+                    let data = doc.data()
+                    let uid = data["uid"] as? String ?? doc.documentID
+                    
+                    // Skip current user
+                    if uid == currentUserId {
+                        return nil
+                    }
+                    
+                    return UserProfile(
+                        id: doc.documentID,
+                        uid: uid,
+                        displayName: data["displayName"] as? String ?? "Unknown User",
+                        email: data["email"] as? String ?? "unknown@email.com",
+                        photoURL: data["photoURL"] as? String,
+                        friends: [],
+                        incomingRequests: [],
+                        outgoingRequests: [],
+                        bio: nil
+                    )
+                }
+                
+                // Filter users based on search query
+                let filteredUsers = allUsers.filter { user in
+                    let displayName = user.displayName.lowercased()
+                    let email = user.email.lowercased()
+                    
+                    // Check if any search word matches
+                    return searchWords.contains { word in
+                        displayName.contains(word) || email.contains(word)
+                    }
+                }
+                
+                // Remove users that are already friends or have pending requests
+                let finalResults = filteredUsers.filter { user in
+                    !(self.currentUser?.friends?.contains(user.uid) ?? false) &&
+                    !self.sentRequests.contains(user.uid) &&
+                    !self.incomingRequests.contains(where: { $0.uid == user.uid }) &&
+                    !self.outgoingRequests.contains(where: { $0.uid == user.uid })
+                }
+                
+                // Sort by relevance
+                let sortedResults = self.sortResultsByRelevance(finalResults, searchWords: searchWords)
+                
+                self.searchResults = sortedResults
+                self.isSearching = false
+                print("🔍 Local search completed with \(sortedResults.count) results")
             }
         }
     }
@@ -939,22 +1022,26 @@ struct FriendsView: View {
         let db = Firestore.firestore()
         let usersRef = db.collection("users")
         
-        // Try multiple search strategies
+        // Use a more flexible search approach
         let searchTerm = searchWords.first ?? query
         
-        // Strategy 1: Display name prefix search
+        // Strategy 1: Display name search (case-insensitive)
         let displayNameQuery = usersRef.whereField("displayName", isGreaterThanOrEqualTo: searchTerm)
             .whereField("displayName", isLessThan: searchTerm + "\u{f8ff}")
-            .limit(to: 10)
+            .limit(to: 20)
         
-        // Strategy 2: Email prefix search
+        // Strategy 2: Email search (case-insensitive)
         let emailQuery = usersRef.whereField("email", isGreaterThanOrEqualTo: searchTerm)
             .whereField("email", isLessThan: searchTerm + "\u{f8ff}")
-            .limit(to: 10)
+            .limit(to: 20)
+        
+        // Strategy 3: Display name search with different case
+        let displayNameUpperQuery = usersRef.whereField("displayName", isGreaterThanOrEqualTo: searchTerm.uppercased())
+            .whereField("displayName", isLessThan: searchTerm.uppercased() + "\u{f8ff}")
+            .limit(to: 20)
         
         let group = DispatchGroup()
-        var displayNameResults: [UserProfile] = []
-        var emailResults: [UserProfile] = []
+        var allResults: [UserProfile] = []
         
         // Search by display name
         group.enter()
@@ -966,7 +1053,8 @@ struct FriendsView: View {
                 return
             }
             
-            displayNameResults = self.processSearchResults(snapshot?.documents ?? [], currentUserId: currentUserId)
+            let results = self.processSearchResults(snapshot?.documents ?? [], currentUserId: currentUserId)
+            allResults.append(contentsOf: results)
         }
         
         // Search by email
@@ -979,20 +1067,38 @@ struct FriendsView: View {
                 return
             }
             
-            emailResults = self.processSearchResults(snapshot?.documents ?? [], currentUserId: currentUserId)
+            let results = self.processSearchResults(snapshot?.documents ?? [], currentUserId: currentUserId)
+            allResults.append(contentsOf: results)
+        }
+        
+        // Search by display name uppercase
+        group.enter()
+        displayNameUpperQuery.getDocuments { snapshot, error in
+            defer { group.leave() }
+            
+            if let error = error {
+                print("❌ Display name uppercase search error: \(error.localizedDescription)")
+                return
+            }
+            
+            let results = self.processSearchResults(snapshot?.documents ?? [], currentUserId: currentUserId)
+            allResults.append(contentsOf: results)
         }
         
         group.notify(queue: .main) {
-            // Combine and deduplicate results
-            var combinedResults = displayNameResults
-            for emailResult in emailResults {
-                if !combinedResults.contains(where: { $0.uid == emailResult.uid }) {
-                    combinedResults.append(emailResult)
+            // Remove duplicates based on UID
+            var uniqueResults: [UserProfile] = []
+            var seenUIDs: Set<String> = []
+            
+            for result in allResults {
+                if !seenUIDs.contains(result.uid) {
+                    seenUIDs.insert(result.uid)
+                    uniqueResults.append(result)
                 }
             }
             
             // Sort by relevance
-            let sortedResults = self.sortResultsByRelevance(combinedResults, searchWords: searchWords)
+            let sortedResults = self.sortResultsByRelevance(uniqueResults, searchWords: searchWords)
             
             self.searchResults = sortedResults
             self.isSearching = false
@@ -1069,8 +1175,8 @@ struct FriendsView: View {
         }
         
         // Bonus for starting with search term (prefix match)
-        if displayName.hasPrefix(searchWords.first ?? "") { score += 15 }
-        if email.hasPrefix(searchWords.first ?? "") { score += 10 }
+        if displayName.hasPrefix(searchWords.first ?? "") { score += 25 }
+        if email.hasPrefix(searchWords.first ?? "") { score += 20 }
         
         // Partial matches get lower scores
         for word in searchWords {
@@ -1078,8 +1184,15 @@ struct FriendsView: View {
             
             // Check email username part
             let emailParts = email.components(separatedBy: "@")
-            if emailParts.count > 0 && emailParts[0].contains(word) { score += 4 }
+            if emailParts.count > 0 && emailParts[0].contains(word) { score += 8 }
         }
+        
+        // Bonus for shorter names (more likely to be exact matches)
+        if displayName.count <= searchText.count + 3 { score += 10 }
+        
+        // Bonus for email username matches
+        let emailUsername = email.components(separatedBy: "@").first ?? ""
+        if emailUsername.contains(searchText) { score += 15 }
         
         return score
     }
