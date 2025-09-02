@@ -42,6 +42,12 @@ struct FriendsView: View {
     
     // Weekly Challenge states
     @State private var showingWeeklyChallenge = false
+    @State private var showingLeaderboard = false
+    
+    // Leaderboard states
+    @StateObject private var leaderboardViewModel = LeaderboardViewModel()
+    @State private var userRank: Int = 0
+    @State private var topLeaders: [LeaderboardEntry] = []
     
 
 
@@ -130,6 +136,9 @@ struct FriendsView: View {
                             if let currentUser = currentUser {
                                 weeklyChallengeSection
                                 
+                                // Leaderboard Section
+                                leaderboardSection
+                                
                                 // Incoming Friend Requests
                                 if !incomingRequests.isEmpty {
                                     incomingRequestsSection
@@ -171,6 +180,9 @@ struct FriendsView: View {
             .sheet(isPresented: $showingWeeklyChallenge) {
                 WeeklyChallengeView()
             }
+            .sheet(isPresented: $showingLeaderboard) {
+                LeaderboardView()
+            }
             .onAppear {
                 print("🔄 FriendsView onAppear - users.count: \(users.count), currentUser: \(currentUser?.displayName ?? "nil")")
                 
@@ -197,6 +209,9 @@ struct FriendsView: View {
                         performSearch(searchText)
                     }
                 }
+                
+                // Load leaderboard data
+                loadLeaderboardData()
             }
             .sheet(isPresented: $showingFriendDetails) {
                 if let friend = selectedFriend {
@@ -1151,12 +1166,6 @@ struct FriendsView: View {
                         performSearch(searchText)
                         // Keep focus to allow continued typing
                     }
-                    .onTapGesture {
-                        // Show search suggestions when tapping the search field
-                        if searchText.isEmpty {
-                            // Could add search suggestions here
-                        }
-                    }
                 
                 if isSearching {
                     ProgressView()
@@ -1237,12 +1246,6 @@ struct FriendsView: View {
                 Text("Tap to clear")
                     .font(DesignSystem.Typography.caption)
                     .foregroundColor(DesignSystem.Colors.primary)
-                    .onTapGesture {
-                        withAnimation(DesignSystem.Animation.quick) {
-                            searchText = ""
-                            searchResults = []
-                        }
-                    }
                 }
             }
         .padding(.horizontal, 4)
@@ -1870,6 +1873,168 @@ struct FriendsView: View {
             .buttonStyle(PlainButtonStyle())
         }
         .iPadCardStyle()
+    }
+    
+    // MARK: - Leaderboard Data Loading
+    private func loadLeaderboardData() {
+        Task {
+            // Load leaderboard data
+            leaderboardViewModel.loadLeaderboard()
+            
+            // Wait a bit for data to load
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            
+            await MainActor.run {
+                // Get user's rank
+                if let currentUserId = Auth.auth().currentUser?.uid,
+                   let userEntry = leaderboardViewModel.leaderboardEntries.first(where: { $0.userId == currentUserId }) {
+                    userRank = userEntry.rank
+                }
+                
+                // Get top 5 leaders
+                topLeaders = Array(leaderboardViewModel.leaderboardEntries.prefix(5))
+            }
+        }
+    }
+    
+    // MARK: - Leaderboard Section
+    private var leaderboardSection: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            HStack {
+                Text("🏆 Leaderboard")
+                    .font(DesignSystem.Typography.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Button("View All") {
+                    showingLeaderboard = true
+                }
+                .font(DesignSystem.Typography.bodySmall)
+                .foregroundColor(DesignSystem.Colors.accent)
+                
+                Button(action: {
+                    loadLeaderboardData()
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14))
+                        .foregroundColor(DesignSystem.Colors.accent)
+                }
+            }
+            
+            // Leaderboard Preview Card
+            Button(action: { showingLeaderboard = true }) {
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    // User's Rank Section
+                    HStack {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                            Text("Your Rank")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            Text("#\(userRank)")
+                                .font(DesignSystem.Typography.titleLarge)
+                                .fontWeight(.bold)
+                                .foregroundColor(DesignSystem.Colors.primary)
+                        }
+                        
+                        Spacer()
+                        
+                        // Top 3 Leaders
+                        VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
+                            Text("Top Leaders")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            HStack(spacing: DesignSystem.Spacing.xs) {
+                                ForEach(Array(topLeaders.prefix(3).enumerated()), id: \.element.id) { index, leader in
+                                    VStack(spacing: 2) {
+                                        Text("\(index + 1)")
+                                            .font(DesignSystem.Typography.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.white)
+                                            .frame(width: 16, height: 16)
+                                            .background(rankColor(for: index + 1))
+                                            .clipShape(Circle())
+                                        
+                                        Text(leader.username.prefix(1).uppercased())
+                                            .font(DesignSystem.Typography.caption2)
+                                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Divider
+                    if !topLeaders.isEmpty {
+                        Divider()
+                            .background(DesignSystem.Colors.border.opacity(0.3))
+                    }
+                    
+                    // Top 5 List
+                    if !topLeaders.isEmpty {
+                        VStack(spacing: DesignSystem.Spacing.xs) {
+                            ForEach(Array(topLeaders.enumerated()), id: \.element.id) { index, leader in
+                                HStack {
+                                    Text("\(index + 1)")
+                                        .font(DesignSystem.Typography.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(rankColor(for: index + 1))
+                                        .frame(width: 20)
+                                    
+                                    Text(leader.username)
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                                        .lineLimit(1)
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(leader.totalScore) pts")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                                }
+                            }
+                        }
+                    } else {
+                        // Loading or empty state
+                        HStack {
+                            Text("Loading leaderboard...")
+                                .font(DesignSystem.Typography.bodyMedium)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            Spacer()
+                            
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 16))
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                        }
+                    }
+                }
+                .padding(DesignSystem.Spacing.md)
+                .background(DesignSystem.Colors.cardBackground)
+                .cornerRadius(DesignSystem.CornerRadius.medium)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                        .stroke(DesignSystem.Colors.border, lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .iPadCardStyle()
+        .onAppear {
+            loadLeaderboardData()
+        }
+    }
+    
+    // MARK: - Helper Functions
+    private func rankColor(for rank: Int) -> Color {
+        switch rank {
+        case 1: return .yellow // Gold
+        case 2: return Color(red: 0.75, green: 0.75, blue: 0.75) // Silver
+        case 3: return Color(red: 0.8, green: 0.5, blue: 0.2) // Bronze
+        default: return DesignSystem.Colors.primary
+        }
     }
 }
 
